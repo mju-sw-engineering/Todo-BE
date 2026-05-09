@@ -1,24 +1,15 @@
 spring:
+  profiles:
+    default: local
   datasource:
-    url: jdbc:mysql://localhost:3306/todo?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: ${DB_USERNAME:todo}
-    password: ${DB_PASSWORD:todo1234}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
     properties:
       hibernate:
-        format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
 
 server:
   port: 8080
 
 jwt:
-  secret: ${JWT_SECRET:todo-secret-key-must-be-at-least-256-bits-long-for-security}
   expiration: 86400000
-
-file:
-  upload-dir: ${FILE_UPLOAD_DIR:uploads}
