@@ -23,3 +23,6 @@ out/
 ### Env ###
 .env
 application-local.yml
+
+### AI Workspace ###
+.ai-workspace/
