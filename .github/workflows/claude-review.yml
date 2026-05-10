@@ -46,6 +46,8 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_sticky_comment: true
+          show_full_output: true
           prompt: |
             이 PR의 변경사항을 아래 기준에 따라 코드 리뷰해줘.
             각 지적 사항은 심각도를 분류하고 구체적인 수정 방향을 제시해.
