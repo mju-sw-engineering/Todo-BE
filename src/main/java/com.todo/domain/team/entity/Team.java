@@ -29,6 +29,9 @@ public class Team {
     private String inviteCode;
 
     @Column(nullable = false)
+    private int successCount = 0;
+
+    @Column(nullable = false)
     private int consecutiveTodoCount = 0;
 
     @CreatedDate
