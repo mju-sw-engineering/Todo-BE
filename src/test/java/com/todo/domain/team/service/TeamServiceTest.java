@@ -2,6 +2,7 @@ package com.todo.domain.team.service;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
@@ -18,7 +19,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -121,5 +124,51 @@ class TeamServiceTest {
         CreateTeamResponse response = teamService.persistTeam(user, "우리팀", null);
 
         assertThat(response.inviteCode()).hasSize(8);
+    }
+
+    @Test
+    void 내_팀_목록_조회_성공_팀없음() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of());
+
+        TeamListResponse response = teamService.getMyTeams("user1");
+
+        assertThat(response.teams()).isEmpty();
+    }
+
+    @Test
+    void 내_팀_목록_조회_성공_팀있음() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team studyTeam = Team.create("스터디 팀", "https://example.com/team1.png", "ABCDEFGH");
+        ReflectionTestUtils.setField(studyTeam, "id", 10L);
+        Team exerciseTeam = Team.create("운동 팀", null, "IJKLMNOP");
+        ReflectionTestUtils.setField(exerciseTeam, "id", 20L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of(studyTeam, exerciseTeam));
+
+        TeamListResponse response = teamService.getMyTeams("user1");
+
+        assertThat(response.teams()).hasSize(2);
+        assertThat(response.teams().get(0).teamId()).isEqualTo(10L);
+        assertThat(response.teams().get(0).teamName()).isEqualTo("스터디 팀");
+        assertThat(response.teams().get(0).teamImageUrl()).isEqualTo("https://example.com/team1.png");
+        assertThat(response.teams().get(1).teamId()).isEqualTo(20L);
+        assertThat(response.teams().get(1).teamName()).isEqualTo("운동 팀");
+        assertThat(response.teams().get(1).teamImageUrl()).isNull();
+    }
+
+    @Test
+    void 내_팀_목록_조회_실패_존재하지_않는_사용자() {
+        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.getMyTeams("unknown"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("로그인이 필요합니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 }

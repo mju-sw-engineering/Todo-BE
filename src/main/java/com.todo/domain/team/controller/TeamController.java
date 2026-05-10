@@ -2,6 +2,7 @@ package com.todo.domain.team.controller;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.service.TeamService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -19,6 +20,13 @@ import org.springframework.web.multipart.MultipartFile;
 public class TeamController implements TeamControllerDocs {
 
     private final TeamService teamService;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<TeamListResponse>> getMyTeams(Authentication authentication) {
+        String loginId = authentication.getName();
+        TeamListResponse response = teamService.getMyTeams(loginId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<CreateTeamResponse>> createTeam(
