@@ -307,3 +307,25 @@ public class Task {
 4. **민감정보 커밋 금지** — API 키, 비밀번호, JWT 시크릿, DB 접속 정보 등 파일에 직접 작성 및 커밋 금지
 5. **보안 변경 사람 리뷰 필수** — `SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter` 등 보안 관련 파일 수정 시 반드시 사람이 리뷰한 후 병합
 6. **커밋 전 사용자 승인 필수** — AI가 자동으로 커밋 메시지를 확정하고 커밋 실행 금지. 항상 메시지 제안 후 승인 대기
+
+---
+
+## Codex 커맨드 워크플로우
+
+Codex가 이 레포지토리에서 작업할 때 사용자가 아래 명령을 요청하면
+`.codex/commands/<command>.md` 파일을 먼저 읽고 해당 절차를 따른다.
+
+| 명령 | 파일 | 용도 |
+|---|---|---|
+| `/feature` | `.codex/commands/feature.md` | 계획부터 PR 초안까지 전체 기능 워크플로우 |
+| `/plan` | `.codex/commands/plan.md` | 구현 전 계획 수립 |
+| `/impl` | `.codex/commands/impl.md` | 승인된 계획 기반 구현 |
+| `/review` | `.codex/commands/review.md` | 변경사항 셀프 리뷰 |
+| `/commit` | `.codex/commands/commit.md` | 커밋 메시지 제안 및 승인 후 커밋 |
+| `/pr` | `.codex/commands/pr.md` | PR 설명 초안 작성 |
+
+**적용 규칙**
+- `.codex/commands`의 내용이 AGENTS.md와 충돌하면 AGENTS.md를 우선한다.
+- 커맨드 파일을 읽었더라도 절대 규칙은 항상 유지한다.
+- `/commit`은 커밋 메시지 제안 후 사용자 승인을 받은 경우에만 실행한다.
+- `/pr`은 PR 초안만 작성하고, push 및 `gh pr create`는 실행하지 않는다.
