@@ -16,3 +16,6 @@ jwt:
 
 file:
   upload-dir: ${FILE_UPLOAD_DIR:/app/uploads}
+
+app:
+  api-server-url: ${API_SERVER_URL:https://api.swe.bluerack.org}
