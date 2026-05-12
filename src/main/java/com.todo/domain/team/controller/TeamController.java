@@ -2,6 +2,7 @@ package com.todo.domain.team.controller;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.service.TeamService;
 import com.todo.global.response.ApiResponse;
@@ -20,6 +21,16 @@ import org.springframework.web.multipart.MultipartFile;
 public class TeamController implements TeamControllerDocs {
 
     private final TeamService teamService;
+
+    @GetMapping("/{teamId}")
+    public ResponseEntity<ApiResponse<TeamDetailResponse>> getTeamDetail(
+            @PathVariable Long teamId,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        TeamDetailResponse response = teamService.getTeamDetail(teamId, loginId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
 
     @GetMapping
     public ResponseEntity<ApiResponse<TeamListResponse>> getMyTeams(Authentication authentication) {

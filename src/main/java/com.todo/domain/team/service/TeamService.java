@@ -2,6 +2,7 @@ package com.todo.domain.team.service;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -59,6 +60,18 @@ public class TeamService {
 
         // DB 쓰기: 프록시를 통해 새 트랜잭션으로 실행
         return self.persistTeam(user, request.teamName(), teamImageUrl);
+    }
+
+    public TeamDetailResponse getTeamDetail(Long teamId, String loginId) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));
+        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())) {
+            throw new BusinessException("팀에 접근할 권한이 없습니다", HttpStatus.FORBIDDEN);
+        }
+        List<TeamMember> members = teamMemberRepository.findByTeamIdWithUser(teamId);
+        return TeamDetailResponse.from(team, members);
     }
 
     public TeamListResponse getMyTeams(String loginId) {

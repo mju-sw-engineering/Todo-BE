@@ -2,6 +2,7 @@ package com.todo.domain.team.service;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -160,6 +161,76 @@ class TeamServiceTest {
         assertThat(response.teams().get(1).teamId()).isEqualTo(20L);
         assertThat(response.teams().get(1).teamName()).isEqualTo("운동 팀");
         assertThat(response.teams().get(1).teamImageUrl()).isNull();
+    }
+
+    @Test
+    void 팀_상세_조회_성공() {
+        User user = User.create("user1", "encodedPwd", "홍길동", "https://example.com/profile1.png");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        User member2 = User.create("user2", "encodedPwd", "김철수", null);
+        ReflectionTestUtils.setField(member2, "id", 2L);
+
+        Team team = Team.create("스터디 팀", "https://example.com/team.png", "ABCDEFGH");
+        ReflectionTestUtils.setField(team, "id", 1L);
+
+        TeamMember leader = TeamMember.create(team, user, TeamMemberRole.LEADER);
+        TeamMember memberEntry = TeamMember.create(team, member2, TeamMemberRole.MEMBER);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(1L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(true);
+        given(teamMemberRepository.findByTeamIdWithUser(1L)).willReturn(List.of(leader, memberEntry));
+
+        TeamDetailResponse response = teamService.getTeamDetail(1L, "user1");
+
+        assertThat(response.teamId()).isEqualTo(1L);
+        assertThat(response.teamName()).isEqualTo("스터디 팀");
+        assertThat(response.memberCount()).isEqualTo(2);
+        assertThat(response.members()).hasSize(2);
+        assertThat(response.members().get(0).role()).isEqualTo("LEADER");
+        assertThat(response.members().get(1).role()).isEqualTo("MEMBER");
+        assertThat(response.members().get(1).profileImageUrl()).isNull();
+    }
+
+    @Test
+    void 팀_상세_조회_실패_존재하지_않는_팀() {
+        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.getTeamDetail(99L, "user1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("존재하지 않는 팀입니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void 팀_상세_조회_실패_팀에_속하지_않은_사용자() {
+        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCDEFGH");
+        ReflectionTestUtils.setField(team, "id", 1L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(1L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(false);
+
+        assertThatThrownBy(() -> teamService.getTeamDetail(1L, "user1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("팀에 접근할 권한이 없습니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void 팀_상세_조회_실패_존재하지_않는_사용자() {
+        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.getTeamDetail(1L, "unknown"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("로그인이 필요합니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 
     @Test
