@@ -1,7 +1,9 @@
 package com.todo.domain.team.service;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
+import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.entity.Team;
@@ -238,6 +240,65 @@ class TeamServiceTest {
         given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> teamService.getMyTeams("unknown"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("로그인이 필요합니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
+    @Test
+    void 팀_참여_성공() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findByInviteCode("ABCD1234")).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(false);
+        given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
+
+        JoinTeamResponse response = teamService.joinTeam("user1", new JoinTeamRequest("ABCD1234"));
+
+        assertThat(response.teamId()).isEqualTo(10L);
+        then(teamMemberRepository).should().save(argThat(m -> m.getRole() == TeamMemberRole.MEMBER));
+    }
+
+    @Test
+    void 팀_참여_실패_유효하지_않은_초대_코드() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findByInviteCode("INVALID")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.joinTeam("user1", new JoinTeamRequest("INVALID")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("유효하지 않은 초대 코드입니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void 팀_참여_실패_이미_참여한_팀() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findByInviteCode("ABCD1234")).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
+
+        assertThatThrownBy(() -> teamService.joinTeam("user1", new JoinTeamRequest("ABCD1234")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 참여한 팀입니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void 팀_참여_실패_존재하지_않는_사용자() {
+        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.joinTeam("unknown", new JoinTeamRequest("ABCD1234")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("로그인이 필요합니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));

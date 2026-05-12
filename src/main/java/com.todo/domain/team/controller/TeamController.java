@@ -1,7 +1,9 @@
 package com.todo.domain.team.controller;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
+import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.service.TeamService;
@@ -37,6 +39,16 @@ public class TeamController implements TeamControllerDocs {
         String loginId = authentication.getName();
         TeamListResponse response = teamService.getMyTeams(loginId);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @PostMapping("/join")
+    public ResponseEntity<ApiResponse<JoinTeamResponse>> joinTeam(
+            @Valid @RequestBody JoinTeamRequest request,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        JoinTeamResponse response = teamService.joinTeam(loginId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "팀 참여가 완료되었습니다"));
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

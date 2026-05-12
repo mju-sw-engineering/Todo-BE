@@ -1,7 +1,9 @@
 package com.todo.domain.team.service;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
+import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.entity.Team;
@@ -79,6 +81,26 @@ public class TeamService {
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         List<Team> teams = teamMemberRepository.findTeamsByUserId(user.getId());
         return TeamListResponse.from(teams);
+    }
+
+    @Transactional
+    public JoinTeamResponse joinTeam(String loginId, JoinTeamRequest request) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+
+        Team team = teamRepository.findByInviteCode(request.inviteCode())
+                .orElseThrow(() -> new BusinessException("유효하지 않은 초대 코드입니다", HttpStatus.NOT_FOUND));
+
+        if (teamMemberRepository.existsByTeamIdAndUserId(team.getId(), user.getId())) {
+            throw new BusinessException("이미 참여한 팀입니다", HttpStatus.CONFLICT);
+        }
+
+        try {
+            teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.MEMBER));
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new BusinessException("이미 참여한 팀입니다", HttpStatus.CONFLICT);
+        }
+        return JoinTeamResponse.from(team);
     }
 
     @Transactional
