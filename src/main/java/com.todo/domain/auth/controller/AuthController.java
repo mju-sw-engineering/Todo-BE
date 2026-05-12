@@ -22,7 +22,7 @@ public class AuthController implements AuthControllerDocs {
 
     @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<SignupResponse>> signup(
-            @Valid @ModelAttribute SignupRequest request,
+            @Valid @RequestPart("request") SignupRequest request,
             @RequestPart(value = "profileImage", required = false) MultipartFile profileImage
     ) {
         return ResponseEntity.ok(ApiResponse.success(authService.signup(request, profileImage)));
