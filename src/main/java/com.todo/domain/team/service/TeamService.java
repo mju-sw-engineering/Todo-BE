@@ -17,12 +17,9 @@ import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.security.SecureRandom;
 import java.util.List;
@@ -35,36 +32,23 @@ public class TeamService {
     private static final String INVITE_CODE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final int INVITE_CODE_LENGTH = 8;
     private static final int MAX_INVITE_CODE_RETRY = 5;
-    private static final List<String> ALLOWED_EXTENSIONS = List.of("jpg", "jpeg", "png");
 
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final FileService fileService;
 
-    // self-injection: 파일 I/O 이후 DB 쓰기를 Spring 프록시를 통해 새 트랜잭션으로 실행
-    @Lazy
-    @Autowired
-    private TeamService self;
-
-    public CreateTeamResponse createTeam(String loginId, CreateTeamRequest request, MultipartFile teamImage) {
+    @Transactional
+    public CreateTeamResponse createTeam(String loginId, CreateTeamRequest request) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
-        if (teamImage != null && !teamImage.isEmpty()) {
-            validateImageExtension(teamImage);
-        }
+        String inviteCode = generateUniqueInviteCode();
+        Team team = teamRepository.save(Team.create(request.teamName(), request.teamImageKey(), inviteCode));
+        teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.LEADER));
 
-        // DB 쓰기: 먼저 팀 저장하여 teamId 확보
-        CreateTeamResponse response = self.persistTeam(user, request.teamName(), null);
-
-        // 파일 I/O: DB 트랜잭션 외부에서 처리, teamId 기반 key prefix 사용
-        if (teamImage != null && !teamImage.isEmpty()) {
-            String imageKey = fileService.saveTeamImage(response.teamId(), teamImage);
-            response = self.attachInitialTeamImage(response.teamId(), user.getId(), imageKey);
-        }
-
-        return response.withImageUrl(fileService.resolveImageUrl(response.teamImage()));
+        return CreateTeamResponse.from(team, user.getId())
+                .withImageUrl(fileService.resolveImageUrl(team.getTeamImage()));
     }
 
     public TeamDetailResponse getTeamDetail(Long teamId, String loginId) {
@@ -109,37 +93,6 @@ public class TeamService {
             throw new BusinessException("이미 참여한 팀입니다", HttpStatus.CONFLICT);
         }
         return JoinTeamResponse.from(team);
-    }
-
-    @Transactional
-    public CreateTeamResponse persistTeam(User user, String teamName, String teamImageUrl) {
-        String inviteCode = generateUniqueInviteCode();
-        Team team = teamRepository.save(Team.create(teamName, teamImageUrl, inviteCode));
-        teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.LEADER));
-        return CreateTeamResponse.from(team, user.getId());
-    }
-
-    /**
-     * 팀 생성 직후 초기 이미지 key를 DB에 반영하기 위한 내부 전용 메서드.
-     * 일반 이미지 교체 용도로 재사용하지 말 것 — LEADER 검증 및 기존 이미지 삭제 로직이 없음.
-     */
-    @Transactional
-    public CreateTeamResponse attachInitialTeamImage(Long teamId, Long leaderId, String imageKey) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND));
-        team.updateTeamImage(imageKey);
-        return CreateTeamResponse.from(team, leaderId);
-    }
-
-    private void validateImageExtension(MultipartFile file) {
-        String originalFilename = file.getOriginalFilename();
-        if (originalFilename == null || !originalFilename.contains(".")) {
-            throw new BusinessException("지원하지 않는 이미지 형식입니다.", HttpStatus.BAD_REQUEST);
-        }
-        String extension = originalFilename.substring(originalFilename.lastIndexOf('.') + 1).toLowerCase();
-        if (!ALLOWED_EXTENSIONS.contains(extension)) {
-            throw new BusinessException("지원하지 않는 이미지 형식입니다.", HttpStatus.BAD_REQUEST);
-        }
     }
 
     private String generateUniqueInviteCode() {

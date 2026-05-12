@@ -25,4 +25,7 @@ public class SignupRequest {
     @NotBlank
     @Schema(description = "닉네임", example = "홍길동")
     private String nickname;
+
+    @Schema(description = "프로필 이미지 object key (presigned-upload로 발급 후 전달)", example = "profiles/1/uuid.png")
+    private String profileImageKey;
 }

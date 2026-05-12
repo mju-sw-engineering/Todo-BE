@@ -6,5 +6,8 @@ import jakarta.validation.constraints.NotBlank;
 public record CreateTeamRequest(
         @NotBlank(message = "팀 이름을 입력해주세요")
         @Schema(description = "팀 이름", example = "우리팀")
-        String teamName
+        String teamName,
+
+        @Schema(description = "팀 이미지 object key (presigned-upload로 발급 후 전달)", example = "teams/temp/1/uuid.png")
+        String teamImageKey
 ) {}

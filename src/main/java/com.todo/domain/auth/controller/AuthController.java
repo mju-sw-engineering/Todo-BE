@@ -8,10 +8,11 @@ import com.todo.domain.auth.service.AuthService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -20,12 +21,9 @@ public class AuthController implements AuthControllerDocs {
 
     private final AuthService authService;
 
-    @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<SignupResponse>> signup(
-            @Valid @ModelAttribute SignupRequest request,
-            @RequestPart(value = "profileImage", required = false) MultipartFile profileImage
-    ) {
-        return ResponseEntity.ok(ApiResponse.success(authService.signup(request, profileImage)));
+    @PostMapping("/signup")
+    public ResponseEntity<ApiResponse<SignupResponse>> signup(@Valid @RequestBody SignupRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(authService.signup(request)));
     }
 
     @PostMapping("/login")

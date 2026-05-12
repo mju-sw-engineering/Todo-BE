@@ -14,8 +14,6 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.multipart.MultipartFile;
-
 @Tag(name = "Team", description = "팀 API")
 public interface TeamControllerDocs {
 
@@ -71,7 +69,6 @@ public interface TeamControllerDocs {
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<ApiResponse<CreateTeamResponse>> createTeam(
             CreateTeamRequest request,
-            MultipartFile teamImage,
             Authentication authentication
     );
 }

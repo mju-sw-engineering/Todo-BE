@@ -1,15 +1,15 @@
 package com.todo.global.service;
 
 import com.todo.global.config.MinioProperties;
+import com.todo.global.dto.UploadType;
+import com.todo.global.dto.request.PresignedUploadRequest;
+import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
@@ -19,8 +19,8 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -38,23 +38,34 @@ public class FileService {
         ensureBucketExists(props.getBucket());
     }
 
-    public String saveProfileImage(String loginId, MultipartFile file) {
-        return upload(file, "profiles/" + loginId);
-    }
+    public PresignedUploadResponse generatePresignedPutUrl(Long userId, PresignedUploadRequest request) {
+        String ext = extractExtension(request.fileName());
+        String key = buildObjectKey(userId, request.type(), ext);
 
-    public String saveTeamImage(Long teamId, MultipartFile file) {
-        return upload(file, "teams/" + teamId);
+        String uploadUrl = s3Presigner.presignPutObject(
+                PutObjectPresignRequest.builder()
+                        .signatureDuration(Duration.ofSeconds(props.getPutPresignedUrlExpiration()))
+                        .putObjectRequest(PutObjectRequest.builder()
+                                .bucket(props.getBucket())
+                                .key(key)
+                                .contentType(request.contentType())
+                                .build())
+                        .build()
+        ).url().toExternalForm();
+
+        return new PresignedUploadResponse(uploadUrl, key);
     }
 
     public String resolveImageUrl(String objectKey) {
         if (objectKey == null || objectKey.isBlank()) {
             return null;
         }
-        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofSeconds(props.getPresignedUrlExpiration()))
-                .getObjectRequest(r -> r.bucket(props.getBucket()).key(objectKey))
-                .build();
-        return s3Presigner.presignGetObject(presignRequest).url().toExternalForm();
+        return s3Presigner.presignGetObject(
+                GetObjectPresignRequest.builder()
+                        .signatureDuration(Duration.ofSeconds(props.getPresignedUrlExpiration()))
+                        .getObjectRequest(r -> r.bucket(props.getBucket()).key(objectKey))
+                        .build()
+        ).url().toExternalForm();
     }
 
     public void deleteObject(String objectKey) {
@@ -71,30 +82,13 @@ public class FileService {
         }
     }
 
-    private String upload(MultipartFile file, String prefix) {
-        String ext = extractExtension(file.getOriginalFilename());
-        String key = prefix + "/" + UUID.randomUUID() + (ext.isEmpty() ? "" : "." + ext);
-        String contentType = file.getContentType() != null
-                ? file.getContentType()
-                : MediaType.APPLICATION_OCTET_STREAM_VALUE;
-
-        try {
-            s3Client.putObject(
-                    PutObjectRequest.builder()
-                            .bucket(props.getBucket())
-                            .key(key)
-                            .contentType(contentType)
-                            .contentLength(file.getSize())
-                            .build(),
-                    RequestBody.fromInputStream(file.getInputStream(), file.getSize())
-            );
-        } catch (IOException e) {
-            throw new BusinessException("파일을 읽는 중 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
-        } catch (S3Exception e) {
-            throw new BusinessException("스토리지 업로드에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-
-        return key;
+    private String buildObjectKey(Long userId, UploadType type, String ext) {
+        String suffix = ext.isEmpty() ? "" : "." + ext;
+        String uuid = UUID.randomUUID().toString();
+        return switch (type) {
+            case TEAM -> "teams/temp/" + userId + "/" + uuid + suffix;
+            case PROFILE -> "profiles/" + userId + "/" + uuid + suffix;
+        };
     }
 
     private void ensureBucketExists(String bucket) {

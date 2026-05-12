@@ -21,6 +21,7 @@ minio:
   region: ${MINIO_REGION}
   bucket: ${MINIO_BUCKET:uploads}
   presigned-url-expiration: ${MINIO_PRESIGNED_URL_EXPIRATION:3600}
+  put-presigned-url-expiration: ${MINIO_PUT_PRESIGNED_URL_EXPIRATION:600}
 
 app:
   api-server-url: ${API_SERVER_URL:https://api.swe.bluerack.org}
