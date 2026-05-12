@@ -12,6 +12,13 @@ public class MinioProperties {
     private String endpoint;
     private String accessKey;
     private String secretKey;
-    private String bucket;
     private String region;
+    private Bucket bucket = new Bucket();
+
+    @Getter
+    @Setter
+    public static class Bucket {
+        private String profiles;
+        private String teams;
+    }
 }
