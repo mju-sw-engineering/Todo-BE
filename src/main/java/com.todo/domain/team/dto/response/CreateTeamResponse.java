@@ -25,4 +25,8 @@ public record CreateTeamResponse(
                 team.getCreatedAt()
         );
     }
+
+    public CreateTeamResponse withImageUrl(String resolvedImageUrl) {
+        return new CreateTeamResponse(teamId, teamName, resolvedImageUrl, inviteCode, leaderId, consecutiveTodoCount, createdAt);
+    }
 }

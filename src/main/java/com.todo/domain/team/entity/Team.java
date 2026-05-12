@@ -38,6 +38,10 @@ public class Team {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    public void updateTeamImage(String imageKey) {
+        this.teamImage = imageKey;
+    }
+
     public static Team create(String teamName, String teamImage, String inviteCode) {
         Team team = new Team();
         team.teamName = teamName;

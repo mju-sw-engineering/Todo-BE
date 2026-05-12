@@ -26,4 +26,8 @@ public record TeamDetailResponse(
                 members.stream().map(TeamMemberResponse::from).toList()
         );
     }
+
+    public TeamDetailResponse withImageUrl(String resolvedImageUrl) {
+        return new TeamDetailResponse(teamId, teamName, resolvedImageUrl, memberCount, successCount, continuousTodoCount, members);
+    }
 }

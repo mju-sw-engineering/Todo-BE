@@ -6,6 +6,7 @@ import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
+import com.todo.domain.team.dto.response.TeamSummaryResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
@@ -54,14 +55,16 @@ public class TeamService {
             validateImageExtension(teamImage);
         }
 
-        // 파일 I/O: DB 트랜잭션 시작 전 처리
-        String teamImageUrl = null;
+        // DB 쓰기: 먼저 팀 저장하여 teamId 확보
+        CreateTeamResponse response = self.persistTeam(user, request.teamName(), null);
+
+        // 파일 I/O: DB 트랜잭션 외부에서 처리, teamId 기반 key prefix 사용
         if (teamImage != null && !teamImage.isEmpty()) {
-            teamImageUrl = fileService.saveTeamImage(teamImage);
+            String imageKey = fileService.saveTeamImage(response.teamId(), teamImage);
+            response = self.attachInitialTeamImage(response.teamId(), user.getId(), imageKey);
         }
 
-        // DB 쓰기: 프록시를 통해 새 트랜잭션으로 실행
-        return self.persistTeam(user, request.teamName(), teamImageUrl);
+        return response.withImageUrl(fileService.resolveImageUrl(response.teamImage()));
     }
 
     public TeamDetailResponse getTeamDetail(Long teamId, String loginId) {
@@ -73,14 +76,19 @@ public class TeamService {
             throw new BusinessException("팀에 접근할 권한이 없습니다", HttpStatus.FORBIDDEN);
         }
         List<TeamMember> members = teamMemberRepository.findByTeamIdWithUser(teamId);
-        return TeamDetailResponse.from(team, members);
+        return TeamDetailResponse.from(team, members)
+                .withImageUrl(fileService.resolveImageUrl(team.getTeamImage()));
     }
 
     public TeamListResponse getMyTeams(String loginId) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         List<Team> teams = teamMemberRepository.findTeamsByUserId(user.getId());
-        return TeamListResponse.from(teams);
+        List<TeamSummaryResponse> summaries = teams.stream()
+                .map(team -> TeamSummaryResponse.from(team)
+                        .withImageUrl(fileService.resolveImageUrl(team.getTeamImage())))
+                .toList();
+        return new TeamListResponse(summaries);
     }
 
     @Transactional
@@ -109,6 +117,18 @@ public class TeamService {
         Team team = teamRepository.save(Team.create(teamName, teamImageUrl, inviteCode));
         teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.LEADER));
         return CreateTeamResponse.from(team, user.getId());
+    }
+
+    /**
+     * 팀 생성 직후 초기 이미지 key를 DB에 반영하기 위한 내부 전용 메서드.
+     * 일반 이미지 교체 용도로 재사용하지 말 것 — LEADER 검증 및 기존 이미지 삭제 로직이 없음.
+     */
+    @Transactional
+    public CreateTeamResponse attachInitialTeamImage(Long teamId, Long leaderId, String imageKey) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND));
+        team.updateTeamImage(imageKey);
+        return CreateTeamResponse.from(team, leaderId);
     }
 
     private void validateImageExtension(MultipartFile file) {
