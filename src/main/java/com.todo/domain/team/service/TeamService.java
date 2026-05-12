@@ -95,8 +95,12 @@ public class TeamService {
             throw new BusinessException("이미 참여한 팀입니다", HttpStatus.CONFLICT);
         }
 
-        teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.MEMBER));
-        return new JoinTeamResponse(team.getId());
+        try {
+            teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.MEMBER));
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new BusinessException("이미 참여한 팀입니다", HttpStatus.CONFLICT);
+        }
+        return JoinTeamResponse.from(team);
     }
 
     @Transactional
