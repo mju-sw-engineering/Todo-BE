@@ -24,10 +24,7 @@ public interface AuthControllerDocs {
             @ApiResponse(responseCode = "400", description = "입력값 오류 또는 중복 아이디",
                     content = @Content(schema = @Schema(hidden = true)))
     })
-    ResponseEntity<com.todo.global.response.ApiResponse<SignupResponse>> signup(
-            SignupRequest request,
-            MultipartFile profileImage
-    );
+    ResponseEntity<com.todo.global.response.ApiResponse<SignupResponse>> signup(SignupRequest request);
 
     @Operation(summary = "로그인", description = "아이디/비밀번호로 로그인하고 JWT 액세스 토큰을 반환합니다.")
     @ApiResponses({

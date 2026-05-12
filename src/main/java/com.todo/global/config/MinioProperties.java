@@ -15,4 +15,5 @@ public class MinioProperties {
     private String region;
     private String bucket;
     private long presignedUrlExpiration = 3600;
+    private long putPresignedUrlExpiration = 600;
 }

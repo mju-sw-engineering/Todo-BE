@@ -2,7 +2,6 @@ package com.todo.domain.auth.service;
 
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
-import org.springframework.web.multipart.MultipartFile;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import com.todo.domain.user.entity.User;
@@ -28,7 +27,7 @@ public class AuthService implements UserDetailsService {
     private final FileService fileService;
 
     @Transactional
-    public SignupResponse signup(SignupRequest request, MultipartFile profileImage) {
+    public SignupResponse signup(SignupRequest request) {
         if (!request.getPassword().equals(request.getPasswordConfirm())) {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
         }
@@ -36,16 +35,11 @@ public class AuthService implements UserDetailsService {
             throw new IllegalArgumentException("이미 사용 중인 아이디입니다.");
         }
 
-        String profileImageKey = null;
-        if (profileImage != null && !profileImage.isEmpty()) {
-            profileImageKey = fileService.saveProfileImage(request.getLoginId(), profileImage);
-        }
-
         User user = userRepository.save(User.create(
                 request.getLoginId(),
                 passwordEncoder.encode(request.getPassword()),
                 request.getNickname(),
-                profileImageKey
+                request.getProfileImageKey()
         ));
 
         return SignupResponse.from(user).withImageUrl(fileService.resolveImageUrl(user.getProfileImageUrl()));
