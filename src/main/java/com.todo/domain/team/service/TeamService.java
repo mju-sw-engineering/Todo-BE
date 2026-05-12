@@ -61,7 +61,7 @@ public class TeamService {
         // 파일 I/O: DB 트랜잭션 외부에서 처리, teamId 기반 key prefix 사용
         if (teamImage != null && !teamImage.isEmpty()) {
             String imageKey = fileService.saveTeamImage(response.teamId(), teamImage);
-            response = self.updateTeamImage(response.teamId(), user.getId(), imageKey);
+            response = self.attachInitialTeamImage(response.teamId(), user.getId(), imageKey);
         }
 
         return response.withImageUrl(fileService.resolveImageUrl(response.teamImage()));
@@ -119,13 +119,14 @@ public class TeamService {
         return CreateTeamResponse.from(team, user.getId());
     }
 
+    /**
+     * 팀 생성 직후 초기 이미지 key를 DB에 반영하기 위한 내부 전용 메서드.
+     * 일반 이미지 교체 용도로 재사용하지 말 것 — LEADER 검증 및 기존 이미지 삭제 로직이 없음.
+     */
     @Transactional
-    public CreateTeamResponse updateTeamImage(Long teamId, Long leaderId, String imageKey) {
+    public CreateTeamResponse attachInitialTeamImage(Long teamId, Long leaderId, String imageKey) {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND));
-        if (team.getTeamImage() != null) {
-            fileService.deleteObject(team.getTeamImage());
-        }
         team.updateTeamImage(imageKey);
         return CreateTeamResponse.from(team, leaderId);
     }
