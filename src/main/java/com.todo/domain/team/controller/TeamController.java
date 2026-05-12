@@ -53,7 +53,7 @@ public class TeamController implements TeamControllerDocs {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<CreateTeamResponse>> createTeam(
-            @Valid @ModelAttribute CreateTeamRequest request,
+            @Valid @RequestPart("request") CreateTeamRequest request,
             @RequestPart(value = "teamImage", required = false) MultipartFile teamImage,
             Authentication authentication
     ) {
