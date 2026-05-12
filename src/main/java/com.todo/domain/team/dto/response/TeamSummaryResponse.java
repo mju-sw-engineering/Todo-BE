@@ -15,4 +15,8 @@ public record TeamSummaryResponse(
                 team.getTeamImage()
         );
     }
+
+    public TeamSummaryResponse withImageUrl(String resolvedImageUrl) {
+        return new TeamSummaryResponse(teamId, teamName, resolvedImageUrl);
+    }
 }

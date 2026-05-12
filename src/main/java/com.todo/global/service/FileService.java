@@ -4,6 +4,7 @@ import com.todo.global.config.MinioProperties;
 import com.todo.global.exception.BusinessException;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -11,19 +12,25 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileService {
 
     private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
     private final MinioProperties props;
 
     @PostConstruct
@@ -37,6 +44,31 @@ public class FileService {
 
     public String saveTeamImage(Long teamId, MultipartFile file) {
         return upload(file, "teams/" + teamId);
+    }
+
+    public String resolveImageUrl(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return null;
+        }
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofSeconds(props.getPresignedUrlExpiration()))
+                .getObjectRequest(r -> r.bucket(props.getBucket()).key(objectKey))
+                .build();
+        return s3Presigner.presignGetObject(presignRequest).url().toExternalForm();
+    }
+
+    public void deleteObject(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return;
+        }
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder()
+                    .bucket(props.getBucket())
+                    .key(objectKey)
+                    .build());
+        } catch (S3Exception e) {
+            log.warn("MinIO object 삭제 실패 — key: {}, message: {}", objectKey, e.getMessage());
+        }
     }
 
     private String upload(MultipartFile file, String prefix) {

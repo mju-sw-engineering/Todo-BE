@@ -36,19 +36,19 @@ public class AuthService implements UserDetailsService {
             throw new IllegalArgumentException("이미 사용 중인 아이디입니다.");
         }
 
-        String profileImageUrl = null;
+        String profileImageKey = null;
         if (profileImage != null && !profileImage.isEmpty()) {
-            profileImageUrl = fileService.saveProfileImage(request.getLoginId(), profileImage);
+            profileImageKey = fileService.saveProfileImage(request.getLoginId(), profileImage);
         }
 
         User user = userRepository.save(User.create(
                 request.getLoginId(),
                 passwordEncoder.encode(request.getPassword()),
                 request.getNickname(),
-                profileImageUrl
+                profileImageKey
         ));
 
-        return SignupResponse.from(user);
+        return SignupResponse.from(user).withImageUrl(fileService.resolveImageUrl(user.getProfileImageUrl()));
     }
 
     public LoginResponse login(LoginRequest request) {

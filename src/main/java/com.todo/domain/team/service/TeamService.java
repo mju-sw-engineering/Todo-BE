@@ -6,6 +6,7 @@ import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
+import com.todo.domain.team.dto.response.TeamSummaryResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
@@ -63,7 +64,7 @@ public class TeamService {
             response = self.updateTeamImage(response.teamId(), user.getId(), imageKey);
         }
 
-        return response;
+        return response.withImageUrl(fileService.resolveImageUrl(response.teamImage()));
     }
 
     public TeamDetailResponse getTeamDetail(Long teamId, String loginId) {
@@ -75,14 +76,19 @@ public class TeamService {
             throw new BusinessException("팀에 접근할 권한이 없습니다", HttpStatus.FORBIDDEN);
         }
         List<TeamMember> members = teamMemberRepository.findByTeamIdWithUser(teamId);
-        return TeamDetailResponse.from(team, members);
+        return TeamDetailResponse.from(team, members)
+                .withImageUrl(fileService.resolveImageUrl(team.getTeamImage()));
     }
 
     public TeamListResponse getMyTeams(String loginId) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         List<Team> teams = teamMemberRepository.findTeamsByUserId(user.getId());
-        return TeamListResponse.from(teams);
+        List<TeamSummaryResponse> summaries = teams.stream()
+                .map(team -> TeamSummaryResponse.from(team)
+                        .withImageUrl(fileService.resolveImageUrl(team.getTeamImage())))
+                .toList();
+        return new TeamListResponse(summaries);
     }
 
     @Transactional
@@ -117,6 +123,9 @@ public class TeamService {
     public CreateTeamResponse updateTeamImage(Long teamId, Long leaderId, String imageKey) {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND));
+        if (team.getTeamImage() != null) {
+            fileService.deleteObject(team.getTeamImage());
+        }
         team.updateTeamImage(imageKey);
         return CreateTeamResponse.from(team, leaderId);
     }
