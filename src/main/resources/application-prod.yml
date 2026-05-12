@@ -19,9 +19,7 @@ minio:
   access-key: ${MINIO_ACCESS_KEY}
   secret-key: ${MINIO_SECRET_KEY}
   region: ${MINIO_REGION}
-  bucket:
-    profiles: ${MINIO_BUCKET_PROFILES}
-    teams: ${MINIO_BUCKET_TEAMS}
+  bucket: ${MINIO_BUCKET:uploads}
 
 app:
   api-server-url: ${API_SERVER_URL:https://api.swe.bluerack.org}

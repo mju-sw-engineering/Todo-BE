@@ -54,14 +54,16 @@ public class TeamService {
             validateImageExtension(teamImage);
         }
 
-        // 파일 I/O: DB 트랜잭션 시작 전 처리
-        String teamImageUrl = null;
+        // DB 쓰기: 먼저 팀 저장하여 teamId 확보
+        CreateTeamResponse response = self.persistTeam(user, request.teamName(), null);
+
+        // 파일 I/O: DB 트랜잭션 외부에서 처리, teamId 기반 key prefix 사용
         if (teamImage != null && !teamImage.isEmpty()) {
-            teamImageUrl = fileService.saveTeamImage(teamImage);
+            String imageKey = fileService.saveTeamImage(response.teamId(), teamImage);
+            response = self.updateTeamImage(response.teamId(), user.getId(), imageKey);
         }
 
-        // DB 쓰기: 프록시를 통해 새 트랜잭션으로 실행
-        return self.persistTeam(user, request.teamName(), teamImageUrl);
+        return response;
     }
 
     public TeamDetailResponse getTeamDetail(Long teamId, String loginId) {
@@ -109,6 +111,14 @@ public class TeamService {
         Team team = teamRepository.save(Team.create(teamName, teamImageUrl, inviteCode));
         teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.LEADER));
         return CreateTeamResponse.from(team, user.getId());
+    }
+
+    @Transactional
+    public CreateTeamResponse updateTeamImage(Long teamId, Long leaderId, String imageKey) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND));
+        team.updateTeamImage(imageKey);
+        return CreateTeamResponse.from(team, leaderId);
     }
 
     private void validateImageExtension(MultipartFile file) {

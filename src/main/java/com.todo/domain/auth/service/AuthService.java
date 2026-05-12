@@ -38,7 +38,7 @@ public class AuthService implements UserDetailsService {
 
         String profileImageUrl = null;
         if (profileImage != null && !profileImage.isEmpty()) {
-            profileImageUrl = fileService.saveProfileImage(profileImage);
+            profileImageUrl = fileService.saveProfileImage(request.getLoginId(), profileImage);
         }
 
         User user = userRepository.save(User.create(

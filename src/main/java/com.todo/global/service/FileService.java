@@ -27,22 +27,21 @@ public class FileService {
     private final MinioProperties props;
 
     @PostConstruct
-    public void initBuckets() {
-        ensureBucketExists(props.getBucket().getProfiles());
-        ensureBucketExists(props.getBucket().getTeams());
+    public void initBucket() {
+        ensureBucketExists(props.getBucket());
     }
 
-    public String saveProfileImage(MultipartFile file) {
-        return upload(file, props.getBucket().getProfiles());
+    public String saveProfileImage(String loginId, MultipartFile file) {
+        return upload(file, "profiles/" + loginId);
     }
 
-    public String saveTeamImage(MultipartFile file) {
-        return upload(file, props.getBucket().getTeams());
+    public String saveTeamImage(Long teamId, MultipartFile file) {
+        return upload(file, "teams/" + teamId);
     }
 
-    private String upload(MultipartFile file, String bucket) {
+    private String upload(MultipartFile file, String prefix) {
         String ext = extractExtension(file.getOriginalFilename());
-        String key = UUID.randomUUID() + (ext.isEmpty() ? "" : "." + ext);
+        String key = prefix + "/" + UUID.randomUUID() + (ext.isEmpty() ? "" : "." + ext);
         String contentType = file.getContentType() != null
                 ? file.getContentType()
                 : MediaType.APPLICATION_OCTET_STREAM_VALUE;
@@ -50,7 +49,7 @@ public class FileService {
         try {
             s3Client.putObject(
                     PutObjectRequest.builder()
-                            .bucket(bucket)
+                            .bucket(props.getBucket())
                             .key(key)
                             .contentType(contentType)
                             .contentLength(file.getSize())
