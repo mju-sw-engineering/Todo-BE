@@ -2,6 +2,7 @@ package com.todo.global.controller;
 
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
+import com.todo.global.dto.UploadType;
 import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
@@ -32,15 +33,30 @@ public class FileController {
     @Operation(
             summary = "presigned PUT URL 발급",
             description = "클라이언트가 MinIO에 직접 업로드할 수 있는 presigned PUT URL을 발급합니다. " +
+                    "PROFILE 타입은 비인증 요청도 허용됩니다(회원가입용). " +
+                    "TEAM 타입은 로그인 필수입니다. " +
                     "업로드 후 반환된 objectKey를 팀 생성 또는 회원가입 API에 전달하세요."
     )
     public ResponseEntity<ApiResponse<PresignedUploadResponse>> generatePresignedUploadUrl(
             @Valid @RequestBody PresignedUploadRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        User user = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
-        return ResponseEntity.ok(ApiResponse.success(fileService.generatePresignedPutUrl(user.getId(), request)));
+        if (request.type() == UploadType.TEAM) {
+            if (authentication == null || !authentication.isAuthenticated()) {
+                throw new BusinessException("팀 이미지 업로드는 로그인이 필요합니다.", HttpStatus.UNAUTHORIZED);
+            }
+            String loginId = authentication.getName();
+            User user = userRepository.findByLoginId(loginId)
+                    .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
+            return ResponseEntity.ok(ApiResponse.success(fileService.generatePresignedPutUrl(user.getId(), request)));
+        }
+
+        Long userId = null;
+        if (authentication != null && authentication.isAuthenticated()) {
+            userId = userRepository.findByLoginId(authentication.getName())
+                    .map(User::getId)
+                    .orElse(null);
+        }
+        return ResponseEntity.ok(ApiResponse.success(fileService.generatePresignedPutUrl(userId, request)));
     }
 }
