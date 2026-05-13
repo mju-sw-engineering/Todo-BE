@@ -6,6 +6,7 @@ import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
+import com.todo.domain.team.dto.response.TeamMemberResponse;
 import com.todo.domain.team.dto.response.TeamSummaryResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -60,7 +61,11 @@ public class TeamService {
             throw new BusinessException("팀에 접근할 권한이 없습니다", HttpStatus.FORBIDDEN);
         }
         List<TeamMember> members = teamMemberRepository.findByTeamIdWithUser(teamId);
-        return TeamDetailResponse.from(team, members)
+        List<TeamMemberResponse> resolvedMembers = members.stream()
+                .map(m -> TeamMemberResponse.from(m)
+                        .withProfileImageUrl(fileService.resolveImageUrl(m.getUser().getProfileImageUrl())))
+                .toList();
+        return TeamDetailResponse.from(team, resolvedMembers)
                 .withImageUrl(fileService.resolveImageUrl(team.getTeamImage()));
     }
 

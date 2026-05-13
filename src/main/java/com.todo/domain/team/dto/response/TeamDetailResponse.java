@@ -1,7 +1,6 @@
 package com.todo.domain.team.dto.response;
 
 import com.todo.domain.team.entity.Team;
-import com.todo.domain.team.entity.TeamMember;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
@@ -15,7 +14,7 @@ public record TeamDetailResponse(
         @Schema(description = "연속 todo 횟수") int continuousTodoCount,
         @Schema(description = "팀원 목록") List<TeamMemberResponse> members
 ) {
-    public static TeamDetailResponse from(Team team, List<TeamMember> members) {
+    public static TeamDetailResponse from(Team team, List<TeamMemberResponse> members) {
         return new TeamDetailResponse(
                 team.getId(),
                 team.getTeamName(),
@@ -23,7 +22,7 @@ public record TeamDetailResponse(
                 members.size(),
                 team.getSuccessCount(),
                 team.getConsecutiveTodoCount(),
-                members.stream().map(TeamMemberResponse::from).toList()
+                members
         );
     }
 
