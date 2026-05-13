@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
@@ -35,7 +36,12 @@ public class FileService {
 
     @PostConstruct
     public void initBucket() {
-        ensureBucketExists(props.getBucket());
+        try {
+            ensureBucketExists(props.getBucket());
+        } catch (SdkClientException | S3Exception e) {
+            // TODO: MinIO local dependency is temporarily optional. Remove this bypass once MinIO is required on boot again.
+            log.warn("MinIO bucket 초기화를 건너뜁니다. message: {}", e.getMessage());
+        }
     }
 
     public PresignedUploadResponse generatePresignedPutUrl(Long userId, PresignedUploadRequest request) {
@@ -87,7 +93,9 @@ public class FileService {
         String uuid = UUID.randomUUID().toString();
         return switch (type) {
             case TEAM -> "teams/temp/" + userId + "/" + uuid + suffix;
-            case PROFILE -> "profiles/" + userId + "/" + uuid + suffix;
+            case PROFILE -> userId != null
+                    ? "profiles/" + userId + "/" + uuid + suffix
+                    : "profiles/temp/" + uuid + suffix;
         };
     }
 
