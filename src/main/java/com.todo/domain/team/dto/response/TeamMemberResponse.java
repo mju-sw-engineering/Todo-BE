@@ -17,4 +17,8 @@ public record TeamMemberResponse(
                 teamMember.getRole().name()
         );
     }
+
+    public TeamMemberResponse withProfileImageUrl(String resolvedUrl) {
+        return new TeamMemberResponse(userId, nickname, resolvedUrl, role);
+    }
 }
