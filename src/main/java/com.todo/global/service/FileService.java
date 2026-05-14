@@ -4,18 +4,11 @@ import com.todo.global.config.MinioProperties;
 import com.todo.global.dto.UploadType;
 import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
-import com.todo.global.exception.BusinessException;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
-import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -33,16 +26,6 @@ public class FileService {
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final MinioProperties props;
-
-    @PostConstruct
-    public void initBucket() {
-        try {
-            ensureBucketExists(props.getBucket());
-        } catch (SdkClientException | S3Exception e) {
-            // TODO: MinIO local dependency is temporarily optional. Remove this bypass once MinIO is required on boot again.
-            log.warn("MinIO bucket 초기화를 건너뜁니다. message: {}", e.getMessage());
-        }
-    }
 
     public PresignedUploadResponse generatePresignedPutUrl(Long userId, PresignedUploadRequest request) {
         String ext = extractExtension(request.fileName());
@@ -97,14 +80,6 @@ public class FileService {
                     ? "profiles/" + userId + "/" + uuid + suffix
                     : "profiles/temp/" + uuid + suffix;
         };
-    }
-
-    private void ensureBucketExists(String bucket) {
-        try {
-            s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
-        } catch (NoSuchBucketException e) {
-            s3Client.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
-        }
     }
 
     private String extractExtension(String filename) {
