@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface TodoParticipantRepository extends JpaRepository<TodoParticipant, Long> {
 
@@ -24,4 +25,7 @@ public interface TodoParticipantRepository extends JpaRepository<TodoParticipant
             WHERE tp.todo.id = :todoId
             """)
     List<TodoParticipantDetail> findDetailByTodoId(@Param("todoId") Long todoId);
+
+    @Query("SELECT tp FROM TodoParticipant tp JOIN FETCH tp.todo WHERE tp.todo.id = :todoId AND tp.user.id = :userId")
+    Optional<TodoParticipant> findByTodoIdAndUserIdWithTodo(@Param("todoId") Long todoId, @Param("userId") Long userId);
 }

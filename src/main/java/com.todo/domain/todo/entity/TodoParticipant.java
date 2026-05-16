@@ -1,10 +1,14 @@
 package com.todo.domain.todo.entity;
 
 import com.todo.domain.user.entity.User;
+import com.todo.global.exception.BusinessException;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.http.HttpStatus;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "todo_participants",
@@ -31,6 +35,8 @@ public class TodoParticipant {
 
     private String proofImageKey;
 
+    private LocalDateTime submittedAt;
+
     @Column(nullable = false)
     private int positiveCount = 0;
 
@@ -43,5 +49,20 @@ public class TodoParticipant {
         participant.user = user;
         participant.status = ParticipantStatus.IN_PROGRESS;
         return participant;
+    }
+
+    public void submit(String proofImageKey) {
+        if (this.status != ParticipantStatus.IN_PROGRESS) {
+            throw new BusinessException("이미 제출되었거나 완료된 투두입니다.", HttpStatus.CONFLICT);
+        }
+        this.proofImageKey = proofImageKey;
+        this.status = ParticipantStatus.PENDING;
+        this.submittedAt = LocalDateTime.now();
+    }
+
+    public void markAsFail() {
+        if (this.status == ParticipantStatus.IN_PROGRESS) {
+            this.status = ParticipantStatus.FAIL;
+        }
     }
 }

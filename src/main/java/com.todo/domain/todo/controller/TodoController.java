@@ -1,6 +1,7 @@
 package com.todo.domain.todo.controller;
 
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
@@ -54,5 +55,16 @@ public class TodoController implements TodoControllerDocs {
         String loginId = authentication.getName();
         TodoDetailResponse response = todoService.getTodoDetail(todoId, loginId);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @PostMapping("/api/todos/{todoId}/submit")
+    public ResponseEntity<ApiResponse<Void>> submitTodo(
+            @PathVariable Long todoId,
+            @Valid @RequestBody SubmitTodoRequest request,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        todoService.submitTodo(todoId, loginId, request);
+        return ResponseEntity.ok(ApiResponse.success(null, "인증 사진이 제출되었습니다."));
     }
 }

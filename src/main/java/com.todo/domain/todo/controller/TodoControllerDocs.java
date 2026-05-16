@@ -1,6 +1,7 @@
 package com.todo.domain.todo.controller;
 
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
@@ -65,6 +66,27 @@ public interface TodoControllerDocs {
     })
     ResponseEntity<ApiResponse<TodoDetailResponse>> getTodoDetail(
             @Parameter(description = "투두 ID", example = "1") Long todoId,
+            Authentication authentication
+    );
+
+    @Operation(
+            summary = "인증 사진 제출",
+            description = "배정된 팀원이 투두 완료 후 인증 사진을 제출합니다. " +
+                    "마감 시간이 지난 경우 상태를 FAIL로 변경 후 400을 반환합니다."
+    )
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 사진 제출 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "마감 시간 초과",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "해당 투두의 배정자가 아님",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "투두를 찾을 수 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<ApiResponse<Void>> submitTodo(
+            @Parameter(description = "투두 ID", example = "1") Long todoId,
+            SubmitTodoRequest request,
             Authentication authentication
     );
 }

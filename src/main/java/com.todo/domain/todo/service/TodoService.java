@@ -4,12 +4,14 @@ import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.ParticipantDetailResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
+import com.todo.domain.todo.entity.TodoParticipant;
 import com.todo.domain.todo.entity.TodoParticipant;
 import com.todo.domain.todo.repository.TodoParticipantDetail;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
@@ -24,6 +26,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -154,6 +157,23 @@ public class TodoService {
                 success + " / " + total,
                 participantResponses
         );
+    }
+
+    @Transactional(noRollbackFor = BusinessException.class)
+    public void submitTodo(Long todoId, String loginId, SubmitTodoRequest request) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
+
+        TodoParticipant participant = todoParticipantRepository
+                .findByTodoIdAndUserIdWithTodo(todoId, user.getId())
+                .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.FORBIDDEN));
+
+        if (LocalDateTime.now().isAfter(participant.getTodo().getDeadline())) {
+            participant.markAsFail();
+            throw new BusinessException("마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        participant.submit(request.proofImageKey());
     }
 
     private String mapStatus(ParticipantStatus status) {
