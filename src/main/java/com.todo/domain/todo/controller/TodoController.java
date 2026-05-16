@@ -1,6 +1,7 @@
 package com.todo.domain.todo.controller;
 
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.EvaluateTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
@@ -55,6 +56,17 @@ public class TodoController implements TodoControllerDocs {
         String loginId = authentication.getName();
         TodoDetailResponse response = todoService.getTodoDetail(todoId, loginId);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @PostMapping("/api/todos/{todoId}/evaluate")
+    public ResponseEntity<ApiResponse<Void>> evaluateTodo(
+            @PathVariable Long todoId,
+            @Valid @RequestBody EvaluateTodoRequest request,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        todoService.evaluateTodo(todoId, loginId, request);
+        return ResponseEntity.ok(ApiResponse.success(null, "투표가 완료되었습니다."));
     }
 
     @PostMapping("/api/todos/{todoId}/submit")

@@ -46,6 +46,10 @@ public class Todo {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    public void markAsSuccess() {
+        this.status = TodoStatus.SUCCESS;
+    }
+
     public static Todo create(Team team, User creator, String title, String description, LocalDateTime deadline) {
         Todo todo = new Todo();
         todo.team = team;

@@ -1,7 +1,10 @@
 package com.todo.domain.todo.repository;
 
+import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.TodoParticipant;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -28,4 +31,17 @@ public interface TodoParticipantRepository extends JpaRepository<TodoParticipant
 
     @Query("SELECT tp FROM TodoParticipant tp JOIN FETCH tp.todo WHERE tp.todo.id = :todoId AND tp.user.id = :userId")
     Optional<TodoParticipant> findByTodoIdAndUserIdWithTodo(@Param("todoId") Long todoId, @Param("userId") Long userId);
+
+    @Query("SELECT tp FROM TodoParticipant tp WHERE tp.todo.id = :todoId AND tp.user.id = :userId")
+    Optional<TodoParticipant> findByTodoIdAndUserId(@Param("todoId") Long todoId, @Param("userId") Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT tp FROM TodoParticipant tp WHERE tp.todo.id = :todoId AND tp.user.id = :userId")
+    Optional<TodoParticipant> findByTodoIdAndUserIdWithLock(@Param("todoId") Long todoId, @Param("userId") Long userId);
+
+    @Query("SELECT COUNT(tp) FROM TodoParticipant tp WHERE tp.todo.id = :todoId")
+    long countByTodoId(@Param("todoId") Long todoId);
+
+    @Query("SELECT COUNT(tp) FROM TodoParticipant tp WHERE tp.todo.id = :todoId AND tp.status = :status")
+    long countByTodoIdAndStatus(@Param("todoId") Long todoId, @Param("status") ParticipantStatus status);
 }

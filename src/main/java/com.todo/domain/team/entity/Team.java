@@ -42,6 +42,11 @@ public class Team {
         this.teamImage = imageKey;
     }
 
+    public void incrementSuccessCount() {
+        this.successCount++;
+        this.consecutiveTodoCount++;
+    }
+
     public static Team create(String teamName, String teamImage, String inviteCode) {
         Team team = new Team();
         team.teamName = teamName;

@@ -4,6 +4,7 @@ import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.EvaluateTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.ParticipantDetailResponse;
@@ -13,9 +14,12 @@ import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoParticipant;
 import com.todo.domain.todo.entity.TodoParticipant;
+import com.todo.domain.todo.entity.TodoVote;
+import com.todo.domain.todo.entity.VoteType;
 import com.todo.domain.todo.repository.TodoParticipantDetail;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoParticipantSummary;
+import com.todo.domain.todo.repository.TodoVoteRepository;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -42,6 +46,7 @@ public class TodoService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final FileService fileService;
+    private final TodoVoteRepository todoVoteRepository;
 
     @Transactional
     public CreateTodoResponse createTodo(String loginId, Long teamId, CreateTodoRequest request) {
@@ -157,6 +162,54 @@ public class TodoService {
                 success + " / " + total,
                 participantResponses
         );
+    }
+
+    @Transactional
+    public void evaluateTodo(Long todoId, String loginId, EvaluateTodoRequest request) {
+        User voter = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
+
+        Todo todo = todoRepository.findByIdWithCreatorAndTeam(todoId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
+
+        if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), voter.getId())) {
+            throw new BusinessException("해당 팀의 멤버가 아닙니다.", HttpStatus.FORBIDDEN);
+        }
+
+        if (voter.getId().equals(request.targetUserId())) {
+            throw new BusinessException("본인의 과업에는 투표할 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        TodoParticipant targetParticipant = todoParticipantRepository
+                .findByTodoIdAndUserIdWithLock(todoId, request.targetUserId())
+                .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.NOT_FOUND));
+
+        if (targetParticipant.getStatus() != ParticipantStatus.PENDING) {
+            throw new BusinessException("평가 대기 상태인 인증만 투표할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        if (todoVoteRepository.existsByTodoParticipantIdAndVoterId(targetParticipant.getId(), voter.getId())) {
+            throw new BusinessException("이미 투표하셨습니다.", HttpStatus.CONFLICT);
+        }
+
+        todoVoteRepository.save(TodoVote.create(targetParticipant, voter, request.voteType()));
+        targetParticipant.addVote(request.voteType());
+
+        long totalParticipants = todoParticipantRepository.countByTodoId(todoId);
+
+        if (request.voteType() == VoteType.POSITIVE
+                && targetParticipant.getPositiveCount() > totalParticipants / 2) {
+            targetParticipant.markAsSuccess();
+            todo.getTeam().incrementSuccessCount();
+
+            long successCount = todoParticipantRepository.countByTodoIdAndStatus(todoId, ParticipantStatus.SUCCESS);
+            if (successCount == totalParticipants) {
+                todo.markAsSuccess();
+            }
+        } else if (request.voteType() == VoteType.NEGATIVE
+                && targetParticipant.getNegativeCount() > totalParticipants / 2) {
+            targetParticipant.markAsFailByVote();
+        }
     }
 
     @Transactional(noRollbackFor = BusinessException.class)

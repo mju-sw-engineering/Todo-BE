@@ -1,6 +1,7 @@
 package com.todo.domain.todo.controller;
 
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.EvaluateTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
@@ -87,6 +88,29 @@ public interface TodoControllerDocs {
     ResponseEntity<ApiResponse<Void>> submitTodo(
             @Parameter(description = "투두 ID", example = "1") Long todoId,
             SubmitTodoRequest request,
+            Authentication authentication
+    );
+
+    @Operation(
+            summary = "팀원 상호 평가",
+            description = "PENDING 상태인 팀원의 인증 사진에 긍정/부정 투표를 합니다. " +
+                    "과반수 긍정 시 SUCCESS, 과반수 이상 부정 시 FAIL로 자동 판정됩니다."
+    )
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "투표 완료"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "셀프 투표 또는 평가 불가 상태",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "투두 또는 피평가자를 찾을 수 없음",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "중복 투표",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<ApiResponse<Void>> evaluateTodo(
+            @Parameter(description = "투두 ID", example = "1") Long todoId,
+            EvaluateTodoRequest request,
             Authentication authentication
     );
 }
