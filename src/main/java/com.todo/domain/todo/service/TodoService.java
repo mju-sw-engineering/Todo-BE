@@ -72,6 +72,9 @@ public class TodoService {
         for (Long assigneeId : assigneeIds) {
             User assignee = userRepository.findById(assigneeId)
                     .orElseThrow(() -> new BusinessException("존재하지 않는 사용자입니다: " + assigneeId, HttpStatus.NOT_FOUND));
+            if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, assigneeId)) {
+                throw new BusinessException("팀 멤버가 아닌 사용자는 배정할 수 없습니다: " + assigneeId, HttpStatus.BAD_REQUEST);
+            }
             todoParticipantRepository.save(TodoParticipant.create(todo, assignee));
         }
 
@@ -198,7 +201,7 @@ public class TodoService {
         long totalParticipants = todoParticipantRepository.countByTodoId(todoId);
 
         if (request.voteType() == VoteType.POSITIVE
-                && targetParticipant.getPositiveCount() > totalParticipants / 2) {
+                && targetParticipant.getPositiveCount() * 2 >= totalParticipants) {
             targetParticipant.markAsSuccess();
             todo.getTeam().incrementSuccessCount();
 
