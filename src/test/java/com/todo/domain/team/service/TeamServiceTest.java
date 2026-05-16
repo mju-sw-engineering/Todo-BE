@@ -21,7 +21,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -53,12 +52,12 @@ class TeamServiceTest {
     @Test
     void 팀_생성_성공_이미지없음() {
         User user = User.create("user1", "encodedPwd", "닉네임", null);
-
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        CreateTeamResponse response = teamService.persistTeam(user, "우리팀", null);
+        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null));
 
         assertThat(response.teamName()).isEqualTo("우리팀");
         assertThat(response.teamImage()).isNull();
@@ -69,47 +68,37 @@ class TeamServiceTest {
     @Test
     void 팀_생성_성공_이미지있음() {
         User user = User.create("user1", "encodedPwd", "닉네임", null);
-
+        String imageKey = "teams/temp/uuid.jpg";
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
+        given(fileService.resolveImageUrl(imageKey)).willReturn("https://minio.example.com/image.jpg");
 
-        CreateTeamResponse response = teamService.persistTeam(user, "우리팀", "/uploads/teams/uuid_team.jpg");
+        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", imageKey));
 
-        assertThat(response.teamImage()).isEqualTo("/uploads/teams/uuid_team.jpg");
+        assertThat(response.teamImage()).isEqualTo("https://minio.example.com/image.jpg");
     }
 
     @Test
     void 팀_생성_실패_존재하지_않는_사용자() {
         given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.createTeam("unknown", new CreateTeamRequest("팀"), null))
+        assertThatThrownBy(() -> teamService.createTeam("unknown", new CreateTeamRequest("팀", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("사용자를 찾을 수 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 
     @Test
-    void 팀_생성_실패_허용되지않는_이미지_확장자() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        MockMultipartFile gif = new MockMultipartFile("teamImage", "team.gif", "image/gif", "img".getBytes());
-
-        assertThatThrownBy(() -> teamService.createTeam("user1", new CreateTeamRequest("팀"), gif))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("지원하지 않는 이미지 형식입니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-    }
-
-    @Test
     void 팀_생성_시_팀장으로_등록된다() {
         User user = User.create("user1", "encodedPwd", "닉네임", null);
-
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        teamService.persistTeam(user, "우리팀", null);
+        teamService.createTeam("user1", new CreateTeamRequest("우리팀", null));
 
         then(teamMemberRepository).should().save(argThat(member -> member.getRole() == TeamMemberRole.LEADER));
     }
@@ -117,14 +106,14 @@ class TeamServiceTest {
     @Test
     void 초대코드_중복시_재시도하여_고유코드_생성() {
         User user = User.create("user1", "encodedPwd", "닉네임", null);
-
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString()))
                 .willReturn(true)   // 1회 중복
                 .willReturn(false); // 2회 성공
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        CreateTeamResponse response = teamService.persistTeam(user, "우리팀", null);
+        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null));
 
         assertThat(response.inviteCode()).hasSize(8);
     }
@@ -153,6 +142,7 @@ class TeamServiceTest {
 
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of(studyTeam, exerciseTeam));
+        given(fileService.resolveImageUrl("https://example.com/team1.png")).willReturn("https://example.com/team1.png");
 
         TeamListResponse response = teamService.getMyTeams("user1");
 
@@ -182,6 +172,8 @@ class TeamServiceTest {
         given(teamRepository.findById(1L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(true);
         given(teamMemberRepository.findByTeamIdWithUser(1L)).willReturn(List.of(leader, memberEntry));
+        given(fileService.resolveImageUrl("https://example.com/team.png")).willReturn("https://example.com/team.png");
+        given(fileService.resolveImageUrl("https://example.com/profile1.png")).willReturn("https://example.com/profile1.png");
 
         TeamDetailResponse response = teamService.getTeamDetail(1L, "user1");
 
