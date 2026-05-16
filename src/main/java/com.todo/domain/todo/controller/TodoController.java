@@ -2,6 +2,8 @@ package com.todo.domain.todo.controller;
 
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
+import com.todo.domain.todo.dto.response.TodoDetailResponse;
+import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.service.TodoService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -11,14 +13,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
-@RequestMapping("/api/teams/{teamId}/todos")
 @RequiredArgsConstructor
 public class TodoController implements TodoControllerDocs {
 
     private final TodoService todoService;
 
-    @PostMapping
+    @PostMapping("/api/teams/{teamId}/todos")
     public ResponseEntity<ApiResponse<CreateTodoResponse>> createTodo(
             @PathVariable Long teamId,
             @Valid @RequestBody CreateTodoRequest request,
@@ -28,5 +31,28 @@ public class TodoController implements TodoControllerDocs {
         CreateTodoResponse response = todoService.createTodo(loginId, teamId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(response, "투두가 생성되었습니다."));
+    }
+
+    @GetMapping("/api/teams/{teamId}/todos")
+    public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoList(
+            @PathVariable Long teamId,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        List<TodoSummaryResponse> result = todoService.getTodoList(teamId, loginId);
+        if (result.isEmpty()) {
+            return ResponseEntity.ok(ApiResponse.success(null, "오늘 할 일이 없습니다"));
+        }
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/api/todos/{todoId}")
+    public ResponseEntity<ApiResponse<TodoDetailResponse>> getTodoDetail(
+            @PathVariable Long todoId,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        TodoDetailResponse response = todoService.getTodoDetail(todoId, loginId);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 }
