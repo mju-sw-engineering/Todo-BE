@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.http.HttpStatus;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Entity
 @Table(name = "todo_participants",
@@ -58,7 +59,7 @@ public class TodoParticipant {
         }
         this.proofImageKey = proofImageKey;
         this.status = ParticipantStatus.PENDING;
-        this.submittedAt = LocalDateTime.now();
+        this.submittedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     }
 
     public void addVote(VoteType voteType) {
