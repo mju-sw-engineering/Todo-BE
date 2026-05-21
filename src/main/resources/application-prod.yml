@@ -25,3 +25,7 @@ minio:
 
 app:
   api-server-url: ${API_SERVER_URL:https://api.swe.bluerack.org}
+
+ai:
+  server:
+    base-url: ${AI_SERVER_BASE_URL:https://ai.swe.bluerack.org}

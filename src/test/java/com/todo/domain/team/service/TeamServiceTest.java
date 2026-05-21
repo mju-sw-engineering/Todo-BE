@@ -6,6 +6,7 @@ import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
+import com.todo.domain.team.entity.AiPersona;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
@@ -62,7 +63,25 @@ class TeamServiceTest {
         assertThat(response.teamName()).isEqualTo("우리팀");
         assertThat(response.teamImage()).isNull();
         assertThat(response.inviteCode()).hasSize(8);
+        assertThat(response.aiPersona()).isEqualTo(AiPersona.ANGEL);
         assertThat(response.consecutiveTodoCount()).isZero();
+    }
+
+    @Test
+    void 팀_생성_시_aiPersona_저장() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
+        given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
+        given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
+
+        CreateTeamResponse response = teamService.createTeam(
+                "user1",
+                new CreateTeamRequest("우리팀", null, AiPersona.DEVIL)
+        );
+
+        assertThat(response.aiPersona()).isEqualTo(AiPersona.DEVIL);
+        then(teamRepository).should().save(argThat(team -> team.getAiPersona() == AiPersona.DEVIL));
     }
 
     @Test
@@ -172,6 +191,7 @@ class TeamServiceTest {
         given(teamRepository.findById(1L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(true);
         given(teamMemberRepository.findByTeamIdWithUser(1L)).willReturn(List.of(leader, memberEntry));
+        given(fileService.resolveImageUrl(null)).willReturn(null);
         given(fileService.resolveImageUrl("https://example.com/team.png")).willReturn("https://example.com/team.png");
         given(fileService.resolveImageUrl("https://example.com/profile1.png")).willReturn("https://example.com/profile1.png");
 
