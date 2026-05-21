@@ -45,7 +45,7 @@ public class TeamService {
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
         String inviteCode = generateUniqueInviteCode();
-        Team team = teamRepository.save(Team.create(request.teamName(), request.teamImageKey(), inviteCode));
+        Team team = teamRepository.save(Team.create(request.teamName(), request.teamImageKey(), inviteCode, request.aiPersona()));
         teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.LEADER));
 
         return CreateTeamResponse.from(team, user.getId())

@@ -30,6 +30,10 @@ public class Team extends BaseTimeEntity {
     @Column(nullable = false)
     private int consecutiveTodoCount = 0;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "varchar(20) default 'ANGEL'")
+    private AiPersona aiPersona = AiPersona.ANGEL;
+
     public void updateTeamImage(String imageKey) {
         this.teamImage = imageKey;
     }
@@ -40,10 +44,15 @@ public class Team extends BaseTimeEntity {
     }
 
     public static Team create(String teamName, String teamImage, String inviteCode) {
+        return create(teamName, teamImage, inviteCode, AiPersona.ANGEL);
+    }
+
+    public static Team create(String teamName, String teamImage, String inviteCode, AiPersona aiPersona) {
         Team team = new Team();
         team.teamName = teamName;
         team.teamImage = teamImage;
         team.inviteCode = inviteCode;
+        team.aiPersona = aiPersona == null ? AiPersona.ANGEL : aiPersona;
         return team;
     }
 }

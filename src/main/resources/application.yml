@@ -19,3 +19,7 @@ server:
 
 jwt:
   expiration: 86400000
+
+ai:
+  server:
+    base-url: https://ai.swe.bluerack.org
