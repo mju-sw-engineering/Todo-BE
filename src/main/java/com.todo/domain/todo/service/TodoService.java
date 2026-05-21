@@ -31,6 +31,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -119,7 +121,7 @@ public class TodoService {
                     return new TodoSummaryResponse(
                             todo.getId(),
                             todo.getTitle(),
-                            todo.getDeadline(),
+                            toKstOffset(todo.getDeadline()),
                             todo.getCreator().getNickname(),
                             todo.getStatus(),
                             success + " / " + total,
@@ -159,7 +161,7 @@ public class TodoService {
         return new TodoDetailResponse(
                 todo.getId(),
                 todo.getTitle(),
-                todo.getDeadline(),
+                toKstOffset(todo.getDeadline()),
                 todo.getCreator().getNickname(),
                 todo.getStatus(),
                 success + " / " + total,
@@ -239,5 +241,13 @@ public class TodoService {
             case IN_PROGRESS -> "미완료";
             case FAIL -> "실패";
         };
+    }
+
+    private OffsetDateTime toKstOffset(LocalDateTime dateTime) {
+        if (dateTime == null) {
+            return null;
+        }
+
+        return dateTime.atOffset(ZoneOffset.ofHours(9));
     }
 }
