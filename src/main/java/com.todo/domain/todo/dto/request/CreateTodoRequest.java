@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 @Schema(description = "투두 생성 요청")
@@ -19,8 +19,8 @@ public record CreateTodoRequest(
         String description,
 
         @NotNull
-        @Schema(description = "마감 시간", example = "2026-05-20T23:59:00")
-        LocalDateTime deadline,
+        @Schema(description = "마감 시간 (ISO-8601 오프셋 포함)", example = "2026-05-21T12:00:00Z")
+        OffsetDateTime deadline,
 
         @NotEmpty
         @Schema(description = "배정할 팀원 ID 리스트", example = "[1, 2, 3]")
