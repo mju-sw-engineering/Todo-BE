@@ -2,12 +2,11 @@ package com.todo.domain.todo.entity;
 
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.user.entity.User;
+import com.todo.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
@@ -15,8 +14,7 @@ import java.time.LocalDateTime;
 @Table(name = "todos")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@EntityListeners(AuditingEntityListener.class)
-public class Todo {
+public class Todo extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -41,10 +39,6 @@ public class Todo {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TodoStatus status;
-
-    @CreatedDate
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
 
     public void markAsSuccess() {
         this.status = TodoStatus.SUCCESS;
