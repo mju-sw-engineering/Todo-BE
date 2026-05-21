@@ -67,7 +67,7 @@ public class TodoService {
                 creator,
                 request.title(),
                 request.description(),
-                request.deadline()
+                toKstLocalDateTime(request.deadline())
         ));
 
         List<Long> assigneeIds = request.assigneeIds();
@@ -249,5 +249,13 @@ public class TodoService {
         }
 
         return dateTime.atOffset(ZoneOffset.ofHours(9));
+    }
+
+    private LocalDateTime toKstLocalDateTime(OffsetDateTime dateTime) {
+        if (dateTime == null) {
+            return null;
+        }
+
+        return dateTime.withOffsetSameInstant(ZoneOffset.ofHours(9)).toLocalDateTime();
     }
 }
