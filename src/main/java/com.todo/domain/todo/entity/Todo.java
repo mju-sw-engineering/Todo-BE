@@ -44,6 +44,12 @@ public class Todo extends BaseTimeEntity {
         this.status = TodoStatus.SUCCESS;
     }
 
+    public void markAsFail() {
+        if (this.status == TodoStatus.IN_PROGRESS) {
+            this.status = TodoStatus.FAIL;
+        }
+    }
+
     public static Todo create(Team team, User creator, String title, String description, LocalDateTime deadline) {
         Todo todo = new Todo();
         todo.team = team;

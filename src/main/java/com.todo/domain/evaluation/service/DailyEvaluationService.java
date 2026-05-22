@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 
@@ -58,6 +59,8 @@ public class DailyEvaluationService {
     }
 
     private DailyEvaluationResponse createAndSaveEvaluation(Team team, LocalDate evaluationDate) {
+        todoRepository.markExpiredTodosAsFail(LocalDateTime.now(KST));
+
         List<TodoDailyEvaluationStat> todos = todoRepository.findDailyEvaluationStats(
                 team.getId(),
                 evaluationDate.atStartOfDay(),

@@ -2,6 +2,7 @@ package com.todo.domain.todo.repository;
 
 import com.todo.domain.todo.entity.Todo;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -10,6 +11,15 @@ import java.util.List;
 import java.util.Optional;
 
 public interface TodoRepository extends JpaRepository<Todo, Long> {
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Todo t
+            SET t.status = com.todo.domain.todo.entity.TodoStatus.FAIL
+            WHERE t.status = com.todo.domain.todo.entity.TodoStatus.IN_PROGRESS
+              AND t.deadline < :now
+            """)
+    int markExpiredTodosAsFail(@Param("now") LocalDateTime now);
 
     @Query("SELECT t FROM Todo t JOIN FETCH t.creator WHERE t.team.id = :teamId ORDER BY t.createdAt DESC")
     List<Todo> findByTeamIdWithCreator(@Param("teamId") Long teamId);

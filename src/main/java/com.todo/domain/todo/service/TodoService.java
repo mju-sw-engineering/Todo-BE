@@ -32,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class TodoService {
+
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final TodoRepository todoRepository;
     private final TodoParticipantRepository todoParticipantRepository;
@@ -83,6 +86,8 @@ public class TodoService {
         return CreateTodoResponse.from(todo, assigneeIds);
     }
 
+
+    @Transactional
     public List<TodoSummaryResponse> getTodoList(Long teamId, String loginId) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
@@ -94,6 +99,7 @@ public class TodoService {
             throw new BusinessException("팀에 접근할 권한이 없습니다.", HttpStatus.FORBIDDEN);
         }
 
+        markExpiredTodosAsFail();
         List<Todo> todos = todoRepository.findByTeamIdWithCreator(teamId);
         if (todos.isEmpty()) {
             return List.of();
@@ -131,10 +137,12 @@ public class TodoService {
                 .toList();
     }
 
+    @Transactional
     public TodoDetailResponse getTodoDetail(Long todoId, String loginId) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
+        markExpiredTodosAsFail();
         Todo todo = todoRepository.findByIdWithCreatorAndTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
 
@@ -174,6 +182,7 @@ public class TodoService {
         User voter = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
+        markExpiredTodosAsFail();
         Todo todo = todoRepository.findByIdWithCreatorAndTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
 
@@ -222,16 +231,22 @@ public class TodoService {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
+        markExpiredTodosAsFail();
         TodoParticipant participant = todoParticipantRepository
                 .findByTodoIdAndUserIdWithTodo(todoId, user.getId())
                 .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.FORBIDDEN));
 
-        if (LocalDateTime.now().isAfter(participant.getTodo().getDeadline())) {
+        if (LocalDateTime.now(KST).isAfter(participant.getTodo().getDeadline())) {
             participant.markAsFail();
+            participant.getTodo().markAsFail();
             throw new BusinessException("마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
         }
 
         participant.submit(request.proofImageKey());
+    }
+
+    private void markExpiredTodosAsFail() {
+        todoRepository.markExpiredTodosAsFail(LocalDateTime.now(KST));
     }
 
     private String mapStatus(ParticipantStatus status) {
