@@ -14,5 +14,6 @@ public record TodoSummaryResponse(
         @Schema(description = "생성자 닉네임") String creatorNickname,
         @Schema(description = "공통 투두 상태") TodoStatus status,
         @Schema(description = "달성 인원 (성공 / 전체)", example = "2 / 5") String achievementCount,
-        @Schema(description = "나의 상태 (완료 / 평가 대기중 / 미완료 / null)", example = "미완료") String myStatus
+        @Schema(description = "나의 상태 (완료 / 평가 대기중 / 미완료 / null)", example = "미완료") String myStatus,
+        @Schema(description = "진행률", example = "40") int progressRate
 ) {}

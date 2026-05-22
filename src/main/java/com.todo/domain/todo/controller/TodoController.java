@@ -38,12 +38,40 @@ public class TodoController implements TodoControllerDocs {
     @GetMapping("/api/teams/{teamId}/todos")
     public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoList(
             @PathVariable Long teamId,
+            @RequestParam(required = false) String filter,
             Authentication authentication
     ) {
         String loginId = authentication.getName();
-        List<TodoSummaryResponse> result = todoService.getTodoList(teamId, loginId);
+        List<TodoSummaryResponse> result = todoService.getTodoList(teamId, loginId, filter);
         if (result.isEmpty()) {
             return ResponseEntity.ok(ApiResponse.success(null, "오늘 할 일이 없습니다"));
+        }
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/api/teams/{teamId}/todos/today")
+    public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodayTodoList(
+            @PathVariable Long teamId,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        List<TodoSummaryResponse> result = todoService.getTodayTodoList(teamId, loginId);
+        if (result.isEmpty()) {
+            return ResponseEntity.ok(ApiResponse.success(null, "오늘 할 일이 없습니다"));
+        }
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/api/teams/{teamId}/todos/history")
+    public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoHistory(
+            @PathVariable Long teamId,
+            @RequestParam(required = false) String date,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        List<TodoSummaryResponse> result = todoService.getTodoHistory(teamId, loginId, date);
+        if (result.isEmpty()) {
+            return ResponseEntity.ok(ApiResponse.success(null, "해당 날짜의 할 일이 없습니다"));
         }
         return ResponseEntity.ok(ApiResponse.success(result));
     }

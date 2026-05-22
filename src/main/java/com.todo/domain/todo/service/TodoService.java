@@ -13,7 +13,7 @@ import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoParticipant;
-import com.todo.domain.todo.entity.TodoParticipant;
+import com.todo.domain.todo.entity.TodoStatus;
 import com.todo.domain.todo.entity.TodoVote;
 import com.todo.domain.todo.entity.VoteType;
 import com.todo.domain.todo.repository.TodoParticipantDetail;
@@ -30,10 +30,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -88,53 +90,40 @@ public class TodoService {
 
 
     @Transactional
-    public List<TodoSummaryResponse> getTodoList(Long teamId, String loginId) {
-        User user = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
-
-        if (!teamRepository.existsById(teamId)) {
-            throw new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND);
-        }
-        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())) {
-            throw new BusinessException("팀에 접근할 권한이 없습니다.", HttpStatus.FORBIDDEN);
-        }
-
+    public List<TodoSummaryResponse> getTodoList(Long teamId, String loginId, String filter) {
+        User user = validateTeamMember(teamId, loginId);
         markExpiredTodosAsFail();
-        List<Todo> todos = todoRepository.findByTeamIdWithCreator(teamId);
-        if (todos.isEmpty()) {
-            return List.of();
-        }
+        List<Todo> todos = findTodosByFilter(teamId, filter);
 
-        List<Long> todoIds = todos.stream().map(Todo::getId).toList();
-        Map<Long, List<TodoParticipantSummary>> participantsByTodoId = todoParticipantRepository
-                .findSummaryByTodoIdIn(todoIds)
-                .stream()
-                .collect(Collectors.groupingBy(TodoParticipantSummary::getTodoId));
+        return toSummaryResponses(todos, user.getId());
+    }
 
-        return todos.stream()
-                .map(todo -> {
-                    List<TodoParticipantSummary> participants = participantsByTodoId.getOrDefault(todo.getId(), List.of());
-                    long total = participants.size();
-                    long success = participants.stream()
-                            .filter(p -> p.getStatus() == ParticipantStatus.SUCCESS)
-                            .count();
-                    String myStatus = participants.stream()
-                            .filter(p -> p.getUserId().equals(user.getId()))
-                            .findFirst()
-                            .map(p -> mapStatus(p.getStatus()))
-                            .orElse(null);
+    @Transactional
+    public List<TodoSummaryResponse> getTodayTodoList(Long teamId, String loginId) {
+        User user = validateTeamMember(teamId, loginId);
+        markExpiredTodosAsFail();
+        LocalDate today = LocalDate.now(KST);
+        List<Todo> todos = todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
+                teamId,
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay()
+        );
 
-                    return new TodoSummaryResponse(
-                            todo.getId(),
-                            todo.getTitle(),
-                            toKstOffset(todo.getDeadline()),
-                            todo.getCreator().getNickname(),
-                            todo.getStatus(),
-                            success + " / " + total,
-                            myStatus
-                    );
-                })
-                .toList();
+        return toSummaryResponses(todos, user.getId());
+    }
+
+    @Transactional
+    public List<TodoSummaryResponse> getTodoHistory(Long teamId, String loginId, String date) {
+        User user = validateTeamMember(teamId, loginId);
+        LocalDate targetDate = parseDate(date);
+        markExpiredTodosAsFail();
+        List<Todo> todos = todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
+                teamId,
+                targetDate.atStartOfDay(),
+                targetDate.plusDays(1).atStartOfDay()
+        );
+
+        return toSummaryResponses(todos, user.getId());
     }
 
     @Transactional
@@ -247,6 +236,98 @@ public class TodoService {
 
     private void markExpiredTodosAsFail() {
         todoRepository.markExpiredTodosAsFail(LocalDateTime.now(KST));
+    }
+
+    private User validateTeamMember(Long teamId, String loginId) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
+
+        if (!teamRepository.existsById(teamId)) {
+            throw new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND);
+        }
+        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())) {
+            throw new BusinessException("팀에 접근할 권한이 없습니다.", HttpStatus.FORBIDDEN);
+        }
+
+        return user;
+    }
+
+    private List<Todo> findTodosByFilter(Long teamId, String filter) {
+        if (filter == null || filter.isBlank()) {
+            return todoRepository.findByTeamIdWithCreator(teamId);
+        }
+
+        return switch (filter) {
+            case "IN_PROGRESS" -> todoRepository.findByTeamIdAndStatusWithCreator(teamId, TodoStatus.IN_PROGRESS);
+            case "ENDED" -> todoRepository.findByTeamIdAndStatusInWithCreator(
+                    teamId,
+                    List.of(TodoStatus.SUCCESS, TodoStatus.FAIL)
+            );
+            default -> throw new BusinessException("알 수 없는 투두 필터입니다.", HttpStatus.BAD_REQUEST);
+        };
+    }
+
+    private LocalDate parseDate(String date) {
+        if (date == null || date.isBlank()) {
+            throw new BusinessException("date 파라미터는 필수입니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        try {
+            return LocalDate.parse(date);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException("date 형식은 yyyy-MM-dd 이어야 합니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private List<TodoSummaryResponse> toSummaryResponses(List<Todo> todos, Long userId) {
+        if (todos.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> todoIds = todos.stream().map(Todo::getId).toList();
+        Map<Long, List<TodoParticipantSummary>> participantsByTodoId = todoParticipantRepository
+                .findSummaryByTodoIdIn(todoIds)
+                .stream()
+                .collect(Collectors.groupingBy(TodoParticipantSummary::getTodoId));
+
+        return todos.stream()
+                .map(todo -> toSummaryResponse(todo, participantsByTodoId.getOrDefault(todo.getId(), List.of()), userId))
+                .toList();
+    }
+
+    private TodoSummaryResponse toSummaryResponse(
+            Todo todo,
+            List<TodoParticipantSummary> participants,
+            Long userId
+    ) {
+        long total = participants.size();
+        long success = participants.stream()
+                .filter(p -> p.getStatus() == ParticipantStatus.SUCCESS)
+                .count();
+        String myStatus = participants.stream()
+                .filter(p -> p.getUserId().equals(userId))
+                .findFirst()
+                .map(p -> mapStatus(p.getStatus()))
+                .orElse(null);
+
+        return new TodoSummaryResponse(
+                todo.getId(),
+                todo.getTitle(),
+                toKstOffset(todo.getDeadline()),
+                todo.getCreator().getNickname(),
+                todo.getStatus(),
+                success + " / " + total,
+                myStatus,
+                calculateProgressRate(success, total)
+        );
+    }
+
+    private int calculateProgressRate(long achievementCount, long participantCount) {
+        if (participantCount == 0) {
+            return 0;
+        }
+
+        return (int) (achievementCount * 100 / participantCount);
     }
 
     private String mapStatus(ParticipantStatus status) {

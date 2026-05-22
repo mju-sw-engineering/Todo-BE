@@ -40,7 +40,28 @@ public interface TodoControllerDocs {
             Authentication authentication
     );
 
-    @Operation(summary = "투두 리스트 조회", description = "팀의 투두 목록을 조회합니다. 투두가 없으면 null과 안내 메시지를 반환합니다.")
+    @Operation(
+            summary = "투두 리스트 조회",
+            description = "팀의 전체 투두 목록을 조회합니다. filter=IN_PROGRESS 또는 filter=ENDED로 필터링할 수 있습니다."
+    )
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
+                    content = @Content(schema = @Schema(implementation = TodoSummaryResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "알 수 없는 필터",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀을 찾을 수 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoList(
+            @Parameter(description = "팀 ID", example = "1") Long teamId,
+            @Parameter(description = "조회 필터: IN_PROGRESS 또는 ENDED", example = "IN_PROGRESS") String filter,
+            Authentication authentication
+    );
+
+    @Operation(summary = "오늘 투두 조회", description = "Asia/Seoul 기준 오늘 마감인 팀 투두 목록을 deadline ASC로 조회합니다.")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
@@ -50,8 +71,26 @@ public interface TodoControllerDocs {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀을 찾을 수 없음",
                     content = @Content(schema = @Schema(hidden = true)))
     })
-    ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoList(
+    ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodayTodoList(
             @Parameter(description = "팀 ID", example = "1") Long teamId,
+            Authentication authentication
+    );
+
+    @Operation(summary = "특정 날짜 투두 조회", description = "Asia/Seoul 기준 date 날짜에 마감인 팀 투두 목록을 deadline ASC로 조회합니다.")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
+                    content = @Content(schema = @Schema(implementation = TodoSummaryResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "date 누락 또는 형식 오류",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀을 찾을 수 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoHistory(
+            @Parameter(description = "팀 ID", example = "1") Long teamId,
+            @Parameter(description = "조회 날짜", example = "2026-05-20") String date,
             Authentication authentication
     );
 
