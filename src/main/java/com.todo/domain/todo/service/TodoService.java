@@ -32,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class TodoService {
+
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final TodoRepository todoRepository;
     private final TodoParticipantRepository todoParticipantRepository;
@@ -226,7 +229,7 @@ public class TodoService {
                 .findByTodoIdAndUserIdWithTodo(todoId, user.getId())
                 .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.FORBIDDEN));
 
-        if (LocalDateTime.now().isAfter(participant.getTodo().getDeadline())) {
+        if (LocalDateTime.now(KST).isAfter(participant.getTodo().getDeadline())) {
             participant.markAsFail();
             throw new BusinessException("마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
         }
