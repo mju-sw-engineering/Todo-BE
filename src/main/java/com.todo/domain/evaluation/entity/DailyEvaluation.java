@@ -54,4 +54,9 @@ public class DailyEvaluation extends BaseTimeEntity {
         evaluation.message = message;
         return evaluation;
     }
+
+    public void updateEvaluation(AiPersona persona, String message) {
+        this.persona = persona;
+        this.message = message;
+    }
 }

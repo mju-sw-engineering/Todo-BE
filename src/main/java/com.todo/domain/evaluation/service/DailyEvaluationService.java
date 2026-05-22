@@ -26,6 +26,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -53,12 +54,19 @@ public class DailyEvaluationService {
         }
 
         LocalDate evaluationDate = LocalDate.now(KST).minusDays(1);
-        return dailyEvaluationRepository.findByTeamIdAndEvaluationDate(teamId, evaluationDate)
-                .map(DailyEvaluationResponse::from)
-                .orElseGet(() -> createAndSaveEvaluation(team, evaluationDate));
+        Optional<DailyEvaluation> savedEvaluation = dailyEvaluationRepository.findByTeamIdAndEvaluationDate(teamId, evaluationDate);
+        if (savedEvaluation.isPresent() && savedEvaluation.get().getPersona() == team.getAiPersona()) {
+            return DailyEvaluationResponse.from(savedEvaluation.get());
+        }
+
+        return createOrUpdateEvaluation(team, evaluationDate, savedEvaluation.orElse(null));
     }
 
-    private DailyEvaluationResponse createAndSaveEvaluation(Team team, LocalDate evaluationDate) {
+    private DailyEvaluationResponse createOrUpdateEvaluation(
+            Team team,
+            LocalDate evaluationDate,
+            DailyEvaluation savedEvaluation
+    ) {
         todoRepository.markExpiredTodosAsFail(LocalDateTime.now(KST));
 
         List<TodoDailyEvaluationStat> todos = todoRepository.findDailyEvaluationStats(
@@ -75,6 +83,11 @@ public class DailyEvaluationService {
         AiDailyEvaluationRequest request = buildAiRequest(team, evaluationDate, persona, todos);
         AiDailyEvaluationResponse aiResponse = aiDailyEvaluationClient.createDailyEvaluation(request);
 
+        if (savedEvaluation != null) {
+            savedEvaluation.updateEvaluation(persona, aiResponse.message());
+            return DailyEvaluationResponse.from(savedEvaluation);
+        }
+
         try {
             DailyEvaluation evaluation = dailyEvaluationRepository.saveAndFlush(DailyEvaluation.create(
                     team,
@@ -86,6 +99,9 @@ public class DailyEvaluationService {
         } catch (DataIntegrityViolationException e) {
             DailyEvaluation evaluation = dailyEvaluationRepository.findByTeamIdAndEvaluationDate(team.getId(), evaluationDate)
                     .orElseThrow(() -> new BusinessException("AI 평가 저장에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR));
+            if (evaluation.getPersona() != persona) {
+                evaluation.updateEvaluation(persona, aiResponse.message());
+            }
             return DailyEvaluationResponse.from(evaluation);
         }
     }

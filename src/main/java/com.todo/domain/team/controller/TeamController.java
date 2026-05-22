@@ -2,10 +2,12 @@ package com.todo.domain.team.controller;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
+import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
+import com.todo.domain.team.dto.response.UpdateTeamPersonaResponse;
 import com.todo.domain.team.service.TeamService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -14,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -63,5 +66,16 @@ public class TeamController implements TeamControllerDocs {
         CreateTeamResponse response = teamService.createTeam(loginId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(response, "팀 생성이 완료됐습니다"));
+    }
+
+    @PatchMapping("/{teamId}/persona")
+    public ResponseEntity<ApiResponse<UpdateTeamPersonaResponse>> updateTeamPersona(
+            @PathVariable Long teamId,
+            @Valid @RequestBody UpdateTeamPersonaRequest request,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        UpdateTeamPersonaResponse response = teamService.updateTeamPersona(loginId, teamId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "AI 평가 페르소나가 변경되었습니다"));
     }
 }
