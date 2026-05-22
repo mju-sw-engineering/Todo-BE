@@ -297,11 +297,38 @@ public class Task {
 
 ---
 
+## Git 자동화 승인 게이트
+
+AI는 Git 작업을 자동화할 수 있지만, 아래 게이트마다 사용자 승인을 반드시 받아야 한다.
+
+1. **커밋 메시지 승인**
+   - 변경사항 분석 후 커밋 메시지를 제안한다.
+   - 사용자가 승인한 경우에만 `git add <파일 목록>` 및 `git commit`을 실행한다.
+2. **브랜치 push 승인**
+   - 커밋 완료 후 push 대상 브랜치와 명령어를 보여준다.
+   - 사용자가 승인한 경우에만 `git push origin <현재 브랜치명>`을 실행한다.
+3. **PR 생성 승인**
+   - PR 제목과 본문을 `.ai-workspace/pr.md`에 작성하고 전문을 보여준다.
+   - 사용자가 승인한 경우에만 `gh pr create`를 실행한다.
+4. **PR merge 승인**
+   - 사용자가 명시적으로 merge를 요청한 경우에만 PR 상태, 체크 결과, 사람/봇 리뷰를 확인한다.
+   - CodeRabbit 등 리뷰 봇 또는 리뷰어가 수정 요청/코멘트를 남겼다면 요약하고 사용자에게 "수정할지" 또는 "그냥 머지할지"를 묻는다.
+   - merge 방식(`merge`, `squash`, `rebase`)과 실행 명령어를 제안하고 사용자 승인을 받은 뒤 `gh pr merge`를 실행한다.
+
+**자동화 원칙**
+- 승인 전에는 다음 단계의 Git 상태 변경 명령을 실행하지 않는다.
+- 승인 요청에는 실행할 명령어, 대상 브랜치/PR, 검증 결과를 함께 표시한다.
+- 사용자가 "취소", "중단" 또는 동등한 의사를 밝히면 즉시 중단한다.
+- 리뷰 코멘트 확인 중 수정 필요 사항이 발견되면 기본 동작은 병합 보류이며, 사용자의 "수정해줘" 또는 "그냥 머지해줘" 같은 명시 지시를 기다린다.
+- 보안 관련 파일(`SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter` 등)이 변경된 PR은 사람 리뷰 완료 전 merge 금지.
+
+---
+
 ## 절대 규칙
 
 다음 행동은 어떤 상황에서도 금지된다.
 
-1. **자동 push 금지** — `git push`는 사용자가 직접 실행
+1. **승인 없는 push 금지** — AI는 사용자 승인 후에만 `git push` 실행 가능
 2. **force push 금지** — `git push --force` 절대 실행 금지
 3. **main 직접 커밋 금지** — main 브랜치에 직접 commit 금지
 4. **민감정보 커밋 금지** — API 키, 비밀번호, JWT 시크릿, DB 접속 정보 등 파일에 직접 작성 및 커밋 금지
@@ -314,18 +341,21 @@ public class Task {
 
 Codex가 이 레포지토리에서 작업할 때 사용자가 아래 명령을 요청하면
 `.codex/commands/<command>.md` 파일을 먼저 읽고 해당 절차를 따른다.
+Claude Code용 동일 절차는 `.claude/commands/<command>.md`에 동기화해 둔다.
 
 | 명령 | 파일 | 용도 |
 |---|---|---|
-| `/feature` | `.codex/commands/feature.md` | 계획부터 PR 초안까지 전체 기능 워크플로우 |
+| `/feature` | `.codex/commands/feature.md` | 계획부터 PR 생성까지 전체 기능 워크플로우 |
 | `/plan` | `.codex/commands/plan.md` | 구현 전 계획 수립 |
 | `/impl` | `.codex/commands/impl.md` | 승인된 계획 기반 구현 |
 | `/review` | `.codex/commands/review.md` | 변경사항 셀프 리뷰 |
 | `/commit` | `.codex/commands/commit.md` | 커밋 메시지 제안 및 승인 후 커밋 |
-| `/pr` | `.codex/commands/pr.md` | PR 설명 초안 작성 |
+| `/pr` | `.codex/commands/pr.md` | PR 설명 작성 및 승인 후 push/PR 생성 |
+| `/merge` | `.codex/commands/merge.md` | 승인 후 PR 병합 |
 
 **적용 규칙**
 - `.codex/commands`의 내용이 AGENTS.md와 충돌하면 AGENTS.md를 우선한다.
 - 커맨드 파일을 읽었더라도 절대 규칙은 항상 유지한다.
 - `/commit`은 커밋 메시지 제안 후 사용자 승인을 받은 경우에만 실행한다.
-- `/pr`은 PR 초안만 작성하고, push 및 `gh pr create`는 실행하지 않는다.
+- `/pr`은 PR 제목/본문을 작성하고, 사용자 승인 후 브랜치 push 및 `gh pr create`를 실행할 수 있다.
+- `/merge`는 사용자가 명시적으로 병합을 요청하고 승인한 경우에만 실행한다.

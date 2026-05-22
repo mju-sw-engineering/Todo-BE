@@ -3,7 +3,7 @@
 ## 역할
 변경사항을 확인하고 Conventional Commits 형식의 커밋 메시지를 제안한다.
 사용자 승인 없이 커밋을 실행하면 안 된다.
-push는 절대 자동으로 실행하지 않는다.
+커밋 후 push는 별도 사용자 승인 게이트를 거쳐야 한다.
 
 ## 실행 순서
 
@@ -69,11 +69,24 @@ git add <파일 목록>
 git commit -m "..."
 ```
 
+### 6. push 승인 여부 확인
+커밋이 성공하면 현재 브랜치와 실행할 push 명령어를 보여주고 사용자 승인 여부를 묻는다.
+
+```bash
+git branch --show-current
+git push origin <현재 브랜치명>
+```
+
+**사용자 응답별 처리**
+- 승인: `git push origin <현재 브랜치명>` 실행
+- 수정/보류: push하지 않고 중단
+- 취소: push하지 않고 중단
+
+push 완료 후 사용자가 PR 생성을 원하면 `/pr` 절차로 이어간다.
+
 ## 주의사항
-- push는 절대 자동 실행 금지. 커밋 후 사용자에게 push 명령어만 안내
-  ```bash
-  git push origin <브랜치명>
-  ```
+- push는 커밋 승인과 별개로 반드시 다시 승인받은 뒤 실행
+- `git push --force` 또는 force-with-lease 사용 절대 금지
 - `git add .` 또는 `git add -A` 사용 금지 — 파일을 명시적으로 지정
 - `.env`, `application-local.yml`, `application-prod.yml` 등 민감정보 파일이 staging에 포함되면 즉시 중단하고 사용자에게 경고
-- main 브랜치에서 실행 중이라면 커밋 전 경고 후 승인 대기
+- main 브랜치에서 실행 중이라면 커밋 금지
