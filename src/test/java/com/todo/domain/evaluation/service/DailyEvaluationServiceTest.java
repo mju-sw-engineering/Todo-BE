@@ -116,6 +116,35 @@ class DailyEvaluationServiceTest {
     }
 
     @Test
+    void 저장된_평가의_persona가_현재_팀_persona와_다르면_다시_생성해_갱신한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(10L, AiPersona.ANGEL);
+        LocalDate yesterday = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        DailyEvaluation evaluation = DailyEvaluation.create(team, yesterday, AiPersona.DEVIL, "이전 평가");
+        List<TodoDailyEvaluationStat> stats = List.of(
+                stat("성공 투두", TodoStatus.SUCCESS, 2, 3),
+                stat("실패 투두", TodoStatus.FAIL, 0, 3)
+        );
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
+        given(dailyEvaluationRepository.findByTeamIdAndEvaluationDate(10L, yesterday))
+                .willReturn(Optional.of(evaluation));
+        given(todoRepository.findDailyEvaluationStats(eq(10L), any(), any())).willReturn(stats);
+        given(aiDailyEvaluationClient.createDailyEvaluation(any()))
+                .willReturn(new AiDailyEvaluationResponse(AiPersona.ANGEL, "새 평가"));
+
+        DailyEvaluationResponse response = dailyEvaluationService.getDailyEvaluation(10L, "user1");
+
+        assertThat(response.persona()).isEqualTo(AiPersona.ANGEL);
+        assertThat(response.message()).isEqualTo("새 평가");
+        assertThat(evaluation.getPersona()).isEqualTo(AiPersona.ANGEL);
+        assertThat(evaluation.getMessage()).isEqualTo("새 평가");
+        then(aiDailyEvaluationClient).should().createDailyEvaluation(any());
+    }
+
+    @Test
     void 팀_멤버가_아니면_평가를_조회할_수_없다() {
         User user = userWithId(1L);
         Team team = teamWithId(10L, AiPersona.ANGEL);

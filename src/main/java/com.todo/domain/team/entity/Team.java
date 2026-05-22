@@ -38,6 +38,10 @@ public class Team extends BaseTimeEntity {
         this.teamImage = imageKey;
     }
 
+    public void updateAiPersona(AiPersona aiPersona) {
+        this.aiPersona = aiPersona == null ? AiPersona.ANGEL : aiPersona;
+    }
+
     public void incrementSuccessCount() {
         this.successCount++;
         this.consecutiveTodoCount++;
