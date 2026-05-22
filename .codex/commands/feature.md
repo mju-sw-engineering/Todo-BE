@@ -11,8 +11,10 @@ $ARGUMENTS - 구현할 기능 설명
 ## 워크플로우
 
 ```
-/plan -> 승인 -> /impl -> 테스트 -> /review -> 승인 -> /commit -> push 승인 -> /pr -> PR 생성 승인
+/plan -> 승인 -> /impl -> 테스트 -> 승인 -> /review -> 승인 -> /commit -> push 승인 -> /pr -> PR 생성 승인
 ```
+
+AI는 리뷰, 커밋, push, PR 생성, 병합 전에 사용자 승인을 반드시 받아야 한다.
 
 ---
 

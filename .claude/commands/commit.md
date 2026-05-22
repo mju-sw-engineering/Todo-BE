@@ -86,7 +86,7 @@ push 완료 후 사용자가 PR 생성을 원하면 `/pr` 절차로 이어간다
 
 ## 주의사항
 - push는 커밋 승인과 별개로 반드시 다시 승인받은 뒤 실행
-- `git push --force` 또는 force-with-lease 사용 절대 금지
+- `git push --force` 또는 `--force-with-lease` 사용 절대 금지
 - `git add .` 또는 `git add -A` 사용 금지 — 파일을 명시적으로 지정
 - `.env`, `application-local.yml`, `application-prod.yml` 등 민감정보 파일이 staging에 포함되면 즉시 중단하고 사용자에게 경고
 - main 브랜치에서 실행 중이라면 커밋 금지

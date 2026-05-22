@@ -58,10 +58,16 @@ PR 템플릿을 기반으로 작성하되, 다음 내용을 포함한다.
 ```bash
 git branch --show-current
 git status -sb
+git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1
+```
+
+upstream 확인이 성공하면 미push 커밋을 확인한다.
+
+```bash
 git log @{u}..HEAD --oneline
 ```
 
-upstream이 없거나 원격에 없는 커밋이 있으면 실행할 명령어를 보여주고 승인 여부를 묻는다.
+upstream이 없거나 미push 커밋이 있으면 실행할 명령어를 보여주고 승인 여부를 묻는다.
 
 ```bash
 git push origin <현재 브랜치명>
@@ -90,6 +96,6 @@ PR URL을 사용자에게 보고한다.
 
 ## 주의사항
 - push와 `gh pr create`는 각각 별도 승인 후에만 실행
-- `git push --force` 또는 force-with-lease 사용 절대 금지
+- `git push --force` 또는 `--force-with-lease` 사용 절대 금지
 - 1000줄 이상 diff인 경우 전체 분석 대신 `--stat` 기반으로 요약하고 사용자에게 알림
 - main 브랜치에서 실행 중이라면 경고 후 중단
