@@ -5,5 +5,6 @@ import com.todo.domain.todo.entity.ParticipantStatus;
 public interface TodoParticipantSummary {
     Long getTodoId();
     Long getUserId();
+    String getNickname();
     ParticipantStatus getStatus();
 }

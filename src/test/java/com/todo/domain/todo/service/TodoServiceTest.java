@@ -64,8 +64,8 @@ class TodoServiceTest {
         givenValidTeamMember(user);
         given(todoRepository.findByTeamIdWithCreator(100L)).willReturn(List.of(todo));
         given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L))).willReturn(List.of(
-                participant(10L, 1L, ParticipantStatus.SUCCESS),
-                participant(10L, 2L, ParticipantStatus.IN_PROGRESS)
+                participant(10L, 1L, "닉네임1", ParticipantStatus.SUCCESS),
+                participant(10L, 2L, "닉네임2", ParticipantStatus.IN_PROGRESS)
         ));
 
         List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null);
@@ -74,6 +74,13 @@ class TodoServiceTest {
         assertThat(response.get(0).achievementCount()).isEqualTo("1 / 2");
         assertThat(response.get(0).myStatus()).isEqualTo("완료");
         assertThat(response.get(0).progressRate()).isEqualTo(50);
+        assertThat(response.get(0).participants()).hasSize(2);
+        assertThat(response.get(0).participants().get(0).memberId()).isEqualTo(1L);
+        assertThat(response.get(0).participants().get(0).nickname()).isEqualTo("닉네임1");
+        assertThat(response.get(0).participants().get(0).status()).isEqualTo("완료");
+        assertThat(response.get(0).participants().get(1).memberId()).isEqualTo(2L);
+        assertThat(response.get(0).participants().get(1).nickname()).isEqualTo("닉네임2");
+        assertThat(response.get(0).participants().get(1).status()).isEqualTo("미완료");
         then(todoRepository).should().findByTeamIdWithCreator(100L);
     }
 
@@ -197,7 +204,7 @@ class TodoServiceTest {
         return todo;
     }
 
-    private TodoParticipantSummary participant(Long todoId, Long userId, ParticipantStatus status) {
+    private TodoParticipantSummary participant(Long todoId, Long userId, String nickname, ParticipantStatus status) {
         return new TodoParticipantSummary() {
             @Override
             public Long getTodoId() {
@@ -207,6 +214,11 @@ class TodoServiceTest {
             @Override
             public Long getUserId() {
                 return userId;
+            }
+
+            @Override
+            public String getNickname() {
+                return nickname;
             }
 
             @Override

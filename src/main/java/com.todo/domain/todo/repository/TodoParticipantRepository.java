@@ -14,7 +14,8 @@ import java.util.Optional;
 public interface TodoParticipantRepository extends JpaRepository<TodoParticipant, Long> {
 
     @Query("""
-            SELECT tp.todo.id AS todoId, tp.user.id AS userId, tp.status AS status
+            SELECT tp.todo.id AS todoId, tp.user.id AS userId,
+                   tp.user.nickname AS nickname, tp.status AS status
             FROM TodoParticipant tp
             WHERE tp.todo.id IN :todoIds
             """)
