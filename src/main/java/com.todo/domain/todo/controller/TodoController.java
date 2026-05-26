@@ -5,6 +5,7 @@ import com.todo.domain.todo.dto.request.EvaluateTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
+import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.service.TodoService;
 import com.todo.global.response.ApiResponse;
@@ -74,6 +75,23 @@ public class TodoController implements TodoControllerDocs {
             return ResponseEntity.ok(ApiResponse.success(null, "해당 날짜의 할 일이 없습니다"));
         }
         return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/api/teams/{teamId}/todos/report")
+    public ResponseEntity<ApiResponse<TodoPeriodReportResponse>> getTodoPeriodReport(
+            @PathVariable Long teamId,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        TodoPeriodReportResponse response = todoService.getTodoPeriodReport(
+                teamId,
+                loginId,
+                startDate,
+                endDate
+        );
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @GetMapping("/api/todos/{todoId}")
