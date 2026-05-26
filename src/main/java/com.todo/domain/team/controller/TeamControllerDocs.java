@@ -93,4 +93,16 @@ public interface TeamControllerDocs {
             UpdateTeamPersonaRequest request,
             Authentication authentication
     );
+
+    @Operation(summary = "팀 나가기", description = "로그인한 사용자가 소속된 팀에서 나갑니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "팀 나가기 성공",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "소속된 팀이 아님",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<ApiResponse<Void>> leaveTeam(Long teamId, Authentication authentication);
 }
