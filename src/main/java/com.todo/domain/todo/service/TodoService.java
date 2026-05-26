@@ -9,7 +9,12 @@ import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.ParticipantDetailResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
+import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoParticipantStatusResponse;
+import com.todo.domain.todo.dto.response.TodoReportActionCandidateResponse;
+import com.todo.domain.todo.dto.response.TodoReportDailyStatResponse;
+import com.todo.domain.todo.dto.response.TodoReportPeriodResponse;
+import com.todo.domain.todo.dto.response.TodoReportSummaryResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
@@ -37,6 +42,8 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -47,6 +54,7 @@ import java.util.stream.Collectors;
 public class TodoService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final int ACTION_CANDIDATE_LIMIT = 5;
 
     private final TodoRepository todoRepository;
     private final TodoParticipantRepository todoParticipantRepository;
@@ -125,6 +133,39 @@ public class TodoService {
         );
 
         return toSummaryResponses(todos, user.getId());
+    }
+
+    @Transactional
+    public TodoPeriodReportResponse getTodoPeriodReport(
+            Long teamId,
+            String loginId,
+            String startDate,
+            String endDate
+    ) {
+        User user = validateTeamMember(teamId, loginId);
+        LocalDate start = parseDate(startDate);
+        LocalDate end = parseDate(endDate);
+        if (start.isAfter(end)) {
+            throw new BusinessException("startDate는 endDate보다 늦을 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        markExpiredTodosAsFail();
+        List<Todo> todos = todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
+                teamId,
+                start.atStartOfDay(),
+                end.plusDays(1).atStartOfDay()
+        );
+        List<TodoSummaryResponse> todoSummaries = toSummaryResponses(todos, user.getId());
+        List<TodoReportDailyStatResponse> dailyStats = buildDailyStats(start, end, todoSummaries);
+        TodoReportSummaryResponse summary = buildPeriodSummary(dailyStats);
+
+        return new TodoPeriodReportResponse(
+                new TodoReportPeriodResponse(start, end, dailyStats.size()),
+                summary,
+                findWeakestDay(dailyStats),
+                dailyStats,
+                buildActionCandidates(todoSummaries)
+        );
     }
 
     @Transactional
@@ -337,6 +378,152 @@ public class TodoService {
         }
 
         return (int) (achievementCount * 100 / participantCount);
+    }
+
+    private List<TodoReportDailyStatResponse> buildDailyStats(
+            LocalDate start,
+            LocalDate end,
+            List<TodoSummaryResponse> todoSummaries
+    ) {
+        Map<LocalDate, List<TodoSummaryResponse>> todosByDate = todoSummaries.stream()
+                .collect(Collectors.groupingBy(todo -> todo.deadline().toLocalDate()));
+        List<TodoReportDailyStatResponse> dailyStats = new ArrayList<>();
+
+        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
+            List<TodoSummaryResponse> dailyTodos = todosByDate.getOrDefault(date, List.of());
+            int totalCount = dailyTodos.size();
+            int successCount = countByStatus(dailyTodos, TodoStatus.SUCCESS);
+            int failCount = countByStatus(dailyTodos, TodoStatus.FAIL);
+            int inProgressCount = countByStatus(dailyTodos, TodoStatus.IN_PROGRESS);
+
+            dailyStats.add(new TodoReportDailyStatResponse(
+                    date,
+                    totalCount,
+                    successCount,
+                    failCount,
+                    inProgressCount,
+                    calculateAchievementRate(successCount, totalCount)
+            ));
+        }
+
+        return dailyStats;
+    }
+
+    private TodoReportSummaryResponse buildPeriodSummary(List<TodoReportDailyStatResponse> dailyStats) {
+        int totalCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::totalTodoCount).sum();
+        int successCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::successCount).sum();
+        int failCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::failCount).sum();
+        int inProgressCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::inProgressCount).sum();
+
+        return new TodoReportSummaryResponse(
+                totalCount,
+                successCount,
+                failCount,
+                inProgressCount,
+                calculateAchievementRate(successCount, totalCount)
+        );
+    }
+
+    private TodoReportDailyStatResponse findWeakestDay(List<TodoReportDailyStatResponse> dailyStats) {
+        return dailyStats.stream()
+                .filter(day -> day.totalTodoCount() > 0)
+                .min(Comparator
+                        .comparing((TodoReportDailyStatResponse day) -> sortAchievementRate(day.achievementRate()))
+                        .thenComparing(TodoReportDailyStatResponse::successCount)
+                        .thenComparing(Comparator.comparing(TodoReportDailyStatResponse::failCount).reversed()))
+                .orElse(null);
+    }
+
+    private List<TodoReportActionCandidateResponse> buildActionCandidates(
+            List<TodoSummaryResponse> todoSummaries
+    ) {
+        List<TodoSummaryResponse> sortedCandidates = todoSummaries.stream()
+                .filter(todo -> todo.status() != TodoStatus.SUCCESS && todo.status() != TodoStatus.FAIL)
+                .sorted(Comparator
+                        .comparingInt(TodoSummaryResponse::progressRate)
+                        .thenComparing(Comparator.comparingInt(this::getUnverifiedCount).reversed())
+                        .thenComparing(TodoSummaryResponse::deadline))
+                .limit(ACTION_CANDIDATE_LIMIT)
+                .toList();
+        List<TodoReportActionCandidateResponse> responses = new ArrayList<>();
+
+        for (int index = 0; index < sortedCandidates.size(); index++) {
+            TodoSummaryResponse todo = sortedCandidates.get(index);
+            int participantCount = getParticipantCount(todo);
+            int achievementCount = getAchievementCount(todo);
+            responses.add(new TodoReportActionCandidateResponse(
+                    index + 1,
+                    todo.todoId(),
+                    todo.title(),
+                    todo.deadline(),
+                    todo.status(),
+                    achievementCount,
+                    participantCount,
+                    Math.max(participantCount - achievementCount, 0),
+                    todo.progressRate()
+            ));
+        }
+
+        return responses;
+    }
+
+    private int countByStatus(List<TodoSummaryResponse> todos, TodoStatus status) {
+        return (int) todos.stream()
+                .filter(todo -> todo.status() == status)
+                .count();
+    }
+
+    private Integer calculateAchievementRate(int successCount, int totalCount) {
+        if (totalCount == 0) {
+            return null;
+        }
+
+        return successCount * 100 / totalCount;
+    }
+
+    private int sortAchievementRate(Integer achievementRate) {
+        if (achievementRate == null) {
+            return 101;
+        }
+
+        return achievementRate;
+    }
+
+    private int getAchievementCount(TodoSummaryResponse todo) {
+        return parseAchievementCountPart(todo.achievementCount(), 0);
+    }
+
+    private int getParticipantCount(TodoSummaryResponse todo) {
+        int parsedCount = parseAchievementCountPart(todo.achievementCount(), 1);
+        if (parsedCount > 0) {
+            return parsedCount;
+        }
+        if (todo.participants() == null) {
+            return 0;
+        }
+
+        return todo.participants().size();
+    }
+
+    private int getUnverifiedCount(TodoSummaryResponse todo) {
+        return Math.max(getParticipantCount(todo) - getAchievementCount(todo), 0);
+    }
+
+    private int parseAchievementCountPart(String achievementCount, int partIndex) {
+        if (achievementCount == null || achievementCount.isBlank()) {
+            return 0;
+        }
+
+        String[] parts = achievementCount.split("/");
+        if (parts.length <= partIndex) {
+            return 0;
+        }
+
+        try {
+            return Integer.parseInt(parts[partIndex].trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private String mapStatus(ParticipantStatus status) {

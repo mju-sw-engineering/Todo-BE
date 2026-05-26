@@ -2,6 +2,7 @@ package com.todo.domain.todo.service;
 
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
+import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
@@ -168,6 +169,68 @@ class TodoServiceTest {
         assertThatThrownBy(() -> todoService.getTodoHistory(100L, "user1", "2026/05/20"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("date 형식은 yyyy-MM-dd 이어야 합니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void 기간_리포트는_요약_일별통계_액션후보를_계산한다() {
+        User user = userWithId(1L);
+        Todo successTodo = todoWithId(10L, TodoStatus.SUCCESS, LocalDateTime.of(2026, 5, 20, 10, 0));
+        Todo failTodo = todoWithId(11L, TodoStatus.FAIL, LocalDateTime.of(2026, 5, 20, 18, 0));
+        Todo progressTodo = todoWithId(12L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 5, 21, 21, 0));
+        givenValidTeamMember(user);
+        given(todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
+                100L,
+                LocalDateTime.of(2026, 5, 20, 0, 0),
+                LocalDateTime.of(2026, 5, 22, 0, 0)
+        )).willReturn(List.of(successTodo, failTodo, progressTodo));
+        given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L, 11L, 12L))).willReturn(List.of(
+                participant(10L, 1L, "닉네임1", ParticipantStatus.SUCCESS),
+                participant(10L, 2L, "닉네임2", ParticipantStatus.SUCCESS),
+                participant(11L, 1L, "닉네임1", ParticipantStatus.FAIL),
+                participant(11L, 2L, "닉네임2", ParticipantStatus.IN_PROGRESS),
+                participant(12L, 1L, "닉네임1", ParticipantStatus.SUCCESS),
+                participant(12L, 2L, "닉네임2", ParticipantStatus.IN_PROGRESS)
+        ));
+
+        TodoPeriodReportResponse response = todoService.getTodoPeriodReport(
+                100L,
+                "user1",
+                "2026-05-20",
+                "2026-05-21"
+        );
+
+        assertThat(response.period().dateCount()).isEqualTo(2);
+        assertThat(response.summary().totalTodoCount()).isEqualTo(3);
+        assertThat(response.summary().successCount()).isEqualTo(1);
+        assertThat(response.summary().failCount()).isEqualTo(1);
+        assertThat(response.summary().inProgressCount()).isEqualTo(1);
+        assertThat(response.summary().achievementRate()).isEqualTo(33);
+        assertThat(response.dailyStats()).hasSize(2);
+        assertThat(response.dailyStats().get(0).date()).isEqualTo(LocalDate.of(2026, 5, 20));
+        assertThat(response.dailyStats().get(0).achievementRate()).isEqualTo(50);
+        assertThat(response.weakestDay().date()).isEqualTo(LocalDate.of(2026, 5, 21));
+        assertThat(response.actionCandidates()).hasSize(1);
+        assertThat(response.actionCandidates().get(0).todoId()).isEqualTo(12L);
+        assertThat(response.actionCandidates().get(0).achievementCount()).isEqualTo(1);
+        assertThat(response.actionCandidates().get(0).participantCount()).isEqualTo(2);
+        assertThat(response.actionCandidates().get(0).unverifiedCount()).isEqualTo(1);
+        assertThat(response.actionCandidates().get(0).progressRate()).isEqualTo(50);
+    }
+
+    @Test
+    void 기간_리포트는_startDate가_endDate보다_늦으면_400_예외를_던진다() {
+        User user = userWithId(1L);
+        givenValidTeamMember(user);
+
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
+                100L,
+                "user1",
+                "2026-05-22",
+                "2026-05-20"
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startDate는 endDate보다 늦을 수 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
