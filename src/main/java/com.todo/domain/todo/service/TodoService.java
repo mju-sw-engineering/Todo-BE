@@ -9,6 +9,7 @@ import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.ParticipantDetailResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
+import com.todo.domain.todo.dto.response.TodoParticipantStatusResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
@@ -309,6 +310,13 @@ public class TodoService {
                 .findFirst()
                 .map(p -> mapStatus(p.getStatus()))
                 .orElse(null);
+        List<TodoParticipantStatusResponse> participantResponses = participants.stream()
+                .map(p -> new TodoParticipantStatusResponse(
+                        p.getUserId(),
+                        p.getNickname(),
+                        mapStatus(p.getStatus())
+                ))
+                .toList();
 
         return new TodoSummaryResponse(
                 todo.getId(),
@@ -318,7 +326,8 @@ public class TodoService {
                 todo.getStatus(),
                 success + " / " + total,
                 myStatus,
-                calculateProgressRate(success, total)
+                calculateProgressRate(success, total),
+                participantResponses
         );
     }
 
