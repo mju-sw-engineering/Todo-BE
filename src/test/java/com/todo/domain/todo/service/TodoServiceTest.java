@@ -232,6 +232,58 @@ class TodoServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startDate는 endDate보다 늦을 수 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        then(todoRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 기간_리포트는_startDate가_없으면_400_예외를_던진다() {
+        User user = userWithId(1L);
+        givenValidTeamMember(user);
+
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
+                100L,
+                "user1",
+                null,
+                "2026-05-20"
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startDate 파라미터는 필수입니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        then(todoRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 기간_리포트는_endDate가_없으면_400_예외를_던진다() {
+        User user = userWithId(1L);
+        givenValidTeamMember(user);
+
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
+                100L,
+                "user1",
+                "2026-05-20",
+                " "
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("endDate 파라미터는 필수입니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        then(todoRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 기간_리포트는_날짜_형식이_잘못되면_400_예외를_던진다() {
+        User user = userWithId(1L);
+        givenValidTeamMember(user);
+
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
+                100L,
+                "user1",
+                "2026/05/20",
+                "2026-05-21"
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startDate 형식은 yyyy-MM-dd 이어야 합니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        then(todoRepository).shouldHaveNoInteractions();
     }
 
     @Test

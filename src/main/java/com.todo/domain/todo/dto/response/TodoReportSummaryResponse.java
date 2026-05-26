@@ -19,4 +19,20 @@ public record TodoReportSummaryResponse(
 
         @Schema(description = "성공률", example = "70")
         Integer achievementRate
-) {}
+) {
+    public static TodoReportSummaryResponse from(
+            int totalTodoCount,
+            int successCount,
+            int failCount,
+            int inProgressCount,
+            Integer achievementRate
+    ) {
+        return new TodoReportSummaryResponse(
+                totalTodoCount,
+                successCount,
+                failCount,
+                inProgressCount,
+                achievementRate
+        );
+    }
+}

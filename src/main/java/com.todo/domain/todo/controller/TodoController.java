@@ -80,8 +80,8 @@ public class TodoController implements TodoControllerDocs {
     @GetMapping("/api/teams/{teamId}/todos/report")
     public ResponseEntity<ApiResponse<TodoPeriodReportResponse>> getTodoPeriodReport(
             @PathVariable Long teamId,
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate,
+            @RequestParam String startDate,
+            @RequestParam String endDate,
             Authentication authentication
     ) {
         String loginId = authentication.getName();

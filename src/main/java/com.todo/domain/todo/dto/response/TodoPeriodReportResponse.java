@@ -21,4 +21,20 @@ public record TodoPeriodReportResponse(
 
         @Schema(description = "오늘 확인할 액션 후보")
         List<TodoReportActionCandidateResponse> actionCandidates
-) {}
+) {
+    public static TodoPeriodReportResponse from(
+            TodoReportPeriodResponse period,
+            TodoReportSummaryResponse summary,
+            TodoReportDailyStatResponse weakestDay,
+            List<TodoReportDailyStatResponse> dailyStats,
+            List<TodoReportActionCandidateResponse> actionCandidates
+    ) {
+        return new TodoPeriodReportResponse(
+                period,
+                summary,
+                weakestDay,
+                dailyStats,
+                actionCandidates
+        );
+    }
+}

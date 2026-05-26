@@ -34,4 +34,28 @@ public record TodoReportActionCandidateResponse(
 
         @Schema(description = "진행률", example = "25")
         int progressRate
-) {}
+) {
+    public static TodoReportActionCandidateResponse from(
+            int rank,
+            Long todoId,
+            String title,
+            OffsetDateTime deadline,
+            TodoStatus status,
+            int achievementCount,
+            int participantCount,
+            int unverifiedCount,
+            int progressRate
+    ) {
+        return new TodoReportActionCandidateResponse(
+                rank,
+                todoId,
+                title,
+                deadline,
+                status,
+                achievementCount,
+                participantCount,
+                unverifiedCount,
+                progressRate
+        );
+    }
+}

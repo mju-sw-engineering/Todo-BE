@@ -143,8 +143,8 @@ public class TodoService {
             String endDate
     ) {
         User user = validateTeamMember(teamId, loginId);
-        LocalDate start = parseDate(startDate);
-        LocalDate end = parseDate(endDate);
+        LocalDate start = parseRequiredDate("startDate", startDate);
+        LocalDate end = parseRequiredDate("endDate", endDate);
         if (start.isAfter(end)) {
             throw new BusinessException("startDate는 endDate보다 늦을 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
@@ -159,8 +159,8 @@ public class TodoService {
         List<TodoReportDailyStatResponse> dailyStats = buildDailyStats(start, end, todoSummaries);
         TodoReportSummaryResponse summary = buildPeriodSummary(dailyStats);
 
-        return new TodoPeriodReportResponse(
-                new TodoReportPeriodResponse(start, end, dailyStats.size()),
+        return TodoPeriodReportResponse.from(
+                TodoReportPeriodResponse.from(start, end, dailyStats.size()),
                 summary,
                 findWeakestDay(dailyStats),
                 dailyStats,
@@ -321,6 +321,18 @@ public class TodoService {
         }
     }
 
+    private LocalDate parseRequiredDate(String parameterName, String date) {
+        if (date == null || date.isBlank()) {
+            throw new BusinessException(parameterName + " 파라미터는 필수입니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        try {
+            return LocalDate.parse(date);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(parameterName + " 형식은 yyyy-MM-dd 이어야 합니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
     private List<TodoSummaryResponse> toSummaryResponses(List<Todo> todos, Long userId) {
         if (todos.isEmpty()) {
             return List.of();
@@ -396,7 +408,7 @@ public class TodoService {
             int failCount = countByStatus(dailyTodos, TodoStatus.FAIL);
             int inProgressCount = countByStatus(dailyTodos, TodoStatus.IN_PROGRESS);
 
-            dailyStats.add(new TodoReportDailyStatResponse(
+            dailyStats.add(TodoReportDailyStatResponse.from(
                     date,
                     totalCount,
                     successCount,
@@ -415,7 +427,7 @@ public class TodoService {
         int failCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::failCount).sum();
         int inProgressCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::inProgressCount).sum();
 
-        return new TodoReportSummaryResponse(
+        return TodoReportSummaryResponse.from(
                 totalCount,
                 successCount,
                 failCount,
@@ -451,7 +463,7 @@ public class TodoService {
             TodoSummaryResponse todo = sortedCandidates.get(index);
             int participantCount = getParticipantCount(todo);
             int achievementCount = getAchievementCount(todo);
-            responses.add(new TodoReportActionCandidateResponse(
+            responses.add(TodoReportActionCandidateResponse.from(
                     index + 1,
                     todo.todoId(),
                     todo.title(),

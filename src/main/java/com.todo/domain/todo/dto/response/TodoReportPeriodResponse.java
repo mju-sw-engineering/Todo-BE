@@ -15,4 +15,8 @@ public record TodoReportPeriodResponse(
 
         @Schema(description = "조회 날짜 수", example = "7")
         int dateCount
-) {}
+) {
+    public static TodoReportPeriodResponse from(LocalDate startDate, LocalDate endDate, int dateCount) {
+        return new TodoReportPeriodResponse(startDate, endDate, dateCount);
+    }
+}

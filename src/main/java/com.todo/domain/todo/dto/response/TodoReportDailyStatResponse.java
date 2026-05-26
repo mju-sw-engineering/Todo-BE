@@ -24,4 +24,22 @@ public record TodoReportDailyStatResponse(
 
         @Schema(description = "성공률", example = "66")
         Integer achievementRate
-) {}
+) {
+    public static TodoReportDailyStatResponse from(
+            LocalDate date,
+            int totalTodoCount,
+            int successCount,
+            int failCount,
+            int inProgressCount,
+            Integer achievementRate
+    ) {
+        return new TodoReportDailyStatResponse(
+                date,
+                totalTodoCount,
+                successCount,
+                failCount,
+                inProgressCount,
+                achievementRate
+        );
+    }
+}
