@@ -362,4 +362,44 @@ class TeamServiceTest {
                 .hasMessage("팀 설정을 변경할 권한이 없습니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
     }
+
+    @Test
+    void 팀_나가기_성공() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        TeamMember member = TeamMember.create(team, user, TeamMemberRole.MEMBER);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
+
+        teamService.leaveTeam("user1", 10L);
+
+        then(teamMemberRepository).should().delete(member);
+    }
+
+    @Test
+    void 팀_나가기_실패_존재하지_않는_사용자() {
+        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.leaveTeam("unknown", 10L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("로그인이 필요합니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
+    @Test
+    void 팀_나가기_실패_소속된_팀이_아님() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.leaveTeam("user1", 10L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("소속된 팀이 아닙니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
 }

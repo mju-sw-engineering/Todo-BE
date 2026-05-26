@@ -119,6 +119,16 @@ public class TeamService {
         return UpdateTeamPersonaResponse.from(team);
     }
 
+    @Transactional
+    public void leaveTeam(String loginId, Long teamId) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+        TeamMember member = teamMemberRepository.findByTeamIdAndUserId(teamId, user.getId())
+                .orElseThrow(() -> new BusinessException("소속된 팀이 아닙니다", HttpStatus.NOT_FOUND));
+
+        teamMemberRepository.delete(member);
+    }
+
     private String generateUniqueInviteCode() {
         SecureRandom random = new SecureRandom();
         for (int attempt = 0; attempt < MAX_INVITE_CODE_RETRY; attempt++) {
