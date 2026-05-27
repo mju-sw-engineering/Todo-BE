@@ -22,7 +22,8 @@ public interface TodoParticipantRepository extends JpaRepository<TodoParticipant
     List<TodoParticipantSummary> findSummaryByTodoIdIn(@Param("todoIds") List<Long> todoIds);
 
     @Query("""
-            SELECT tp.user.id AS userId, tp.user.nickname AS nickname,
+            SELECT tp.id AS todoParticipantId,
+                   tp.user.id AS userId, tp.user.nickname AS nickname,
                    tp.user.profileImageUrl AS profileImageUrl,
                    tp.proofImageKey AS proofImageKey, tp.status AS status
             FROM TodoParticipant tp
@@ -32,6 +33,9 @@ public interface TodoParticipantRepository extends JpaRepository<TodoParticipant
 
     @Query("SELECT tp FROM TodoParticipant tp JOIN FETCH tp.todo WHERE tp.todo.id = :todoId AND tp.user.id = :userId")
     Optional<TodoParticipant> findByTodoIdAndUserIdWithTodo(@Param("todoId") Long todoId, @Param("userId") Long userId);
+
+    @Query("SELECT tp FROM TodoParticipant tp JOIN FETCH tp.todo t JOIN FETCH t.team WHERE tp.id = :participantId")
+    Optional<TodoParticipant> findByIdWithTodoAndTeam(@Param("participantId") Long participantId);
 
     @Query("SELECT tp FROM TodoParticipant tp WHERE tp.todo.id = :todoId AND tp.user.id = :userId")
     Optional<TodoParticipant> findByTodoIdAndUserId(@Param("todoId") Long todoId, @Param("userId") Long userId);

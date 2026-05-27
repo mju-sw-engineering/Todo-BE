@@ -1,16 +1,23 @@
 package com.todo.domain.todo.service;
 
+import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
+import com.todo.domain.todo.dto.request.ReactTodoRequest;
+import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
+import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
+import com.todo.domain.todo.entity.TodoParticipant;
+import com.todo.domain.todo.entity.TodoReaction;
+import com.todo.domain.todo.entity.TodoReactionType;
 import com.todo.domain.todo.entity.TodoStatus;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoParticipantSummary;
+import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
-import com.todo.domain.todo.repository.TodoVoteRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -56,7 +63,7 @@ class TodoServiceTest {
     @Mock
     private FileService fileService;
     @Mock
-    private TodoVoteRepository todoVoteRepository;
+    private TodoReactionRepository todoReactionRepository;
 
     @Test
     void 전체_조회는_필터가_없으면_전체_레포지토리_메서드를_호출한다() {
@@ -299,6 +306,88 @@ class TodoServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
     }
 
+    @Test
+    void 인증_사진을_제출하면_즉시_완료_처리한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoParticipant participant = todoParticipantWithId(20L, todo, user);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
+        given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
+        given(todoParticipantRepository.countByTodoIdAndStatus(10L, ParticipantStatus.SUCCESS)).willReturn(1L);
+
+        todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key"));
+
+        assertThat(participant.getStatus()).isEqualTo(ParticipantStatus.SUCCESS);
+        assertThat(participant.getProofImageKey()).isEqualTo("proof-key");
+        assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
+    }
+
+    @Test
+    void 이모지_반응은_없으면_생성한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoParticipant participant = submittedParticipantWithId(20L, todo, userWithId(2L));
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(todoParticipantRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(participant));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(todoReactionRepository.findByTodoParticipantIdAndUserId(20L, 1L)).willReturn(Optional.empty());
+        given(todoReactionRepository.countByTodoParticipantIdAndReactionType(20L, TodoReactionType.LIKE)).willReturn(1L);
+
+        TodoReactionResponse response = todoService.reactTodoParticipant(
+                20L,
+                "user1",
+                new ReactTodoRequest(TodoReactionType.LIKE)
+        );
+
+        assertThat(response.type()).isEqualTo(TodoReactionType.LIKE);
+        assertThat(response.count()).isEqualTo(1);
+        then(todoReactionRepository).should().save(any(TodoReaction.class));
+    }
+
+    @Test
+    void 이모지_반응은_다른_이모지를_누르면_변경한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoParticipant participant = submittedParticipantWithId(20L, todo, userWithId(2L));
+        TodoReaction reaction = TodoReaction.create(participant, user, TodoReactionType.HEART);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(todoParticipantRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(participant));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(todoReactionRepository.findByTodoParticipantIdAndUserId(20L, 1L)).willReturn(Optional.of(reaction));
+        given(todoReactionRepository.countByTodoParticipantIdAndReactionType(20L, TodoReactionType.ANGRY)).willReturn(1L);
+
+        todoService.reactTodoParticipant(20L, "user1", new ReactTodoRequest(TodoReactionType.ANGRY));
+
+        assertThat(reaction.getReactionType()).isEqualTo(TodoReactionType.ANGRY);
+    }
+
+    @Test
+    void 이모지_반응은_같은_이모지를_다시_누르면_취소한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoParticipant participant = submittedParticipantWithId(20L, todo, userWithId(2L));
+        TodoReaction reaction = TodoReaction.create(participant, user, TodoReactionType.LIKE);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(todoParticipantRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(participant));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(todoReactionRepository.findByTodoParticipantIdAndUserId(20L, 1L)).willReturn(Optional.of(reaction));
+        given(todoReactionRepository.countByTodoParticipantIdAndReactionType(20L, TodoReactionType.LIKE)).willReturn(0L);
+
+        TodoReactionResponse response = todoService.reactTodoParticipant(
+                20L,
+                "user1",
+                new ReactTodoRequest(TodoReactionType.LIKE)
+        );
+
+        assertThat(response.count()).isZero();
+        then(todoReactionRepository).should().delete(reaction);
+    }
+
     private void givenValidTeamMember(User user) {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamRepository.existsById(100L)).willReturn(true);
@@ -311,12 +400,39 @@ class TodoServiceTest {
         return user;
     }
 
+    private Team teamWithId(Long teamId) {
+        Team team = Team.create("팀", null, "invite");
+        ReflectionTestUtils.setField(team, "id", teamId);
+        return team;
+    }
+
     private Todo todoWithId(Long todoId, TodoStatus status, LocalDateTime deadline) {
         User creator = userWithId(99L);
         Todo todo = Todo.create(null, creator, "투두", "설명", deadline);
         ReflectionTestUtils.setField(todo, "id", todoId);
         ReflectionTestUtils.setField(todo, "status", status);
         return todo;
+    }
+
+    private Todo todoWithTeamAndId(Team team, Long todoId, TodoStatus status, LocalDateTime deadline) {
+        User creator = userWithId(99L);
+        Todo todo = Todo.create(team, creator, "투두", "설명", deadline);
+        ReflectionTestUtils.setField(todo, "id", todoId);
+        ReflectionTestUtils.setField(todo, "status", status);
+        return todo;
+    }
+
+    private TodoParticipant todoParticipantWithId(Long participantId, Todo todo, User user) {
+        TodoParticipant participant = TodoParticipant.create(todo, user);
+        ReflectionTestUtils.setField(participant, "id", participantId);
+        return participant;
+    }
+
+    private TodoParticipant submittedParticipantWithId(Long participantId, Todo todo, User user) {
+        TodoParticipant participant = todoParticipantWithId(participantId, todo, user);
+        ReflectionTestUtils.setField(participant, "proofImageKey", "proof-key");
+        ReflectionTestUtils.setField(participant, "status", ParticipantStatus.SUCCESS);
+        return participant;
     }
 
     private TodoParticipantSummary participant(Long todoId, Long userId, String nickname, ParticipantStatus status) {

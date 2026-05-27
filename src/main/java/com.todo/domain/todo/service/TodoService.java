@@ -4,7 +4,7 @@ import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
-import com.todo.domain.todo.dto.request.EvaluateTodoRequest;
+import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.ParticipantDetailResponse;
@@ -15,17 +15,19 @@ import com.todo.domain.todo.dto.response.TodoReportActionCandidateResponse;
 import com.todo.domain.todo.dto.response.TodoReportDailyStatResponse;
 import com.todo.domain.todo.dto.response.TodoReportPeriodResponse;
 import com.todo.domain.todo.dto.response.TodoReportSummaryResponse;
+import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoParticipant;
+import com.todo.domain.todo.entity.TodoReaction;
+import com.todo.domain.todo.entity.TodoReactionType;
 import com.todo.domain.todo.entity.TodoStatus;
-import com.todo.domain.todo.entity.TodoVote;
-import com.todo.domain.todo.entity.VoteType;
 import com.todo.domain.todo.repository.TodoParticipantDetail;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoParticipantSummary;
-import com.todo.domain.todo.repository.TodoVoteRepository;
+import com.todo.domain.todo.repository.TodoReactionCount;
+import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -44,6 +46,8 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -62,7 +66,7 @@ public class TodoService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final FileService fileService;
-    private final TodoVoteRepository todoVoteRepository;
+    private final TodoReactionRepository todoReactionRepository;
 
     @Transactional
     public CreateTodoResponse createTodo(String loginId, Long teamId, CreateTodoRequest request) {
@@ -182,6 +186,8 @@ public class TodoService {
         }
 
         List<TodoParticipantDetail> participants = todoParticipantRepository.findDetailByTodoId(todoId);
+        Map<Long, Map<TodoReactionType, Long>> reactionCountsByParticipantId = getReactionCountsByParticipantId(participants);
+        Map<Long, TodoReactionType> myReactionsByParticipantId = getMyReactionsByParticipantId(participants, user.getId());
         long total = participants.size();
         long success = participants.stream()
                 .filter(p -> p.getStatus() == ParticipantStatus.SUCCESS)
@@ -189,11 +195,17 @@ public class TodoService {
 
         List<ParticipantDetailResponse> participantResponses = participants.stream()
                 .map(p -> new ParticipantDetailResponse(
+                        p.getTodoParticipantId(),
                         p.getUserId(),
                         p.getNickname(),
                         fileService.resolveImageUrl(p.getProfileImageUrl()),
                         fileService.resolveImageUrl(p.getProofImageKey()),
-                        mapStatus(p.getStatus())
+                        mapStatus(p.getStatus()),
+                        buildReactionResponses(reactionCountsByParticipantId.getOrDefault(
+                                p.getTodoParticipantId(),
+                                Map.of()
+                        )),
+                        myReactionsByParticipantId.get(p.getTodoParticipantId())
                 ))
                 .toList();
 
@@ -206,55 +218,6 @@ public class TodoService {
                 success + " / " + total,
                 participantResponses
         );
-    }
-
-    @Transactional
-    public void evaluateTodo(Long todoId, String loginId, EvaluateTodoRequest request) {
-        User voter = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
-
-        markExpiredTodosAsFail();
-        Todo todo = todoRepository.findByIdWithCreatorAndTeam(todoId)
-                .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
-
-        if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), voter.getId())) {
-            throw new BusinessException("해당 팀의 멤버가 아닙니다.", HttpStatus.FORBIDDEN);
-        }
-
-        if (voter.getId().equals(request.targetUserId())) {
-            throw new BusinessException("본인의 과업에는 투표할 수 없습니다.", HttpStatus.BAD_REQUEST);
-        }
-
-        TodoParticipant targetParticipant = todoParticipantRepository
-                .findByTodoIdAndUserIdWithLock(todoId, request.targetUserId())
-                .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.NOT_FOUND));
-
-        if (targetParticipant.getStatus() != ParticipantStatus.PENDING) {
-            throw new BusinessException("평가 대기 상태인 인증만 투표할 수 있습니다.", HttpStatus.BAD_REQUEST);
-        }
-
-        if (todoVoteRepository.existsByTodoParticipantIdAndVoterId(targetParticipant.getId(), voter.getId())) {
-            throw new BusinessException("이미 투표하셨습니다.", HttpStatus.CONFLICT);
-        }
-
-        todoVoteRepository.save(TodoVote.create(targetParticipant, voter, request.voteType()));
-        targetParticipant.addVote(request.voteType());
-
-        long totalParticipants = todoParticipantRepository.countByTodoId(todoId);
-
-        if (request.voteType() == VoteType.POSITIVE
-                && targetParticipant.getPositiveCount() * 2 >= totalParticipants) {
-            targetParticipant.markAsSuccess();
-            todo.getTeam().incrementSuccessCount();
-
-            long successCount = todoParticipantRepository.countByTodoIdAndStatus(todoId, ParticipantStatus.SUCCESS);
-            if (successCount == totalParticipants) {
-                todo.markAsSuccess();
-            }
-        } else if (request.voteType() == VoteType.NEGATIVE
-                && targetParticipant.getNegativeCount() > totalParticipants / 2) {
-            targetParticipant.markAsFailByVote();
-        }
     }
 
     @Transactional(noRollbackFor = BusinessException.class)
@@ -274,6 +237,39 @@ public class TodoService {
         }
 
         participant.submit(request.proofImageKey());
+        participant.getTodo().getTeam().incrementSuccessCount();
+
+        long totalParticipants = todoParticipantRepository.countByTodoId(todoId);
+        long successCount = todoParticipantRepository.countByTodoIdAndStatus(todoId, ParticipantStatus.SUCCESS);
+        if (successCount == totalParticipants) {
+            participant.getTodo().markAsSuccess();
+        }
+    }
+
+    @Transactional
+    public TodoReactionResponse reactTodoParticipant(Long participantId, String loginId, ReactTodoRequest request) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
+        TodoParticipant participant = todoParticipantRepository.findByIdWithTodoAndTeam(participantId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 투두 참여자입니다.", HttpStatus.NOT_FOUND));
+
+        Long teamId = participant.getTodo().getTeam().getId();
+        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())) {
+            throw new BusinessException("팀에 접근할 권한이 없습니다.", HttpStatus.FORBIDDEN);
+        }
+        if (participant.getProofImageKey() == null || participant.getProofImageKey().isBlank()) {
+            throw new BusinessException("인증 사진이 제출된 투두에만 반응할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        TodoReactionType reactionType = request.type();
+        todoReactionRepository.findByTodoParticipantIdAndUserId(participantId, user.getId())
+                .ifPresentOrElse(
+                        reaction -> updateOrDeleteReaction(reaction, reactionType),
+                        () -> todoReactionRepository.save(TodoReaction.create(participant, user, reactionType))
+                );
+
+        long count = todoReactionRepository.countByTodoParticipantIdAndReactionType(participantId, reactionType);
+        return TodoReactionResponse.from(reactionType, count);
     }
 
     private void markExpiredTodosAsFail() {
@@ -347,6 +343,59 @@ public class TodoService {
         return todos.stream()
                 .map(todo -> toSummaryResponse(todo, participantsByTodoId.getOrDefault(todo.getId(), List.of()), userId))
                 .toList();
+    }
+
+    private Map<Long, Map<TodoReactionType, Long>> getReactionCountsByParticipantId(
+            List<TodoParticipantDetail> participants
+    ) {
+        List<Long> participantIds = participants.stream()
+                .map(TodoParticipantDetail::getTodoParticipantId)
+                .toList();
+        if (participantIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, Map<TodoReactionType, Long>> result = new HashMap<>();
+        for (TodoReactionCount reactionCount : todoReactionRepository.countByTodoParticipantIds(participantIds)) {
+            result.computeIfAbsent(reactionCount.getTodoParticipantId(), ignored -> new EnumMap<>(TodoReactionType.class))
+                    .put(reactionCount.getReactionType(), reactionCount.getReactionCount());
+        }
+
+        return result;
+    }
+
+    private Map<Long, TodoReactionType> getMyReactionsByParticipantId(
+            List<TodoParticipantDetail> participants,
+            Long userId
+    ) {
+        List<Long> participantIds = participants.stream()
+                .map(TodoParticipantDetail::getTodoParticipantId)
+                .toList();
+        if (participantIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return todoReactionRepository.findByTodoParticipantIdInAndUserId(participantIds, userId)
+                .stream()
+                .collect(Collectors.toMap(
+                        reaction -> reaction.getTodoParticipant().getId(),
+                        TodoReaction::getReactionType
+                ));
+    }
+
+    private List<TodoReactionResponse> buildReactionResponses(Map<TodoReactionType, Long> reactionCounts) {
+        return List.of(TodoReactionType.values()).stream()
+                .map(type -> TodoReactionResponse.from(type, reactionCounts.getOrDefault(type, 0L)))
+                .toList();
+    }
+
+    private void updateOrDeleteReaction(TodoReaction reaction, TodoReactionType reactionType) {
+        if (reaction.hasSameType(reactionType)) {
+            todoReactionRepository.delete(reaction);
+            return;
+        }
+
+        reaction.updateType(reactionType);
     }
 
     private TodoSummaryResponse toSummaryResponse(
@@ -541,7 +590,7 @@ public class TodoService {
     private String mapStatus(ParticipantStatus status) {
         return switch (status) {
             case SUCCESS -> "완료";
-            case PENDING -> "평가 대기중";
+            case PENDING -> "완료";
             case IN_PROGRESS -> "미완료";
             case FAIL -> "실패";
         };
