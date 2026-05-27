@@ -20,11 +20,12 @@ import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
+@RequestMapping("/api")
 public class TodoController implements TodoControllerDocs {
 
     private final TodoService todoService;
 
-    @PostMapping("/api/teams/{teamId}/todos")
+    @PostMapping("/teams/{teamId}/todos")
     public ResponseEntity<ApiResponse<CreateTodoResponse>> createTodo(
             @PathVariable Long teamId,
             @Valid @RequestBody CreateTodoRequest request,
@@ -36,7 +37,7 @@ public class TodoController implements TodoControllerDocs {
                 .body(ApiResponse.success(response, "투두가 생성되었습니다."));
     }
 
-    @GetMapping("/api/teams/{teamId}/todos")
+    @GetMapping("/teams/{teamId}/todos")
     public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoList(
             @PathVariable Long teamId,
             @RequestParam(required = false) String filter,
@@ -50,7 +51,7 @@ public class TodoController implements TodoControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
-    @GetMapping("/api/teams/{teamId}/todos/today")
+    @GetMapping("/teams/{teamId}/todos/today")
     public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodayTodoList(
             @PathVariable Long teamId,
             Authentication authentication
@@ -63,7 +64,7 @@ public class TodoController implements TodoControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
-    @GetMapping("/api/teams/{teamId}/todos/history")
+    @GetMapping("/teams/{teamId}/todos/history")
     public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoHistory(
             @PathVariable Long teamId,
             @RequestParam(required = false) String date,
@@ -77,7 +78,7 @@ public class TodoController implements TodoControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
-    @GetMapping("/api/teams/{teamId}/todos/report")
+    @GetMapping("/teams/{teamId}/todos/report")
     public ResponseEntity<ApiResponse<TodoPeriodReportResponse>> getTodoPeriodReport(
             @PathVariable Long teamId,
             @RequestParam String startDate,
@@ -94,7 +95,7 @@ public class TodoController implements TodoControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    @GetMapping("/api/todos/{todoId}")
+    @GetMapping("/todos/{todoId}")
     public ResponseEntity<ApiResponse<TodoDetailResponse>> getTodoDetail(
             @PathVariable Long todoId,
             Authentication authentication
@@ -104,7 +105,7 @@ public class TodoController implements TodoControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    @PostMapping("/api/todos/{todoId}/evaluate")
+    @PostMapping("/todos/{todoId}/evaluate")
     public ResponseEntity<ApiResponse<Void>> evaluateTodo(
             @PathVariable Long todoId,
             @Valid @RequestBody EvaluateTodoRequest request,
@@ -115,7 +116,7 @@ public class TodoController implements TodoControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(null, "투표가 완료되었습니다."));
     }
 
-    @PostMapping("/api/todos/{todoId}/submit")
+    @PostMapping("/todos/{todoId}/submit")
     public ResponseEntity<ApiResponse<Void>> submitTodo(
             @PathVariable Long todoId,
             @Valid @RequestBody SubmitTodoRequest request,
