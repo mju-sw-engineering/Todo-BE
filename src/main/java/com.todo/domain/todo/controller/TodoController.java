@@ -1,11 +1,12 @@
 package com.todo.domain.todo.controller;
 
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
-import com.todo.domain.todo.dto.request.EvaluateTodoRequest;
+import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
+import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.service.TodoService;
 import com.todo.global.response.ApiResponse;
@@ -105,15 +106,15 @@ public class TodoController implements TodoControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    @PostMapping("/todos/{todoId}/evaluate")
-    public ResponseEntity<ApiResponse<Void>> evaluateTodo(
-            @PathVariable Long todoId,
-            @Valid @RequestBody EvaluateTodoRequest request,
+    @PostMapping("/todo-participants/{participantId}/reactions")
+    public ResponseEntity<ApiResponse<TodoReactionResponse>> reactTodoParticipant(
+            @PathVariable Long participantId,
+            @Valid @RequestBody ReactTodoRequest request,
             Authentication authentication
     ) {
         String loginId = authentication.getName();
-        todoService.evaluateTodo(todoId, loginId, request);
-        return ResponseEntity.ok(ApiResponse.success(null, "투표가 완료되었습니다."));
+        TodoReactionResponse response = todoService.reactTodoParticipant(participantId, loginId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "이모지 반응이 반영되었습니다."));
     }
 
     @PostMapping("/todos/{todoId}/submit")
