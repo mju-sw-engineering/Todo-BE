@@ -59,10 +59,6 @@ public class TodoParticipant {
         this.status = ParticipantStatus.SUCCESS;
     }
 
-    public void markAsFailByVote() {
-        this.status = ParticipantStatus.FAIL;
-    }
-
     public void markAsFail() {
         if (this.status == ParticipantStatus.IN_PROGRESS) {
             this.status = ParticipantStatus.FAIL;

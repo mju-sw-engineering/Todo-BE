@@ -590,7 +590,6 @@ public class TodoService {
     private String mapStatus(ParticipantStatus status) {
         return switch (status) {
             case SUCCESS -> "완료";
-            case PENDING -> "완료";
             case IN_PROGRESS -> "미완료";
             case FAIL -> "실패";
         };
