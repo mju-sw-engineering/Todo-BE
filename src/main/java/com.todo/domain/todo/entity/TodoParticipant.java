@@ -2,7 +2,6 @@ package com.todo.domain.todo.entity;
 
 import com.todo.domain.user.entity.User;
 import com.todo.global.exception.BusinessException;
-import com.todo.domain.todo.entity.VoteType;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -39,12 +38,6 @@ public class TodoParticipant {
 
     private LocalDateTime submittedAt;
 
-    @Column(nullable = false)
-    private int positiveCount = 0;
-
-    @Column(nullable = false)
-    private int negativeCount = 0;
-
     public static TodoParticipant create(Todo todo, User user) {
         TodoParticipant participant = new TodoParticipant();
         participant.todo = todo;
@@ -58,24 +51,12 @@ public class TodoParticipant {
             throw new BusinessException("이미 제출되었거나 완료된 투두입니다.", HttpStatus.CONFLICT);
         }
         this.proofImageKey = proofImageKey;
-        this.status = ParticipantStatus.PENDING;
+        this.status = ParticipantStatus.SUCCESS;
         this.submittedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
-    }
-
-    public void addVote(VoteType voteType) {
-        if (voteType == VoteType.POSITIVE) {
-            this.positiveCount++;
-        } else {
-            this.negativeCount++;
-        }
     }
 
     public void markAsSuccess() {
         this.status = ParticipantStatus.SUCCESS;
-    }
-
-    public void markAsFailByVote() {
-        this.status = ParticipantStatus.FAIL;
     }
 
     public void markAsFail() {

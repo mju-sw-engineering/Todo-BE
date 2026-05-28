@@ -1,11 +1,12 @@
 package com.todo.domain.todo.controller;
 
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
-import com.todo.domain.todo.dto.request.EvaluateTodoRequest;
+import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
+import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -134,7 +135,7 @@ public interface TodoControllerDocs {
 
     @Operation(
             summary = "인증 사진 제출",
-            description = "배정된 팀원이 투두 완료 후 인증 사진을 제출합니다. " +
+            description = "배정된 팀원이 투두 완료 후 인증 사진을 제출하면 즉시 완료 처리됩니다. " +
                     "마감 시간이 지난 경우 상태를 FAIL로 변경 후 400을 반환합니다."
     )
     @SecurityRequirement(name = "bearerAuth")
@@ -154,25 +155,24 @@ public interface TodoControllerDocs {
     );
 
     @Operation(
-            summary = "팀원 상호 평가",
-            description = "PENDING 상태인 팀원의 인증 사진에 긍정/부정 투표를 합니다. " +
-                    "과반수 긍정 시 SUCCESS, 과반수 이상 부정 시 FAIL로 자동 판정됩니다."
+            summary = "인증 사진 이모지 반응",
+            description = "팀원의 인증 사진에 이모지 반응을 남깁니다. " +
+                    "이미 같은 이모지를 눌렀으면 취소하고, 다른 이모지를 누르면 변경됩니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "투표 완료"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "셀프 투표 또는 평가 불가 상태",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "이모지 반응 반영 성공",
+                    content = @Content(schema = @Schema(implementation = TodoReactionResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "인증 사진 미제출",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
                     content = @Content(schema = @Schema(hidden = true))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "투두 또는 피평가자를 찾을 수 없음",
-                    content = @Content(schema = @Schema(hidden = true))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "중복 투표",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "투두 참여자를 찾을 수 없음",
                     content = @Content(schema = @Schema(hidden = true)))
     })
-    ResponseEntity<ApiResponse<Void>> evaluateTodo(
-            @Parameter(description = "투두 ID", example = "1") Long todoId,
-            EvaluateTodoRequest request,
+    ResponseEntity<ApiResponse<TodoReactionResponse>> reactTodoParticipant(
+            @Parameter(description = "투두 참여자 ID", example = "1") Long participantId,
+            ReactTodoRequest request,
             Authentication authentication
     );
 }
