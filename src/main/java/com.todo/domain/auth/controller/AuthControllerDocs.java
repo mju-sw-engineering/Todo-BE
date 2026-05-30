@@ -34,4 +34,13 @@ public interface AuthControllerDocs {
                     content = @Content(schema = @Schema(hidden = true)))
     })
     ResponseEntity<com.todo.global.response.ApiResponse<LoginResponse>> login(LoginRequest request);
+
+    @Operation(summary = "로그아웃", description = "로그인된 사용자를 로그아웃합니다. 클라이언트에서 토큰을 삭제해야 합니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그아웃 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<com.todo.global.response.ApiResponse<Void>> logout();
 }
