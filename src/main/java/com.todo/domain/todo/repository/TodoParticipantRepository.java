@@ -57,4 +57,8 @@ public interface TodoParticipantRepository extends JpaRepository<TodoParticipant
     @Modifying
     @Query("DELETE FROM TodoParticipant tp WHERE tp.todo.id IN :todoIds")
     void deleteByTodoIdIn(@Param("todoIds") List<Long> todoIds);
+
+    @Modifying
+    @Query("DELETE FROM TodoParticipant tp WHERE tp.user.id = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
 }

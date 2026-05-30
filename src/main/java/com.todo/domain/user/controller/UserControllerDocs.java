@@ -38,4 +38,15 @@ public interface UserControllerDocs {
             UpdateNicknameRequest request,
             Authentication authentication
     );
+
+    @Operation(summary = "회원 탈퇴", description = "현재 로그인된 사용자의 계정과 관련 데이터를 삭제합니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "회원 탈퇴 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "권한 이양 중 오류",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<ApiResponse<Void>> deleteUser(Authentication authentication);
 }

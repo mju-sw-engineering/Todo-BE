@@ -31,4 +31,8 @@ public interface TodoReactionRepository extends JpaRepository<TodoReaction, Long
     @Modifying
     @Query("DELETE FROM TodoReaction tr WHERE tr.todoParticipant.id IN :participantIds")
     void deleteByTodoParticipantIdIn(@Param("participantIds") List<Long> participantIds);
+
+    @Modifying
+    @Query("DELETE FROM TodoReaction tr WHERE tr.user.id = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
 }
