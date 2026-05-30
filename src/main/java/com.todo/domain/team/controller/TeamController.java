@@ -1,9 +1,11 @@
 package com.todo.domain.team.controller;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
+import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
@@ -56,6 +58,17 @@ public class TeamController implements TeamControllerDocs {
         String loginId = authentication.getName();
         JoinTeamResponse response = teamService.joinTeam(loginId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "팀 참여가 완료되었습니다"));
+    }
+
+    @PostMapping("/{teamId}/invitations")
+    public ResponseEntity<ApiResponse<InviteTeamResponse>> inviteTeamMembers(
+            @PathVariable Long teamId,
+            @Valid @RequestBody InviteTeamRequest request,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        InviteTeamResponse response = teamService.inviteTeamMembers(loginId, teamId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "팀 초대 메일이 발송되었습니다"));
     }
 
     @PostMapping
