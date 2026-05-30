@@ -120,6 +120,26 @@ public class TeamService {
     }
 
     @Transactional
+    public void removeMember(String loginId, Long teamId, Long targetUserId) {
+        User requester = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+        TeamMember requesterMember = teamMemberRepository.findByTeamIdAndUserId(teamId, requester.getId())
+                .orElseThrow(() -> new BusinessException("소속된 팀이 아닙니다", HttpStatus.NOT_FOUND));
+
+        if (requesterMember.getRole() != TeamMemberRole.LEADER) {
+            throw new BusinessException("권한이 없습니다", HttpStatus.FORBIDDEN);
+        }
+        if (requester.getId().equals(targetUserId)) {
+            throw new BusinessException("자신을 강퇴할 수 없습니다. 탈퇴 기능을 이용해주세요.", HttpStatus.BAD_REQUEST);
+        }
+
+        TeamMember target = teamMemberRepository.findByTeamIdAndUserId(teamId, targetUserId)
+                .orElseThrow(() -> new BusinessException("팀 멤버를 찾을 수 없습니다", HttpStatus.NOT_FOUND));
+
+        teamMemberRepository.delete(target);
+    }
+
+    @Transactional
     public void leaveTeam(String loginId, Long teamId) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
