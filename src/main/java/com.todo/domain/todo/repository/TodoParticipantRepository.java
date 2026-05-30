@@ -5,6 +5,7 @@ import com.todo.domain.todo.entity.TodoParticipant;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -49,4 +50,11 @@ public interface TodoParticipantRepository extends JpaRepository<TodoParticipant
 
     @Query("SELECT COUNT(tp) FROM TodoParticipant tp WHERE tp.todo.id = :todoId AND tp.status = :status")
     long countByTodoIdAndStatus(@Param("todoId") Long todoId, @Param("status") ParticipantStatus status);
+
+    @Query("SELECT tp.id FROM TodoParticipant tp WHERE tp.todo.id IN :todoIds")
+    List<Long> findIdsByTodoIdIn(@Param("todoIds") List<Long> todoIds);
+
+    @Modifying
+    @Query("DELETE FROM TodoParticipant tp WHERE tp.todo.id IN :todoIds")
+    void deleteByTodoIdIn(@Param("todoIds") List<Long> todoIds);
 }

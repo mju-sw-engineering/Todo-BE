@@ -94,6 +94,22 @@ public interface TeamControllerDocs {
             Authentication authentication
     );
 
+    @Operation(summary = "팀원 강퇴", description = "팀장이 특정 팀원을 팀에서 강퇴합니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "강퇴 성공",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "자신을 강퇴 시도",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀장 권한 없음",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀 또는 멤버 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<ApiResponse<Void>> removeMember(Long teamId, Long targetUserId, Authentication authentication);
+
     @Operation(summary = "팀 나가기", description = "로그인한 사용자가 소속된 팀에서 나갑니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "팀 나가기 성공",

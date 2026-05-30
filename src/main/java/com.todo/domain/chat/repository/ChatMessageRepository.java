@@ -3,6 +3,7 @@ package com.todo.domain.chat.repository;
 import com.todo.domain.chat.entity.ChatMessage;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -26,4 +27,8 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             @Param("cursorId") Long cursorId,
             Pageable pageable
     );
+
+    @Modifying
+    @Query("DELETE FROM ChatMessage c WHERE c.todo.id IN :todoIds")
+    void deleteByTodoIdIn(@Param("todoIds") List<Long> todoIds);
 }

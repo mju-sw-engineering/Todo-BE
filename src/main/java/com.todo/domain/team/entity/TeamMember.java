@@ -45,4 +45,8 @@ public class TeamMember {
         member.role = role;
         return member;
     }
+
+    public void updateRole(TeamMemberRole role) {
+        this.role = role;
+    }
 }
