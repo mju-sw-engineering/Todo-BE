@@ -1,5 +1,7 @@
 package com.todo.domain.team.service;
 
+import com.todo.domain.chat.repository.ChatMessageRepository;
+import com.todo.domain.evaluation.repository.DailyEvaluationRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
@@ -15,6 +17,9 @@ import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
+import com.todo.domain.todo.repository.TodoParticipantRepository;
+import com.todo.domain.todo.repository.TodoReactionRepository;
+import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -40,6 +45,11 @@ public class TeamService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final FileService fileService;
+    private final TodoRepository todoRepository;
+    private final TodoParticipantRepository todoParticipantRepository;
+    private final TodoReactionRepository todoReactionRepository;
+    private final ChatMessageRepository chatMessageRepository;
+    private final DailyEvaluationRepository dailyEvaluationRepository;
 
     @Transactional
     public CreateTeamResponse createTeam(String loginId, CreateTeamRequest request) {
@@ -146,7 +156,41 @@ public class TeamService {
         TeamMember member = teamMemberRepository.findByTeamIdAndUserId(teamId, user.getId())
                 .orElseThrow(() -> new BusinessException("소속된 팀이 아닙니다", HttpStatus.NOT_FOUND));
 
+        if (member.getRole() == TeamMemberRole.LEADER) {
+            List<TeamMember> others = teamMemberRepository.findByTeamIdExcludingUser(teamId, user.getId());
+
+            if (others.isEmpty()) {
+                deleteTeamWithAllData(teamId);
+                return;
+            }
+
+            try {
+                others.get(0).updateRole(TeamMemberRole.LEADER);
+            } catch (Exception e) {
+                throw new BusinessException("권한 이양 중 문제가 발생했습니다", HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+        }
+
         teamMemberRepository.delete(member);
+    }
+
+    @Transactional
+    public void deleteTeamWithAllData(Long teamId) {
+        List<Long> todoIds = todoRepository.findIdsByTeamId(teamId);
+
+        if (!todoIds.isEmpty()) {
+            List<Long> participantIds = todoParticipantRepository.findIdsByTodoIdIn(todoIds);
+            if (!participantIds.isEmpty()) {
+                todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
+            }
+            todoParticipantRepository.deleteByTodoIdIn(todoIds);
+            chatMessageRepository.deleteByTodoIdIn(todoIds);
+        }
+
+        dailyEvaluationRepository.deleteByTeamId(teamId);
+        todoRepository.deleteByTeamId(teamId);
+        teamMemberRepository.deleteByTeamId(teamId);
+        teamRepository.deleteById(teamId);
     }
 
     private String generateUniqueInviteCode() {
