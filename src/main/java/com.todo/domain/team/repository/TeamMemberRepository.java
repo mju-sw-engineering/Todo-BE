@@ -25,7 +25,14 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     @Query("SELECT tm FROM TeamMember tm WHERE tm.team.id = :teamId AND tm.user.id != :userId ORDER BY tm.joinedAt ASC")
     List<TeamMember> findByTeamIdExcludingUser(@Param("teamId") Long teamId, @Param("userId") Long userId);
 
+    @Query("SELECT tm FROM TeamMember tm JOIN FETCH tm.team WHERE tm.user.id = :userId AND tm.role = 'LEADER'")
+    List<TeamMember> findLeaderMembershipsByUserId(@Param("userId") Long userId);
+
     @Modifying
     @Query("DELETE FROM TeamMember tm WHERE tm.team.id = :teamId")
     void deleteByTeamId(@Param("teamId") Long teamId);
+
+    @Modifying
+    @Query("DELETE FROM TeamMember tm WHERE tm.user.id = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
 }
