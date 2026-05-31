@@ -78,6 +78,10 @@ public class UserService {
 
         // 3. 유저 데이터 삭제
         todoReactionRepository.deleteByUserId(user.getId());
+        List<Long> userParticipantIds = todoParticipantRepository.findIdsByUserId(user.getId());
+        if (!userParticipantIds.isEmpty()) {
+            todoReactionRepository.deleteByTodoParticipantIdIn(userParticipantIds);
+        }
         todoParticipantRepository.deleteByUserId(user.getId());
         teamMemberRepository.deleteByUserId(user.getId());
 

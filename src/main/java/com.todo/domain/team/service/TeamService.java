@@ -51,6 +51,11 @@ public class TeamService {
     private final UserRepository userRepository;
     private final FileService fileService;
     private final TeamInviteMailService teamInviteMailService;
+    private final TodoRepository todoRepository;
+    private final TodoParticipantRepository todoParticipantRepository;
+    private final TodoReactionRepository todoReactionRepository;
+    private final ChatMessageRepository chatMessageRepository;
+    private final DailyEvaluationRepository dailyEvaluationRepository;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -205,6 +210,25 @@ public class TeamService {
         }
 
         teamMemberRepository.delete(member);
+    }
+
+    @Transactional
+    public void deleteTeamWithAllData(Long teamId) {
+        List<Long> todoIds = todoRepository.findIdsByTeamId(teamId);
+
+        if (!todoIds.isEmpty()) {
+            List<Long> participantIds = todoParticipantRepository.findIdsByTodoIdIn(todoIds);
+            if (!participantIds.isEmpty()) {
+                todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
+            }
+            todoParticipantRepository.deleteByTodoIdIn(todoIds);
+            chatMessageRepository.deleteByTodoIdIn(todoIds);
+        }
+
+        dailyEvaluationRepository.deleteByTeamId(teamId);
+        todoRepository.deleteByTeamId(teamId);
+        teamMemberRepository.deleteByTeamId(teamId);
+        teamRepository.deleteById(teamId);
     }
 
     private List<String> normalizeEmails(List<String> emails) {
