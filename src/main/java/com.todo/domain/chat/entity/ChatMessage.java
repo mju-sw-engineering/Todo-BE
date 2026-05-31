@@ -23,7 +23,7 @@ public class ChatMessage extends BaseTimeEntity {
     private Todo todo;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "sender_id", nullable = false)
+    @JoinColumn(name = "sender_id", nullable = true)
     private User sender;
 
     @Column(nullable = false)

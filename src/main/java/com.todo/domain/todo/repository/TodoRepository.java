@@ -22,6 +22,13 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
             """)
     int markExpiredTodosAsFail(@Param("now") LocalDateTime now);
 
+    @Query("SELECT t.id FROM Todo t WHERE t.team.id = :teamId")
+    List<Long> findIdsByTeamId(@Param("teamId") Long teamId);
+
+    @Modifying
+    @Query("DELETE FROM Todo t WHERE t.team.id = :teamId")
+    void deleteByTeamId(@Param("teamId") Long teamId);
+
     @Query("SELECT t FROM Todo t JOIN FETCH t.creator WHERE t.team.id = :teamId ORDER BY t.createdAt DESC")
     List<Todo> findByTeamIdWithCreator(@Param("teamId") Long teamId);
 

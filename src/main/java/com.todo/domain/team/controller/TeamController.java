@@ -93,6 +93,17 @@ public class TeamController implements TeamControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(response, "AI 평가 페르소나가 변경되었습니다"));
     }
 
+    @DeleteMapping("/{teamId}/members/{targetUserId}")
+    public ResponseEntity<ApiResponse<Void>> removeMember(
+            @PathVariable Long teamId,
+            @PathVariable Long targetUserId,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        teamService.removeMember(loginId, teamId, targetUserId);
+        return ResponseEntity.ok(ApiResponse.success(null, "팀원이 강퇴되었습니다"));
+    }
+
     @DeleteMapping("/{teamId}/leave")
     public ResponseEntity<ApiResponse<Void>> leaveTeam(
             @PathVariable Long teamId,

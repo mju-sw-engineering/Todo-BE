@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -36,5 +37,12 @@ public class UserController implements UserControllerDocs {
         String loginId = authentication.getName();
         MyPageResponse response = userService.updateNickname(loginId, request);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<ApiResponse<Void>> deleteUser(Authentication authentication) {
+        String loginId = authentication.getName();
+        userService.deleteUser(loginId);
+        return ResponseEntity.ok(ApiResponse.success(null, "회원 탈퇴가 완료되었습니다"));
     }
 }

@@ -1,5 +1,7 @@
 package com.todo.domain.team.service;
 
+import com.todo.domain.chat.repository.ChatMessageRepository;
+import com.todo.domain.evaluation.repository.DailyEvaluationRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
@@ -17,6 +19,9 @@ import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
+import com.todo.domain.todo.repository.TodoParticipantRepository;
+import com.todo.domain.todo.repository.TodoReactionRepository;
+import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -158,11 +163,46 @@ public class TeamService {
     }
 
     @Transactional
+    public void removeMember(String loginId, Long teamId, Long targetUserId) {
+        User requester = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+        TeamMember requesterMember = teamMemberRepository.findByTeamIdAndUserId(teamId, requester.getId())
+                .orElseThrow(() -> new BusinessException("소속된 팀이 아닙니다", HttpStatus.NOT_FOUND));
+
+        if (requesterMember.getRole() != TeamMemberRole.LEADER) {
+            throw new BusinessException("권한이 없습니다", HttpStatus.FORBIDDEN);
+        }
+        if (requester.getId().equals(targetUserId)) {
+            throw new BusinessException("자신을 강퇴할 수 없습니다. 탈퇴 기능을 이용해주세요.", HttpStatus.BAD_REQUEST);
+        }
+
+        TeamMember target = teamMemberRepository.findByTeamIdAndUserId(teamId, targetUserId)
+                .orElseThrow(() -> new BusinessException("팀 멤버를 찾을 수 없습니다", HttpStatus.NOT_FOUND));
+
+        teamMemberRepository.delete(target);
+    }
+
+    @Transactional
     public void leaveTeam(String loginId, Long teamId) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         TeamMember member = teamMemberRepository.findByTeamIdAndUserId(teamId, user.getId())
                 .orElseThrow(() -> new BusinessException("소속된 팀이 아닙니다", HttpStatus.NOT_FOUND));
+
+        if (member.getRole() == TeamMemberRole.LEADER) {
+            List<TeamMember> others = teamMemberRepository.findByTeamIdExcludingUser(teamId, user.getId());
+
+            if (others.isEmpty()) {
+                deleteTeamWithAllData(teamId);
+                return;
+            }
+
+            try {
+                others.get(0).updateRole(TeamMemberRole.LEADER);
+            } catch (Exception e) {
+                throw new BusinessException("권한 이양 중 문제가 발생했습니다", HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+        }
 
         teamMemberRepository.delete(member);
     }
