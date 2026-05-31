@@ -1,9 +1,11 @@
 package com.todo.domain.team.service;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
+import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
@@ -33,8 +35,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.argThat;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,6 +55,8 @@ class TeamServiceTest {
     private UserRepository userRepository;
     @Mock
     private FileService fileService;
+    @Mock
+    private TeamInviteMailService teamInviteMailService;
 
     @Test
     void 팀_생성_성공_이미지없음() {
@@ -319,6 +325,113 @@ class TeamServiceTest {
     }
 
     @Test
+    void 팀장이_이메일로_팀원을_초대한다() {
+        setupInviteLinkProperties();
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        TeamMember member = TeamMember.create(team, user, TeamMemberRole.LEADER);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
+
+        InviteTeamResponse response = teamService.inviteTeamMembers(
+                "user1",
+                10L,
+                new InviteTeamRequest(List.of("Member@Example.com ", "member@example.com", "second@example.com"))
+        );
+
+        assertThat(response.teamId()).isEqualTo(10L);
+        assertThat(response.inviteCode()).isEqualTo("ABCD1234");
+        assertThat(response.inviteLink()).isEqualTo("https://todo.example.com/teams/join?code=ABCD1234");
+        assertThat(response.sentCount()).isEqualTo(2);
+        assertThat(response.emails()).containsExactly("member@example.com", "second@example.com");
+        then(teamInviteMailService).should().sendInvitations(
+                eq(team),
+                eq("https://todo.example.com/teams/join?code=ABCD1234"),
+                eq(List.of("member@example.com", "second@example.com"))
+        );
+    }
+
+    @Test
+    void 팀원이_이메일_초대를_보내면_실패한다() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        TeamMember member = TeamMember.create(team, user, TeamMemberRole.MEMBER);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
+
+        assertThatThrownBy(() -> teamService.inviteTeamMembers(
+                "user1",
+                10L,
+                new InviteTeamRequest(List.of("member@example.com"))
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("팀 초대 권한이 없습니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void 이메일_초대는_한번에_20명까지만_허용한다() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        TeamMember member = TeamMember.create(team, user, TeamMemberRole.LEADER);
+        List<String> emails = java.util.stream.IntStream.rangeClosed(1, 21)
+                .mapToObj(i -> "member" + i + "@example.com")
+                .toList();
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
+
+        assertThatThrownBy(() -> teamService.inviteTeamMembers("user1", 10L, new InviteTeamRequest(emails)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("한 번에 최대 20명까지 초대할 수 있습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void 이메일_초대_메일_발송_실패시_예외를_전달한다() {
+        setupInviteLinkProperties();
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        TeamMember member = TeamMember.create(team, user, TeamMemberRole.LEADER);
+        BusinessException mailException = new BusinessException(
+                "초대 메일 발송에 실패했습니다.",
+                HttpStatus.INTERNAL_SERVER_ERROR
+        );
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
+        willThrow(mailException).given(teamInviteMailService).sendInvitations(
+                eq(team),
+                eq("https://todo.example.com/teams/join?code=ABCD1234"),
+                eq(List.of("member@example.com"))
+        );
+
+        assertThatThrownBy(() -> teamService.inviteTeamMembers(
+                "user1",
+                10L,
+                new InviteTeamRequest(List.of("member@example.com"))
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("초대 메일 발송에 실패했습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus())
+                        .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR));
+    }
+
+    @Test
     void 팀장이_aiPersona를_변경한다() {
         User user = User.create("user1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
@@ -401,5 +514,10 @@ class TeamServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("소속된 팀이 아닙니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    private void setupInviteLinkProperties() {
+        ReflectionTestUtils.setField(teamService, "frontendBaseUrl", "https://todo.example.com/");
+        ReflectionTestUtils.setField(teamService, "teamInvitePath", "/teams/join");
     }
 }

@@ -3,6 +3,17 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS_ENABLE:true}
   jpa:
     hibernate:
       ddl-auto: update
@@ -25,6 +36,8 @@ minio:
 
 app:
   api-server-url: ${API_SERVER_URL:https://api.swe.bluerack.org}
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  team-invite-path: ${TEAM_INVITE_PATH:/teams/join}
 
 ai:
   server:

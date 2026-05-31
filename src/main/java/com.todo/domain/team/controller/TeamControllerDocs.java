@@ -1,9 +1,11 @@
 package com.todo.domain.team.controller;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
+import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
@@ -58,6 +60,31 @@ public interface TeamControllerDocs {
     })
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<ApiResponse<JoinTeamResponse>> joinTeam(JoinTeamRequest request, Authentication authentication);
+
+    @Operation(
+            summary = "팀 이메일 초대",
+            description = "팀장이 입력한 이메일 주소로 팀 참여 링크와 초대 코드를 발송합니다."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "팀 초대 메일 발송 성공",
+                    content = @Content(schema = @Schema(implementation = InviteTeamResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "이메일 입력값 오류",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 초대 권한 없음",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀 없음",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "초대 메일 발송 실패",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<ApiResponse<InviteTeamResponse>> inviteTeamMembers(
+            Long teamId,
+            InviteTeamRequest request,
+            Authentication authentication
+    );
 
     @Operation(summary = "팀 생성", description = "새로운 팀을 생성하고 요청자를 팀장으로 등록합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponses({

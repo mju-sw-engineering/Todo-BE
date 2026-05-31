@@ -3,9 +3,11 @@ package com.todo.domain.team.service;
 import com.todo.domain.chat.repository.ChatMessageRepository;
 import com.todo.domain.evaluation.repository.DailyEvaluationRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
+import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
@@ -25,12 +27,14 @@ import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -40,16 +44,19 @@ public class TeamService {
     private static final String INVITE_CODE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final int INVITE_CODE_LENGTH = 8;
     private static final int MAX_INVITE_CODE_RETRY = 5;
+    private static final int MAX_INVITE_EMAIL_COUNT = 20;
 
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final FileService fileService;
-    private final TodoRepository todoRepository;
-    private final TodoParticipantRepository todoParticipantRepository;
-    private final TodoReactionRepository todoReactionRepository;
-    private final ChatMessageRepository chatMessageRepository;
-    private final DailyEvaluationRepository dailyEvaluationRepository;
+    private final TeamInviteMailService teamInviteMailService;
+
+    @Value("${app.frontend-base-url:http://localhost:3000}")
+    private String frontendBaseUrl;
+
+    @Value("${app.team-invite-path:/teams/join}")
+    private String teamInvitePath;
 
     @Transactional
     public CreateTeamResponse createTeam(String loginId, CreateTeamRequest request) {
@@ -110,6 +117,32 @@ public class TeamService {
             throw new BusinessException("이미 참여한 팀입니다", HttpStatus.CONFLICT);
         }
         return JoinTeamResponse.from(team);
+    }
+
+    public InviteTeamResponse inviteTeamMembers(String loginId, Long teamId, InviteTeamRequest request) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));
+        TeamMember member = teamMemberRepository.findByTeamIdAndUserId(teamId, user.getId())
+                .orElseThrow(() -> new BusinessException("팀에 접근할 권한이 없습니다", HttpStatus.FORBIDDEN));
+
+        if (member.getRole() != TeamMemberRole.LEADER) {
+            throw new BusinessException("팀 초대 권한이 없습니다", HttpStatus.FORBIDDEN);
+        }
+
+        List<String> emails = normalizeEmails(request.emails());
+        if (emails.isEmpty()) {
+            throw new BusinessException("초대할 이메일을 입력해주세요", HttpStatus.BAD_REQUEST);
+        }
+        if (emails.size() > MAX_INVITE_EMAIL_COUNT) {
+            throw new BusinessException("한 번에 최대 20명까지 초대할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        String inviteLink = buildInviteLink(team.getInviteCode());
+        teamInviteMailService.sendInvitations(team, inviteLink, emails);
+
+        return InviteTeamResponse.from(team, inviteLink, emails);
     }
 
     @Transactional
@@ -174,23 +207,29 @@ public class TeamService {
         teamMemberRepository.delete(member);
     }
 
-    @Transactional
-    public void deleteTeamWithAllData(Long teamId) {
-        List<Long> todoIds = todoRepository.findIdsByTeamId(teamId);
-
-        if (!todoIds.isEmpty()) {
-            List<Long> participantIds = todoParticipantRepository.findIdsByTodoIdIn(todoIds);
-            if (!participantIds.isEmpty()) {
-                todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
-            }
-            todoParticipantRepository.deleteByTodoIdIn(todoIds);
-            chatMessageRepository.deleteByTodoIdIn(todoIds);
+    private List<String> normalizeEmails(List<String> emails) {
+        if (emails == null) {
+            return List.of();
         }
 
-        dailyEvaluationRepository.deleteByTeamId(teamId);
-        todoRepository.deleteByTeamId(teamId);
-        teamMemberRepository.deleteByTeamId(teamId);
-        teamRepository.deleteById(teamId);
+        return emails.stream()
+                .filter(email -> email != null && !email.isBlank())
+                .map(email -> email.trim().toLowerCase(Locale.ROOT))
+                .distinct()
+                .toList();
+    }
+
+    private String buildInviteLink(String inviteCode) {
+        String baseUrl = trimTrailingSlash(frontendBaseUrl);
+        String path = teamInvitePath.startsWith("/") ? teamInvitePath : "/" + teamInvitePath;
+        return baseUrl + path + "?code=" + inviteCode;
+    }
+
+    private String trimTrailingSlash(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 
     private String generateUniqueInviteCode() {
