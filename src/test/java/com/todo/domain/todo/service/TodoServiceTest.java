@@ -314,6 +314,7 @@ class TodoServiceTest {
         TodoParticipant participant = todoParticipantWithId(20L, todo, user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
+        given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
         given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
         given(todoParticipantRepository.countByTodoIdAndStatus(10L, ParticipantStatus.SUCCESS)).willReturn(1L);
 
@@ -321,6 +322,7 @@ class TodoServiceTest {
 
         assertThat(participant.getStatus()).isEqualTo(ParticipantStatus.SUCCESS);
         assertThat(participant.getProofImageKey()).isEqualTo("proof-key");
+        assertThat(participant.getProofThumbnailKey()).isEqualTo("proof-thumb-key");
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
     }
 
@@ -431,6 +433,7 @@ class TodoServiceTest {
     private TodoParticipant submittedParticipantWithId(Long participantId, Todo todo, User user) {
         TodoParticipant participant = todoParticipantWithId(participantId, todo, user);
         ReflectionTestUtils.setField(participant, "proofImageKey", "proof-key");
+        ReflectionTestUtils.setField(participant, "proofThumbnailKey", "proof-thumb-key");
         ReflectionTestUtils.setField(participant, "status", ParticipantStatus.SUCCESS);
         return participant;
     }

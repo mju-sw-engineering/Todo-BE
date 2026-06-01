@@ -36,6 +36,8 @@ public class TodoParticipant {
 
     private String proofImageKey;
 
+    private String proofThumbnailKey;
+
     private LocalDateTime submittedAt;
 
     public static TodoParticipant create(Todo todo, User user) {
@@ -47,10 +49,15 @@ public class TodoParticipant {
     }
 
     public void submit(String proofImageKey) {
+        submit(proofImageKey, null);
+    }
+
+    public void submit(String proofImageKey, String proofThumbnailKey) {
         if (this.status != ParticipantStatus.IN_PROGRESS) {
             throw new BusinessException("이미 제출되었거나 완료된 투두입니다.", HttpStatus.CONFLICT);
         }
         this.proofImageKey = proofImageKey;
+        this.proofThumbnailKey = proofThumbnailKey;
         this.status = ParticipantStatus.SUCCESS;
         this.submittedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
     }

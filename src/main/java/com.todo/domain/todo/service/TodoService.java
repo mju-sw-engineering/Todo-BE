@@ -200,6 +200,7 @@ public class TodoService {
                         p.getNickname(),
                         fileService.resolveImageUrl(p.getProfileImageUrl()),
                         fileService.resolveImageUrl(p.getProofImageKey()),
+                        fileService.resolveImageUrl(p.getProofThumbnailKey()),
                         mapStatus(p.getStatus()),
                         buildReactionResponses(reactionCountsByParticipantId.getOrDefault(
                                 p.getTodoParticipantId(),
@@ -236,7 +237,8 @@ public class TodoService {
             throw new BusinessException("마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
         }
 
-        participant.submit(request.proofImageKey());
+        String proofThumbnailKey = fileService.createProofThumbnail(request.proofImageKey());
+        participant.submit(request.proofImageKey(), proofThumbnailKey);
         participant.getTodo().getTeam().incrementSuccessCount();
 
         long totalParticipants = todoParticipantRepository.countByTodoId(todoId);

@@ -8,5 +8,6 @@ public interface TodoParticipantDetail {
     String getNickname();
     String getProfileImageUrl();
     String getProofImageKey();
+    String getProofThumbnailKey();
     ParticipantStatus getStatus();
 }

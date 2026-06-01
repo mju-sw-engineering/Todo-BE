@@ -13,6 +13,7 @@ public record ParticipantDetailResponse(
         @Schema(description = "닉네임") String nickname,
         @Schema(description = "프로필 이미지 URL") String profileImageUrl,
         @Schema(description = "인증 사진 URL") String proofImageUrl,
+        @Schema(description = "인증 사진 썸네일 URL") String proofThumbnailUrl,
         @Schema(description = "인증 상태 (완료 / 미완료)", example = "미완료") String status,
         @Schema(description = "이모지 반응 집계") List<TodoReactionResponse> reactions,
         @Schema(description = "내가 누른 이모지 반응", example = "LIKE") TodoReactionType myReaction
