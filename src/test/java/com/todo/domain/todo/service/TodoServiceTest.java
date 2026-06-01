@@ -361,6 +361,26 @@ class TodoServiceTest {
     }
 
     @Test
+    void 인증_사진_제출_트랜잭션이_실패하면_생성된_썸네일을_삭제한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoParticipant participantForCheck = todoParticipantWithId(20L, todo, user);
+        TodoParticipant alreadySubmittedParticipant = submittedParticipantWithId(20L, todo, user);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
+                .willReturn(Optional.of(participantForCheck), Optional.of(alreadySubmittedParticipant));
+        given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
+
+        assertThatThrownBy(() -> todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 제출되었거나 완료된 투두입니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+
+        then(fileService).should().deleteObject("proof-thumb-key");
+    }
+
+    @Test
     void 이모지_반응은_없으면_생성한다() {
         User user = userWithId(1L);
         Team team = teamWithId(100L);

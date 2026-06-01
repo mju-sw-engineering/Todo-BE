@@ -231,9 +231,18 @@ public class TodoService {
 
         String proofThumbnailKey = fileService.createProofThumbnail(request.proofImageKey());
 
-        SubmitTodoCheck result = transactionTemplate.execute(status ->
-                submitTodoInTransaction(todoId, check.userId(), request.proofImageKey(), proofThumbnailKey)
-        );
+        SubmitTodoCheck result;
+        try {
+            result = transactionTemplate.execute(status ->
+                    submitTodoInTransaction(todoId, check.userId(), request.proofImageKey(), proofThumbnailKey)
+            );
+        } catch (RuntimeException e) {
+            fileService.deleteObject(proofThumbnailKey);
+            throw e;
+        }
+        if (result.hasFailed()) {
+            fileService.deleteObject(proofThumbnailKey);
+        }
         result.throwIfFailed();
     }
 
@@ -321,6 +330,10 @@ public class TodoService {
 
         static SubmitTodoCheck failed(Long userId, String message, HttpStatus status) {
             return new SubmitTodoCheck(userId, new BusinessException(message, status));
+        }
+
+        boolean hasFailed() {
+            return failure != null;
         }
 
         void throwIfFailed() {
