@@ -215,20 +215,24 @@ public class TeamService {
     @Transactional
     public void deleteTeamWithAllData(Long teamId) {
         List<Long> todoIds = todoRepository.findIdsByTeamId(teamId);
-
-        if (!todoIds.isEmpty()) {
-            List<Long> participantIds = todoParticipantRepository.findIdsByTodoIdIn(todoIds);
-            if (!participantIds.isEmpty()) {
-                todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
-            }
-            todoParticipantRepository.deleteByTodoIdIn(todoIds);
-            chatMessageRepository.deleteByTodoIdIn(todoIds);
-        }
-
+        deleteTodosWithAllData(todoIds);
         dailyEvaluationRepository.deleteByTeamId(teamId);
-        todoRepository.deleteByTeamId(teamId);
         teamMemberRepository.deleteByTeamId(teamId);
         teamRepository.deleteById(teamId);
+    }
+
+    private void deleteTodosWithAllData(List<Long> todoIds) {
+        if (todoIds.isEmpty()) {
+            return;
+        }
+
+        List<Long> participantIds = todoParticipantRepository.findIdsByTodoIdIn(todoIds);
+        if (!participantIds.isEmpty()) {
+            todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
+        }
+        chatMessageRepository.deleteByTodoIdIn(todoIds);
+        todoParticipantRepository.deleteByTodoIdIn(todoIds);
+        todoRepository.deleteByIdIn(todoIds);
     }
 
     private List<String> normalizeEmails(List<String> emails) {

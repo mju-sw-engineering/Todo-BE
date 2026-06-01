@@ -9,6 +9,7 @@ import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.service.TeamService;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
+import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.entity.User;
@@ -34,6 +35,7 @@ public class UserService {
     private final TodoParticipantRepository todoParticipantRepository;
     private final TodoReactionRepository todoReactionRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final TodoRepository todoRepository;
 
     public MyPageResponse getMyPage(String loginId) {
         User user = userRepository.findByLoginId(loginId)
@@ -73,6 +75,8 @@ public class UserService {
             }
         }
 
+        deleteTodosCreatedByUser(user.getId());
+
         // 2. 채팅 발신자 null 처리 (메시지는 유지)
         chatMessageRepository.clearSenderByUserId(user.getId());
 
@@ -87,6 +91,21 @@ public class UserService {
 
         // 4. 유저 삭제
         userRepository.delete(user);
+    }
+
+    private void deleteTodosCreatedByUser(Long userId) {
+        List<Long> todoIds = todoRepository.findIdsByCreatorId(userId);
+        if (todoIds.isEmpty()) {
+            return;
+        }
+
+        List<Long> participantIds = todoParticipantRepository.findIdsByTodoIdIn(todoIds);
+        if (!participantIds.isEmpty()) {
+            todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
+        }
+        chatMessageRepository.deleteByTodoIdIn(todoIds);
+        todoParticipantRepository.deleteByTodoIdIn(todoIds);
+        todoRepository.deleteByIdIn(todoIds);
     }
 
     private MyPageResponse buildMyPageResponse(User user) {
