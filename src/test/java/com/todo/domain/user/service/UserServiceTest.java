@@ -132,12 +132,9 @@ class UserServiceTest {
     void 회원탈퇴_성공_혼자_있는_리더팀은_팀데이터까지_삭제한다() {
         User user = User.create("user1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
-        Team team = Team.create("스터디 팀", null, "ABCDEFGH");
-        ReflectionTestUtils.setField(team, "id", 10L);
-        TeamMember leader = TeamMember.create(team, user, TeamMemberRole.LEADER);
 
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamMemberRepository.findLeaderMembershipsByUserId(1L)).willReturn(List.of(leader));
+        given(teamMemberRepository.findLeaderTeamIdsByUserId(1L)).willReturn(List.of(10L));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
         given(todoRepository.findIdsByCreatorId(1L)).willReturn(List.of());
 
@@ -157,7 +154,7 @@ class UserServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
 
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamMemberRepository.findLeaderMembershipsByUserId(1L)).willReturn(List.of());
+        given(teamMemberRepository.findLeaderTeamIdsByUserId(1L)).willReturn(List.of());
         given(todoRepository.findIdsByCreatorId(1L)).willReturn(List.of(100L, 101L));
         given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L, 101L))).willReturn(List.of(1000L, 1001L));
 
@@ -177,7 +174,7 @@ class UserServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
 
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamMemberRepository.findLeaderMembershipsByUserId(1L)).willReturn(List.of());
+        given(teamMemberRepository.findLeaderTeamIdsByUserId(1L)).willReturn(List.of());
         given(todoRepository.findIdsByCreatorId(1L)).willReturn(List.of(100L));
         given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of());
 
