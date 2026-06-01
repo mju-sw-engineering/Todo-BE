@@ -4,18 +4,28 @@ import com.todo.global.config.MinioProperties;
 import com.todo.global.dto.UploadType;
 import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
+import com.todo.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.coobird.thumbnailator.Thumbnails;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.time.Duration;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -23,11 +33,21 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FileService {
 
+    private static final Set<String> ALLOWED_IMAGE_CONTENT_TYPES = Set.of(
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+    );
+    private static final int THUMBNAIL_MAX_SIZE = 480;
+    private static final double THUMBNAIL_QUALITY = 0.8;
+
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final MinioProperties props;
 
     public PresignedUploadResponse generatePresignedPutUrl(Long userId, PresignedUploadRequest request) {
+        validateImageContentType(request.contentType());
+
         String ext = extractExtension(request.fileName());
         String key = buildObjectKey(userId, request.type(), ext);
 
@@ -43,6 +63,41 @@ public class FileService {
         ).url().toExternalForm();
 
         return new PresignedUploadResponse(uploadUrl, key);
+    }
+
+    public String createProofThumbnail(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return null;
+        }
+
+        String thumbnailKey = buildThumbnailKey(objectKey);
+        try {
+            ResponseBytes<GetObjectResponse> source = s3Client.getObjectAsBytes(GetObjectRequest.builder()
+                    .bucket(props.getBucket())
+                    .key(objectKey)
+                    .build());
+
+            ByteArrayOutputStream thumbnailOutput = new ByteArrayOutputStream();
+            Thumbnails.of(new ByteArrayInputStream(source.asByteArray()))
+                    .size(THUMBNAIL_MAX_SIZE, THUMBNAIL_MAX_SIZE)
+                    .outputFormat("jpg")
+                    .outputQuality(THUMBNAIL_QUALITY)
+                    .toOutputStream(thumbnailOutput);
+
+            byte[] thumbnailBytes = thumbnailOutput.toByteArray();
+            s3Client.putObject(PutObjectRequest.builder()
+                            .bucket(props.getBucket())
+                            .key(thumbnailKey)
+                            .contentType("image/jpeg")
+                            .contentLength((long) thumbnailBytes.length)
+                            .build(),
+                    RequestBody.fromBytes(thumbnailBytes));
+
+            return thumbnailKey;
+        } catch (Exception e) {
+            log.warn("인증 사진 썸네일 생성 실패 — key: {}, message: {}", objectKey, e.getMessage());
+            return null;
+        }
     }
 
     public String resolveImageUrl(String objectKey) {
@@ -79,7 +134,20 @@ public class FileService {
             case PROFILE -> userId != null
                     ? "profiles/" + userId + "/" + uuid + suffix
                     : "profiles/temp/" + uuid + suffix;
+            case PROOF -> "proofs/" + userId + "/" + uuid + suffix;
         };
+    }
+
+    private String buildThumbnailKey(String objectKey) {
+        int slashIndex = objectKey.lastIndexOf('/');
+        String directory = slashIndex >= 0 ? objectKey.substring(0, slashIndex) : "";
+        String fileName = slashIndex >= 0 ? objectKey.substring(slashIndex + 1) : objectKey;
+        int dotIndex = fileName.lastIndexOf('.');
+        String baseName = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+        String thumbnailFileName = baseName + ".jpg";
+        return directory.isBlank()
+                ? "thumbs/" + thumbnailFileName
+                : directory + "/thumbs/" + thumbnailFileName;
     }
 
     private String extractExtension(String filename) {
@@ -87,5 +155,11 @@ public class FileService {
             return "";
         }
         return filename.substring(filename.lastIndexOf('.') + 1);
+    }
+
+    private void validateImageContentType(String contentType) {
+        if (!ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType)) {
+            throw new BusinessException("지원하지 않는 이미지 형식입니다.", HttpStatus.BAD_REQUEST);
+        }
     }
 }

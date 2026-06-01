@@ -1,5 +1,5 @@
 package com.todo.global.dto;
 
 public enum UploadType {
-    TEAM, PROFILE
+    TEAM, PROFILE, PROOF
 }

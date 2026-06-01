@@ -26,7 +26,8 @@ public interface TodoParticipantRepository extends JpaRepository<TodoParticipant
             SELECT tp.id AS todoParticipantId,
                    tp.user.id AS userId, tp.user.nickname AS nickname,
                    tp.user.profileImageUrl AS profileImageUrl,
-                   tp.proofImageKey AS proofImageKey, tp.status AS status
+                   tp.proofImageKey AS proofImageKey,
+                   tp.proofThumbnailKey AS proofThumbnailKey, tp.status AS status
             FROM TodoParticipant tp
             WHERE tp.todo.id = :todoId
             """)

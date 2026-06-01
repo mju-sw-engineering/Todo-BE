@@ -22,6 +22,7 @@ import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.service.FileService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -30,6 +31,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -43,6 +46,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class TodoServiceTest {
@@ -64,6 +69,16 @@ class TodoServiceTest {
     private FileService fileService;
     @Mock
     private TodoReactionRepository todoReactionRepository;
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+    }
 
     @Test
     void 전체_조회는_필터가_없으면_전체_레포지토리_메서드를_호출한다() {
@@ -314,6 +329,7 @@ class TodoServiceTest {
         TodoParticipant participant = todoParticipantWithId(20L, todo, user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
+        given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
         given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
         given(todoParticipantRepository.countByTodoIdAndStatus(10L, ParticipantStatus.SUCCESS)).willReturn(1L);
 
@@ -321,7 +337,68 @@ class TodoServiceTest {
 
         assertThat(participant.getStatus()).isEqualTo(ParticipantStatus.SUCCESS);
         assertThat(participant.getProofImageKey()).isEqualTo("proof-key");
+        assertThat(participant.getProofThumbnailKey()).isEqualTo("proof-thumb-key");
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
+    }
+
+    @Test
+    void 인증_사진_썸네일_생성에_실패해도_원본으로_제출을_완료한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoParticipant participant = todoParticipantWithId(20L, todo, user);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
+        given(fileService.createProofThumbnail("proof-key")).willReturn(null);
+        given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
+        given(todoParticipantRepository.countByTodoIdAndStatus(10L, ParticipantStatus.SUCCESS)).willReturn(1L);
+
+        todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key"));
+
+        assertThat(participant.getStatus()).isEqualTo(ParticipantStatus.SUCCESS);
+        assertThat(participant.getProofImageKey()).isEqualTo("proof-key");
+        assertThat(participant.getProofThumbnailKey()).isNull();
+        assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
+    }
+
+    @Test
+    void 인증_사진_제출_트랜잭션이_실패하면_생성된_썸네일을_삭제한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoParticipant participantForCheck = todoParticipantWithId(20L, todo, user);
+        TodoParticipant alreadySubmittedParticipant = submittedParticipantWithId(20L, todo, user);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
+                .willReturn(Optional.of(participantForCheck), Optional.of(alreadySubmittedParticipant));
+        given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
+
+        assertThatThrownBy(() -> todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 제출되었거나 완료된 투두입니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+
+        then(fileService).should().deleteObject("proof-thumb-key");
+    }
+
+    @Test
+    void 썸네일_삭제가_실패해도_제출_실패_예외를_유지한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoParticipant participantForCheck = todoParticipantWithId(20L, todo, user);
+        TodoParticipant alreadySubmittedParticipant = submittedParticipantWithId(20L, todo, user);
+        IllegalStateException deleteFailure = new IllegalStateException("delete failed");
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
+                .willReturn(Optional.of(participantForCheck), Optional.of(alreadySubmittedParticipant));
+        given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
+        doThrow(deleteFailure).when(fileService).deleteObject("proof-thumb-key");
+
+        assertThatThrownBy(() -> todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 제출되었거나 완료된 투두입니다.")
+                .satisfies(e -> assertThat(e.getSuppressed()).containsExactly(deleteFailure));
     }
 
     @Test
@@ -431,6 +508,7 @@ class TodoServiceTest {
     private TodoParticipant submittedParticipantWithId(Long participantId, Todo todo, User user) {
         TodoParticipant participant = todoParticipantWithId(participantId, todo, user);
         ReflectionTestUtils.setField(participant, "proofImageKey", "proof-key");
+        ReflectionTestUtils.setField(participant, "proofThumbnailKey", "proof-thumb-key");
         ReflectionTestUtils.setField(participant, "status", ParticipantStatus.SUCCESS);
         return participant;
     }

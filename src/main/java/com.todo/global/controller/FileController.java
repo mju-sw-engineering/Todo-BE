@@ -34,16 +34,16 @@ public class FileController {
             summary = "presigned PUT URL 발급",
             description = "클라이언트가 MinIO에 직접 업로드할 수 있는 presigned PUT URL을 발급합니다. " +
                     "PROFILE 타입은 비인증 요청도 허용됩니다(회원가입용). " +
-                    "TEAM 타입은 로그인 필수입니다. " +
+                    "TEAM, PROOF 타입은 로그인 필수입니다. " +
                     "업로드 후 반환된 objectKey를 팀 생성 또는 회원가입 API에 전달하세요."
     )
     public ResponseEntity<ApiResponse<PresignedUploadResponse>> generatePresignedUploadUrl(
             @Valid @RequestBody PresignedUploadRequest request,
             Authentication authentication
     ) {
-        if (request.type() == UploadType.TEAM) {
+        if (request.type() != UploadType.PROFILE) {
             if (authentication == null || !authentication.isAuthenticated()) {
-                throw new BusinessException("팀 이미지 업로드는 로그인이 필요합니다.", HttpStatus.UNAUTHORIZED);
+                throw new BusinessException("이미지 업로드는 로그인이 필요합니다.", HttpStatus.UNAUTHORIZED);
             }
             String loginId = authentication.getName();
             User user = userRepository.findByLoginId(loginId)
