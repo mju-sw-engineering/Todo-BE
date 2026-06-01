@@ -36,7 +36,9 @@ import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -67,6 +69,7 @@ public class TodoService {
     private final UserRepository userRepository;
     private final FileService fileService;
     private final TodoReactionRepository todoReactionRepository;
+    private final TransactionTemplate transactionTemplate;
 
     @Transactional
     public CreateTodoResponse createTodo(String loginId, Long teamId, CreateTodoRequest request) {
@@ -221,8 +224,20 @@ public class TodoService {
         );
     }
 
-    @Transactional(noRollbackFor = BusinessException.class)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void submitTodo(Long todoId, String loginId, SubmitTodoRequest request) {
+        SubmitTodoCheck check = transactionTemplate.execute(status -> checkSubmitTodo(todoId, loginId));
+        check.throwIfFailed();
+
+        String proofThumbnailKey = fileService.createProofThumbnail(request.proofImageKey());
+
+        SubmitTodoCheck result = transactionTemplate.execute(status ->
+                submitTodoInTransaction(todoId, check.userId(), request.proofImageKey(), proofThumbnailKey)
+        );
+        result.throwIfFailed();
+    }
+
+    private SubmitTodoCheck checkSubmitTodo(Long todoId, String loginId) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
@@ -234,11 +249,30 @@ public class TodoService {
         if (LocalDateTime.now(KST).isAfter(participant.getTodo().getDeadline())) {
             participant.markAsFail();
             participant.getTodo().markAsFail();
-            throw new BusinessException("마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
+            return SubmitTodoCheck.failed(user.getId(), "마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
         }
 
-        String proofThumbnailKey = fileService.createProofThumbnail(request.proofImageKey());
-        participant.submit(request.proofImageKey(), proofThumbnailKey);
+        return SubmitTodoCheck.success(user.getId());
+    }
+
+    private SubmitTodoCheck submitTodoInTransaction(
+            Long todoId,
+            Long userId,
+            String proofImageKey,
+            String proofThumbnailKey
+    ) {
+        markExpiredTodosAsFail();
+        TodoParticipant participant = todoParticipantRepository
+                .findByTodoIdAndUserIdWithTodo(todoId, userId)
+                .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.FORBIDDEN));
+
+        if (LocalDateTime.now(KST).isAfter(participant.getTodo().getDeadline())) {
+            participant.markAsFail();
+            participant.getTodo().markAsFail();
+            return SubmitTodoCheck.failed(userId, "마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        participant.submit(proofImageKey, proofThumbnailKey);
         participant.getTodo().getTeam().incrementSuccessCount();
 
         long totalParticipants = todoParticipantRepository.countByTodoId(todoId);
@@ -246,6 +280,8 @@ public class TodoService {
         if (successCount == totalParticipants) {
             participant.getTodo().markAsSuccess();
         }
+
+        return SubmitTodoCheck.success(userId);
     }
 
     @Transactional
@@ -276,6 +312,22 @@ public class TodoService {
 
     private void markExpiredTodosAsFail() {
         todoRepository.markExpiredTodosAsFail(LocalDateTime.now(KST));
+    }
+
+    private record SubmitTodoCheck(Long userId, BusinessException failure) {
+        static SubmitTodoCheck success(Long userId) {
+            return new SubmitTodoCheck(userId, null);
+        }
+
+        static SubmitTodoCheck failed(Long userId, String message, HttpStatus status) {
+            return new SubmitTodoCheck(userId, new BusinessException(message, status));
+        }
+
+        void throwIfFailed() {
+            if (failure != null) {
+                throw failure;
+            }
+        }
     }
 
     private User validateTeamMember(Long teamId, String loginId) {
