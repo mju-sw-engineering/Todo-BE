@@ -2,6 +2,7 @@ package com.todo.domain.team.repository;
 
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
+import com.todo.domain.team.entity.TeamMemberRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -25,8 +26,8 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     @Query("SELECT tm FROM TeamMember tm WHERE tm.team.id = :teamId AND tm.user.id != :userId ORDER BY tm.joinedAt ASC")
     List<TeamMember> findByTeamIdExcludingUser(@Param("teamId") Long teamId, @Param("userId") Long userId);
 
-    @Query("SELECT tm.team.id FROM TeamMember tm WHERE tm.user.id = :userId AND tm.role = 'LEADER'")
-    List<Long> findLeaderTeamIdsByUserId(@Param("userId") Long userId);
+    @Query("SELECT tm.team.id FROM TeamMember tm WHERE tm.user.id = :userId AND tm.role = :role")
+    List<Long> findTeamIdsByUserIdAndRole(@Param("userId") Long userId, @Param("role") TeamMemberRole role);
 
     @Modifying
     @Query("DELETE FROM TeamMember tm WHERE tm.team.id = :teamId")

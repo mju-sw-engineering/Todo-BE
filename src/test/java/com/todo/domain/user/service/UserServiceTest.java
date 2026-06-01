@@ -29,6 +29,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -134,7 +135,7 @@ class UserServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
 
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamMemberRepository.findLeaderTeamIdsByUserId(1L)).willReturn(List.of(10L));
+        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of(10L));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
         given(todoRepository.findIdsByCreatorId(1L)).willReturn(List.of());
 
@@ -154,7 +155,7 @@ class UserServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
 
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamMemberRepository.findLeaderTeamIdsByUserId(1L)).willReturn(List.of());
+        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         given(todoRepository.findIdsByCreatorId(1L)).willReturn(List.of(100L, 101L));
         given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L, 101L))).willReturn(List.of(1000L, 1001L));
 
@@ -174,13 +175,13 @@ class UserServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
 
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamMemberRepository.findLeaderTeamIdsByUserId(1L)).willReturn(List.of());
+        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         given(todoRepository.findIdsByCreatorId(1L)).willReturn(List.of(100L));
         given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of());
 
         userService.deleteUser("user1");
 
-        verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(List.of());
+        verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
         verify(todoRepository).deleteByIdIn(List.of(100L));
         verify(userRepository).delete(user);
     }

@@ -59,7 +59,7 @@ public class UserService {
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
 
         // 1. LEADER인 팀 처리
-        List<Long> leaderTeamIds = teamMemberRepository.findLeaderTeamIdsByUserId(user.getId());
+        List<Long> leaderTeamIds = teamMemberRepository.findTeamIdsByUserIdAndRole(user.getId(), TeamMemberRole.LEADER);
         for (Long teamId : leaderTeamIds) {
             List<TeamMember> others = teamMemberRepository.findByTeamIdExcludingUser(teamId, user.getId());
 
