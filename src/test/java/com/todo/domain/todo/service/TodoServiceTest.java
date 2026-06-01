@@ -45,8 +45,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class TodoServiceTest {
@@ -378,6 +379,26 @@ class TodoServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
 
         then(fileService).should().deleteObject("proof-thumb-key");
+    }
+
+    @Test
+    void 썸네일_삭제가_실패해도_제출_실패_예외를_유지한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoParticipant participantForCheck = todoParticipantWithId(20L, todo, user);
+        TodoParticipant alreadySubmittedParticipant = submittedParticipantWithId(20L, todo, user);
+        IllegalStateException deleteFailure = new IllegalStateException("delete failed");
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
+                .willReturn(Optional.of(participantForCheck), Optional.of(alreadySubmittedParticipant));
+        given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
+        doThrow(deleteFailure).when(fileService).deleteObject("proof-thumb-key");
+
+        assertThatThrownBy(() -> todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 제출되었거나 완료된 투두입니다.")
+                .satisfies(e -> assertThat(e.getSuppressed()).containsExactly(deleteFailure));
     }
 
     @Test

@@ -237,13 +237,21 @@ public class TodoService {
                     submitTodoInTransaction(todoId, check.userId(), request.proofImageKey(), proofThumbnailKey)
             );
         } catch (RuntimeException e) {
-            fileService.deleteObject(proofThumbnailKey);
+            cleanupProofThumbnail(proofThumbnailKey, e);
             throw e;
         }
         if (result.hasFailed()) {
-            fileService.deleteObject(proofThumbnailKey);
+            cleanupProofThumbnail(proofThumbnailKey, result.failure());
         }
         result.throwIfFailed();
+    }
+
+    private void cleanupProofThumbnail(String proofThumbnailKey, RuntimeException primaryFailure) {
+        try {
+            fileService.deleteObject(proofThumbnailKey);
+        } catch (RuntimeException deleteException) {
+            primaryFailure.addSuppressed(deleteException);
+        }
     }
 
     private SubmitTodoCheck checkSubmitTodo(Long todoId, String loginId) {
