@@ -129,12 +129,8 @@ public class TeamService {
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));
-        TeamMember member = teamMemberRepository.findByTeamIdAndUserId(teamId, user.getId())
+        teamMemberRepository.findByTeamIdAndUserId(teamId, user.getId())
                 .orElseThrow(() -> new BusinessException("팀에 접근할 권한이 없습니다", HttpStatus.FORBIDDEN));
-
-        if (member.getRole() != TeamMemberRole.LEADER) {
-            throw new BusinessException("팀 초대 권한이 없습니다", HttpStatus.FORBIDDEN);
-        }
 
         List<String> emails = normalizeEmails(request.emails());
         if (emails.isEmpty()) {

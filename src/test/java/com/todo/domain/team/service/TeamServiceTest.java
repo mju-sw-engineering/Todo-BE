@@ -375,7 +375,8 @@ class TeamServiceTest {
     }
 
     @Test
-    void 팀원이_이메일_초대를_보내면_실패한다() {
+    void 팀원도_이메일로_팀원을_초대한다() {
+        setupInviteLinkProperties();
         User user = User.create("user1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
@@ -386,14 +387,19 @@ class TeamServiceTest {
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
 
-        assertThatThrownBy(() -> teamService.inviteTeamMembers(
+        InviteTeamResponse response = teamService.inviteTeamMembers(
                 "user1",
                 10L,
                 new InviteTeamRequest(List.of("member@example.com"))
-        ))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("팀 초대 권한이 없습니다")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+        );
+
+        assertThat(response.sentCount()).isEqualTo(1);
+        assertThat(response.emails()).containsExactly("member@example.com");
+        then(teamInviteMailService).should().sendInvitations(
+                eq(team),
+                eq("https://todo.example.com/teams/join?code=ABCD1234"),
+                eq(List.of("member@example.com"))
+        );
     }
 
     @Test
