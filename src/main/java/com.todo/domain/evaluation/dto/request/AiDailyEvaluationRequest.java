@@ -10,6 +10,8 @@ import java.util.List;
 public record AiDailyEvaluationRequest(
         Long teamId,
         LocalDate date,
+        LocalDate basisDate,
+        boolean fallback,
         AiPersona persona,
         Summary summary,
         List<TodoInfo> todos

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -95,6 +96,19 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
             ORDER BY t.deadline ASC
             """)
     List<TodoDailyEvaluationStat> findDailyEvaluationStats(
+            @Param("teamId") Long teamId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end
+    );
+
+    @Query(value = """
+            SELECT DATE(MAX(t.deadline))
+            FROM todos t
+            WHERE t.team_id = :teamId
+              AND t.deadline >= :start
+              AND t.deadline < :end
+            """, nativeQuery = true)
+    Optional<LocalDate> findLatestDailyEvaluationTodoDate(
             @Param("teamId") Long teamId,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end
