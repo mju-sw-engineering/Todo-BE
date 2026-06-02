@@ -34,6 +34,7 @@ import java.util.Optional;
 public class DailyEvaluationService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final int FALLBACK_LOOKBACK_DAYS = 14;
 
     private final DailyEvaluationRepository dailyEvaluationRepository;
     private final TeamRepository teamRepository;
@@ -74,13 +75,29 @@ public class DailyEvaluationService {
                 evaluationDate.atStartOfDay(),
                 evaluationDate.plusDays(1).atStartOfDay()
         );
+        LocalDate basisDate = evaluationDate;
+        boolean fallback = false;
 
         if (todos.isEmpty()) {
-            throw new BusinessException("전날 투두가 없어 평가를 생성할 수 없습니다.", HttpStatus.NOT_FOUND);
+            basisDate = todoRepository.findLatestDailyEvaluationTodoDate(
+                    team.getId(),
+                    evaluationDate.minusDays(FALLBACK_LOOKBACK_DAYS).atStartOfDay(),
+                    evaluationDate.atStartOfDay()
+            ).orElseThrow(() -> new BusinessException("최근 투두가 없어 평가를 생성할 수 없습니다.", HttpStatus.NOT_FOUND));
+            todos = todoRepository.findDailyEvaluationStats(
+                    team.getId(),
+                    basisDate.atStartOfDay(),
+                    basisDate.plusDays(1).atStartOfDay()
+            );
+            fallback = true;
+        }
+
+        if (todos.isEmpty()) {
+            throw new BusinessException("최근 투두가 없어 평가를 생성할 수 없습니다.", HttpStatus.NOT_FOUND);
         }
 
         AiPersona persona = team.getAiPersona();
-        AiDailyEvaluationRequest request = buildAiRequest(team, evaluationDate, persona, todos);
+        AiDailyEvaluationRequest request = buildAiRequest(team, evaluationDate, basisDate, fallback, persona, todos);
         AiDailyEvaluationResponse aiResponse = aiDailyEvaluationClient.createDailyEvaluation(request);
 
         if (savedEvaluation != null) {
@@ -109,6 +126,8 @@ public class DailyEvaluationService {
     private AiDailyEvaluationRequest buildAiRequest(
             Team team,
             LocalDate evaluationDate,
+            LocalDate basisDate,
+            boolean fallback,
             AiPersona persona,
             List<TodoDailyEvaluationStat> todos
     ) {
@@ -137,7 +156,7 @@ public class DailyEvaluationService {
                 ))
                 .toList();
 
-        return new AiDailyEvaluationRequest(team.getId(), evaluationDate, persona, summary, todoInfos);
+        return new AiDailyEvaluationRequest(team.getId(), evaluationDate, basisDate, fallback, persona, summary, todoInfos);
     }
 
     private long countByStatus(List<TodoDailyEvaluationStat> todos, TodoStatus status) {

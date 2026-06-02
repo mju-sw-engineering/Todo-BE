@@ -112,6 +112,9 @@ class DailyEvaluationServiceTest {
         assertThat(request.summary().successCount()).isEqualTo(1);
         assertThat(request.summary().inProgressCount()).isEqualTo(1);
         assertThat(request.summary().achievementRate()).isEqualTo(50);
+        assertThat(request.date()).isEqualTo(yesterday);
+        assertThat(request.basisDate()).isEqualTo(yesterday);
+        assertThat(request.fallback()).isFalse();
         assertThat(request.todos()).hasSize(2);
     }
 
@@ -162,7 +165,43 @@ class DailyEvaluationServiceTest {
     }
 
     @Test
-    void 전날_투두가_없으면_평가를_생성하지_않는다() {
+    void 전날_투두가_없으면_최근_이전_투두로_평가를_생성한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(10L, AiPersona.ANGEL);
+        LocalDate yesterday = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        LocalDate fallbackDate = yesterday.minusDays(3);
+        List<TodoDailyEvaluationStat> fallbackStats = List.of(
+                stat("이전 성공 투두", TodoStatus.SUCCESS, 2, 2)
+        );
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
+        given(dailyEvaluationRepository.findByTeamIdAndEvaluationDate(10L, yesterday)).willReturn(Optional.empty());
+        given(todoRepository.findDailyEvaluationStats(eq(10L), any(), any()))
+                .willReturn(List.of())
+                .willReturn(fallbackStats);
+        given(todoRepository.findLatestDailyEvaluationTodoDate(eq(10L), any(), any())).willReturn(Optional.of(fallbackDate));
+        given(aiDailyEvaluationClient.createDailyEvaluation(any()))
+                .willReturn(new AiDailyEvaluationResponse(AiPersona.ANGEL, "이전 투두 기반 평가"));
+        given(dailyEvaluationRepository.saveAndFlush(any(DailyEvaluation.class))).willAnswer(inv -> inv.getArgument(0));
+
+        DailyEvaluationResponse response = dailyEvaluationService.getDailyEvaluation(10L, "user1");
+
+        assertThat(response.date()).isEqualTo(yesterday);
+        assertThat(response.message()).isEqualTo("이전 투두 기반 평가");
+
+        ArgumentCaptor<AiDailyEvaluationRequest> requestCaptor = ArgumentCaptor.forClass(AiDailyEvaluationRequest.class);
+        then(aiDailyEvaluationClient).should().createDailyEvaluation(requestCaptor.capture());
+        AiDailyEvaluationRequest request = requestCaptor.getValue();
+        assertThat(request.date()).isEqualTo(yesterday);
+        assertThat(request.basisDate()).isEqualTo(fallbackDate);
+        assertThat(request.fallback()).isTrue();
+        assertThat(request.summary().totalTodoCount()).isEqualTo(1);
+    }
+
+    @Test
+    void 전날과_최근_이전_투두가_모두_없으면_평가를_생성하지_않는다() {
         User user = userWithId(1L);
         Team team = teamWithId(10L, AiPersona.ANGEL);
         LocalDate yesterday = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
@@ -172,10 +211,11 @@ class DailyEvaluationServiceTest {
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
         given(dailyEvaluationRepository.findByTeamIdAndEvaluationDate(10L, yesterday)).willReturn(Optional.empty());
         given(todoRepository.findDailyEvaluationStats(eq(10L), any(), any())).willReturn(List.of());
+        given(todoRepository.findLatestDailyEvaluationTodoDate(eq(10L), any(), any())).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> dailyEvaluationService.getDailyEvaluation(10L, "user1"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("전날 투두가 없어 평가를 생성할 수 없습니다.")
+                .hasMessage("최근 투두가 없어 평가를 생성할 수 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
 
         then(aiDailyEvaluationClient).should(never()).createDailyEvaluation(any());
