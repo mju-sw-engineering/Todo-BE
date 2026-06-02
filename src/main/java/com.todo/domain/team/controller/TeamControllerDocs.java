@@ -63,7 +63,7 @@ public interface TeamControllerDocs {
 
     @Operation(
             summary = "팀 이메일 초대",
-            description = "팀장이 입력한 이메일 주소로 팀 참여 링크와 초대 코드를 발송합니다."
+            description = "팀원이 입력한 이메일 주소로 팀 참여 링크와 초대 코드를 발송합니다."
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "팀 초대 메일 발송 성공",
@@ -72,7 +72,7 @@ public interface TeamControllerDocs {
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
                     content = @Content(schema = @Schema(hidden = true))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 초대 권한 없음",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 접근 권한 없음",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀 없음",
                     content = @Content(schema = @Schema(hidden = true))),
