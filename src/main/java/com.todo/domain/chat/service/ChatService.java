@@ -11,6 +11,9 @@ import com.todo.domain.chat.entity.ChatMessage;
 import com.todo.domain.chat.entity.ChatReadStatus;
 import com.todo.domain.chat.repository.ChatMessageRepository;
 import com.todo.domain.chat.repository.ChatReadStatusRepository;
+import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.service.NotificationService;
+import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.repository.TodoRepository;
@@ -35,6 +38,7 @@ public class ChatService {
     private final TodoRepository todoRepository;
     private final UserRepository userRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final NotificationService notificationService;
 
     @Transactional
     public ChatMessageResponse saveMessage(Long todoId, String loginId, ChatMessageRequest request) {
@@ -49,6 +53,8 @@ public class ChatService {
         }
 
         ChatMessage message = chatMessageRepository.save(ChatMessage.create(todo, sender, request.content()));
+
+        sendChatNotifications(todo, sender, request.content());
 
         return ChatMessageResponse.from(message);
     }
@@ -129,6 +135,17 @@ public class ChatService {
                 .orElseGet(() -> chatReadStatusRepository.countAllMessages(todoId));
 
         return ChatUnreadCountResponse.of(todoId, unreadCount);
+    }
+
+    private void sendChatNotifications(Todo todo, User sender, String content) {
+        List<TeamMember> receivers = teamMemberRepository.findByTeamIdExcludingUser(
+                todo.getTeam().getId(), sender.getId()
+        );
+        String title = sender.getNickname() + "님이 메시지를 보냈습니다.";
+        String notificationContent = todo.getTitle() + ": " + content;
+        for (TeamMember member : receivers) {
+            notificationService.send(member.getUser(), NotificationType.CHAT_MESSAGE, title, notificationContent, todo.getId());
+        }
     }
 
     private List<ChatMessage> fetchMessages(Long todoId, Long cursorId, int limit) {
