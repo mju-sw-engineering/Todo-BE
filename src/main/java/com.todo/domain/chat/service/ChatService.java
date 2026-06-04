@@ -1,10 +1,14 @@
 package com.todo.domain.chat.service;
 
 import com.todo.domain.chat.dto.request.ChatMessageRequest;
+import com.todo.domain.chat.dto.request.MarkAsReadRequest;
 import com.todo.domain.chat.dto.response.ChatMessagePageResponse;
 import com.todo.domain.chat.dto.response.ChatMessageResponse;
+import com.todo.domain.chat.dto.response.ChatUnreadCountResponse;
 import com.todo.domain.chat.entity.ChatMessage;
+import com.todo.domain.chat.entity.ChatReadStatus;
 import com.todo.domain.chat.repository.ChatMessageRepository;
+import com.todo.domain.chat.repository.ChatReadStatusRepository;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.repository.TodoRepository;
@@ -25,6 +29,7 @@ import java.util.List;
 public class ChatService {
 
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatReadStatusRepository chatReadStatusRepository;
     private final TodoRepository todoRepository;
     private final UserRepository userRepository;
     private final TeamMemberRepository teamMemberRepository;
@@ -69,6 +74,45 @@ public class ChatService {
                 .toList();
 
         return new ChatMessagePageResponse(responses, hasNext, nextCursorId);
+    }
+
+    @Transactional
+    public void markAsRead(Long todoId, String loginId, MarkAsReadRequest request) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
+
+        Todo todo = todoRepository.findById(todoId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
+
+        if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), user.getId())) {
+            throw new BusinessException("채팅에 접근할 권한이 없습니다.", HttpStatus.FORBIDDEN);
+        }
+
+        ChatReadStatus readStatus = chatReadStatusRepository
+                .findByUserIdAndTodoId(user.getId(), todoId)
+                .orElseGet(() -> chatReadStatusRepository.save(ChatReadStatus.create(user, todo)));
+
+        readStatus.updateLastReadMessageId(request.lastReadMessageId());
+    }
+
+    public ChatUnreadCountResponse getUnreadCount(Long todoId, String loginId) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
+
+        Todo todo = todoRepository.findById(todoId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
+
+        if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), user.getId())) {
+            throw new BusinessException("채팅에 접근할 권한이 없습니다.", HttpStatus.FORBIDDEN);
+        }
+
+        long unreadCount = chatReadStatusRepository.findByUserIdAndTodoId(user.getId(), todoId)
+                .map(status -> status.getLastReadMessageId() == null
+                        ? chatReadStatusRepository.countAllMessages(todoId)
+                        : chatReadStatusRepository.countUnreadMessages(todoId, status.getLastReadMessageId()))
+                .orElseGet(() -> chatReadStatusRepository.countAllMessages(todoId));
+
+        return ChatUnreadCountResponse.of(todoId, unreadCount);
     }
 
     private List<ChatMessage> fetchMessages(Long todoId, Long cursorId, int limit) {
