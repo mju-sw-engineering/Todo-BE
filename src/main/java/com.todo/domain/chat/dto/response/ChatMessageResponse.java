@@ -2,7 +2,8 @@ package com.todo.domain.chat.dto.response;
 
 import com.todo.domain.chat.entity.ChatMessage;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 public record ChatMessageResponse(
         Long messageId,
@@ -10,7 +11,7 @@ public record ChatMessageResponse(
         String senderNickname,
         String senderProfileImageUrl,
         String content,
-        LocalDateTime createdAt
+        OffsetDateTime createdAt
 ) {
     public static ChatMessageResponse from(ChatMessage message) {
         return new ChatMessageResponse(
@@ -19,7 +20,7 @@ public record ChatMessageResponse(
                 message.getSender().getNickname(),
                 message.getSender().getProfileImageUrl(),
                 message.getContent(),
-                message.getCreatedAt()
+                message.getCreatedAt().atOffset(ZoneOffset.ofHours(9))
         );
     }
 }
