@@ -1,6 +1,9 @@
 package com.todo.domain.todo.service;
 
+import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
+import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
@@ -70,6 +73,7 @@ public class TodoService {
     private final FileService fileService;
     private final TodoReactionRepository todoReactionRepository;
     private final TransactionTemplate transactionTemplate;
+    private final NotificationService notificationService;
 
     @Transactional
     public CreateTodoResponse createTodo(String loginId, Long teamId, CreateTodoRequest request) {
@@ -101,7 +105,20 @@ public class TodoService {
             todoParticipantRepository.save(TodoParticipant.create(todo, assignee));
         }
 
+        sendTodoCreatedNotifications(todo, creator);
+
         return CreateTodoResponse.from(todo, assigneeIds);
+    }
+
+    private void sendTodoCreatedNotifications(Todo todo, User creator) {
+        List<TeamMember> receivers = teamMemberRepository.findByTeamIdExcludingUser(
+                todo.getTeam().getId(), creator.getId()
+        );
+        String title = "새로운 투두가 생성되었습니다.";
+        String content = creator.getNickname() + "님이 '" + todo.getTitle() + "'을(를) 만들었습니다.";
+        for (TeamMember member : receivers) {
+            notificationService.send(member.getUser(), NotificationType.TODO_CREATED, title, content, todo.getId());
+        }
     }
 
 
