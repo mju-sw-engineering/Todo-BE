@@ -2,9 +2,11 @@ package com.todo.domain.chat.service;
 
 import com.todo.domain.chat.dto.request.ChatMessageRequest;
 import com.todo.domain.chat.dto.request.MarkAsReadRequest;
+import com.todo.domain.chat.dto.request.TypingStatusRequest;
 import com.todo.domain.chat.dto.response.ChatMessagePageResponse;
 import com.todo.domain.chat.dto.response.ChatMessageResponse;
 import com.todo.domain.chat.dto.response.ChatUnreadCountResponse;
+import com.todo.domain.chat.dto.response.TypingStatusResponse;
 import com.todo.domain.chat.entity.ChatMessage;
 import com.todo.domain.chat.entity.ChatReadStatus;
 import com.todo.domain.chat.repository.ChatMessageRepository;
@@ -74,6 +76,20 @@ public class ChatService {
                 .toList();
 
         return new ChatMessagePageResponse(responses, hasNext, nextCursorId);
+    }
+
+    public TypingStatusResponse handleTyping(Long todoId, String loginId, TypingStatusRequest request) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
+
+        Todo todo = todoRepository.findById(todoId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
+
+        if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), user.getId())) {
+            throw new BusinessException("채팅에 참여할 권한이 없습니다.", HttpStatus.FORBIDDEN);
+        }
+
+        return TypingStatusResponse.of(user, request.isTyping());
     }
 
     @Transactional

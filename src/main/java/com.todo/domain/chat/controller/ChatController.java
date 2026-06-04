@@ -2,9 +2,11 @@ package com.todo.domain.chat.controller;
 
 import com.todo.domain.chat.dto.request.ChatMessageRequest;
 import com.todo.domain.chat.dto.request.MarkAsReadRequest;
+import com.todo.domain.chat.dto.request.TypingStatusRequest;
 import com.todo.domain.chat.dto.response.ChatMessagePageResponse;
 import com.todo.domain.chat.dto.response.ChatMessageResponse;
 import com.todo.domain.chat.dto.response.ChatUnreadCountResponse;
+import com.todo.domain.chat.dto.response.TypingStatusResponse;
 import com.todo.domain.chat.service.ChatService;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.response.ApiResponse;
@@ -41,6 +43,16 @@ public class ChatController implements ChatControllerDocs {
             Principal principal
     ) {
         return chatService.saveMessage(todoId, principal.getName(), request);
+    }
+
+    @MessageMapping("/todos/{todoId}/typing")
+    @SendTo("/topic/todos/{todoId}/typing")
+    public TypingStatusResponse handleTyping(
+            @DestinationVariable Long todoId,
+            @Payload @Valid TypingStatusRequest request,
+            Principal principal
+    ) {
+        return chatService.handleTyping(todoId, principal.getName(), request);
     }
 
     @MessageExceptionHandler
