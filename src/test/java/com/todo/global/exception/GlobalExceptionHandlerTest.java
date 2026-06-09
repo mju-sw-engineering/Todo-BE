@@ -65,6 +65,38 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void 검증_예외는_필드_에러가_없으면_기본_메시지를_반환한다() throws Exception {
+        Method method = SampleController.class.getDeclaredMethod("handle", String.class);
+        BeanPropertyBindingResult bindingResult = new BeanPropertyBindingResult(new Object(), "request");
+        MethodArgumentNotValidException exception = new MethodArgumentNotValidException(
+                new org.springframework.core.MethodParameter(method, 0),
+                bindingResult
+        );
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleValidation(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().getMessage()).isEqualTo("입력값이 올바르지 않습니다.");
+    }
+
+    @Test
+    void 검증_예외는_필드_에러가_여러개면_첫번째_메시지를_반환한다() throws Exception {
+        Method method = SampleController.class.getDeclaredMethod("handle", String.class);
+        BeanPropertyBindingResult bindingResult = new BeanPropertyBindingResult(new Object(), "request");
+        bindingResult.addError(new FieldError("request", "name", "이름은 필수입니다."));
+        bindingResult.addError(new FieldError("request", "email", "이메일 형식이 올바르지 않습니다."));
+        MethodArgumentNotValidException exception = new MethodArgumentNotValidException(
+                new org.springframework.core.MethodParameter(method, 0),
+                bindingResult
+        );
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleValidation(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().getMessage()).isEqualTo("이름은 필수입니다.");
+    }
+
+    @Test
     void 미처리_예외를_500으로_변환한다() {
         ResponseEntity<ApiResponse<Void>> response = handler.handleException(new RuntimeException("boom"));
 

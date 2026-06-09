@@ -97,6 +97,44 @@ class FileControllerTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 
+    @Test
+    void 인증샷_업로드는_로그인이_필요하다() {
+        FileController controller = new FileController(fileService, userRepository);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png");
+
+        assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미지 업로드는 로그인이 필요합니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
+    @Test
+    void 인증샷_업로드는_사용자를_찾아_userId를_전달한다() {
+        FileController controller = new FileController(fileService, userRepository);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png");
+        PresignedUploadResponse serviceResponse = new PresignedUploadResponse("https://upload", "proofs/1/a.png");
+        User user = userWithId(1L);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(fileService.generatePresignedPutUrl(1L, request)).willReturn(serviceResponse);
+
+        ResponseEntity<ApiResponse<PresignedUploadResponse>> response =
+                controller.generatePresignedUploadUrl(request, auth());
+
+        assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
+    }
+
+    @Test
+    void 인증샷_업로드는_사용자가_없으면_401_예외를_던진다() {
+        FileController controller = new FileController(fileService, userRepository);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png");
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, auth()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("사용자를 찾을 수 없습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
     private TestingAuthenticationToken auth() {
         TestingAuthenticationToken authentication = new TestingAuthenticationToken("user1", null);
         authentication.setAuthenticated(true);
