@@ -3,8 +3,11 @@ package com.todo.domain.todo.service;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
+import com.todo.domain.todo.dto.request.CreateTodoRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
+import com.todo.domain.todo.dto.response.CreateTodoResponse;
+import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
@@ -15,7 +18,9 @@ import com.todo.domain.todo.entity.TodoReaction;
 import com.todo.domain.todo.entity.TodoReactionType;
 import com.todo.domain.todo.entity.TodoStatus;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
+import com.todo.domain.todo.repository.TodoParticipantDetail;
 import com.todo.domain.todo.repository.TodoParticipantSummary;
+import com.todo.domain.todo.repository.TodoReactionCount;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.entity.User;
@@ -36,6 +41,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -465,6 +471,114 @@ class TodoServiceTest {
         then(todoReactionRepository).should().delete(reaction);
     }
 
+    @Test
+    void 투두_생성_성공() {
+        User creator = userWithId(1L);
+        User assignee = userWithId(2L);
+        Team team = teamWithId(100L);
+        OffsetDateTime deadline = OffsetDateTime.parse("2026-06-04T12:00:00+09:00");
+        CreateTodoRequest request = new CreateTodoRequest("투두", "설명", deadline, List.of(2L));
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
+        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(todoRepository.save(any(Todo.class))).willAnswer(invocation -> {
+            Todo todo = invocation.getArgument(0);
+            ReflectionTestUtils.setField(todo, "id", 10L);
+            return todo;
+        });
+        given(userRepository.findById(2L)).willReturn(Optional.of(assignee));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 2L)).willReturn(true);
+
+        CreateTodoResponse response = todoService.createTodo("user1", 100L, request);
+
+        assertThat(response.todoId()).isEqualTo(10L);
+        assertThat(response.teamId()).isEqualTo(100L);
+        assertThat(response.creatorId()).isEqualTo(1L);
+        assertThat(response.title()).isEqualTo("투두");
+        assertThat(response.description()).isEqualTo("설명");
+        assertThat(response.assigneeIds()).containsExactly(2L);
+        then(todoParticipantRepository).should().save(any(TodoParticipant.class));
+    }
+
+    @Test
+    void 투두_생성은_팀원이_아니면_403_예외를_던진다() {
+        User creator = userWithId(1L);
+        Team team = teamWithId(100L);
+        CreateTodoRequest request = new CreateTodoRequest(
+                "투두",
+                null,
+                OffsetDateTime.parse("2026-06-04T12:00:00+09:00"),
+                List.of(2L)
+        );
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
+        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
+
+        assertThatThrownBy(() -> todoService.createTodo("user1", 100L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("팀에 접근할 권한이 없습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void 투두_상세_조회_성공() {
+        User viewer = userWithId(1L);
+        User creator = userWithId(99L);
+        Team team = teamWithId(100L);
+        Todo todo = Todo.create(team, creator, "투두", "설명", LocalDateTime.of(2026, 6, 4, 12, 0));
+        ReflectionTestUtils.setField(todo, "id", 10L);
+        TodoParticipant mine = submittedParticipantWithId(20L, todo, viewer);
+        TodoReaction myReaction = TodoReaction.create(mine, viewer, TodoReactionType.LIKE);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
+        given(todoRepository.markExpiredTodosAsFail(any())).willReturn(0);
+        given(todoRepository.findByIdWithCreatorAndTeam(10L)).willReturn(Optional.of(todo));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(todoParticipantRepository.findDetailByTodoId(10L)).willReturn(List.of(
+                participantDetail(20L, 1L, "닉네임1", "profiles/1.png", "proof-key", "proof-thumb-key", ParticipantStatus.SUCCESS),
+                participantDetail(21L, 2L, "닉네임2", null, null, null, ParticipantStatus.IN_PROGRESS)
+        ));
+        given(todoReactionRepository.countByTodoParticipantIds(List.of(20L, 21L))).willReturn(List.of(
+                reactionCount(20L, TodoReactionType.LIKE, 2L)
+        ));
+        given(todoReactionRepository.findByTodoParticipantIdInAndUserId(List.of(20L, 21L), 1L))
+                .willReturn(List.of(myReaction));
+        given(fileService.resolveImageUrl("profiles/1.png")).willReturn("profile-url");
+        given(fileService.resolveImageUrl("proof-key")).willReturn("proof-url");
+        given(fileService.resolveImageUrl("proof-thumb-key")).willReturn("thumb-url");
+
+        TodoDetailResponse response = todoService.getTodoDetail(10L, "user1");
+
+        assertThat(response.todoId()).isEqualTo(10L);
+        assertThat(response.achievementCount()).isEqualTo("1 / 2");
+        assertThat(response.participants()).hasSize(2);
+        assertThat(response.participants().get(0).profileImageUrl()).isEqualTo("profile-url");
+        assertThat(response.participants().get(0).proofImageUrl()).isEqualTo("proof-url");
+        assertThat(response.participants().get(0).proofThumbnailUrl()).isEqualTo("thumb-url");
+        assertThat(response.participants().get(0).myReaction()).isEqualTo(TodoReactionType.LIKE);
+        assertThat(response.participants().get(0).reactions())
+                .anySatisfy(reaction -> {
+                    assertThat(reaction.type()).isEqualTo(TodoReactionType.LIKE);
+                    assertThat(reaction.count()).isEqualTo(2);
+                });
+    }
+
+    @Test
+    void 투두_상세_조회는_참여자가_없어도_빈_반응맵으로_응답한다() {
+        User viewer = userWithId(1L);
+        Team team = teamWithId(100L);
+        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 6, 4, 12, 0));
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
+        given(todoRepository.markExpiredTodosAsFail(any())).willReturn(0);
+        given(todoRepository.findByIdWithCreatorAndTeam(10L)).willReturn(Optional.of(todo));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(todoParticipantRepository.findDetailByTodoId(10L)).willReturn(List.of());
+
+        TodoDetailResponse response = todoService.getTodoDetail(10L, "user1");
+
+        assertThat(response.achievementCount()).isEqualTo("0 / 0");
+        assertThat(response.participants()).isEmpty();
+    }
+
     private void givenValidTeamMember(User user) {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamRepository.existsById(100L)).willReturn(true);
@@ -533,6 +647,72 @@ class TodoServiceTest {
             @Override
             public ParticipantStatus getStatus() {
                 return status;
+            }
+        };
+    }
+
+    private TodoParticipantDetail participantDetail(
+            Long todoParticipantId,
+            Long userId,
+            String nickname,
+            String profileImageUrl,
+            String proofImageKey,
+            String proofThumbnailKey,
+            ParticipantStatus status
+    ) {
+        return new TodoParticipantDetail() {
+            @Override
+            public Long getTodoParticipantId() {
+                return todoParticipantId;
+            }
+
+            @Override
+            public Long getUserId() {
+                return userId;
+            }
+
+            @Override
+            public String getNickname() {
+                return nickname;
+            }
+
+            @Override
+            public String getProfileImageUrl() {
+                return profileImageUrl;
+            }
+
+            @Override
+            public String getProofImageKey() {
+                return proofImageKey;
+            }
+
+            @Override
+            public String getProofThumbnailKey() {
+                return proofThumbnailKey;
+            }
+
+            @Override
+            public ParticipantStatus getStatus() {
+                return status;
+            }
+        };
+    }
+
+    private TodoReactionCount reactionCount(Long todoParticipantId, TodoReactionType reactionType, long reactionCount) {
+        return new TodoReactionCount() {
+            @Override
+            public Long getTodoParticipantId() {
+                return todoParticipantId;
+            }
+
+            @Override
+            public TodoReactionType getReactionType() {
+                return reactionType;
+            }
+
+            @Override
+            public long getReactionCount() {
+                return reactionCount;
             }
         };
     }
