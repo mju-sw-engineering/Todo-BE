@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:todo-test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  mail:
+    host: localhost
+    port: 2525
+    username: test@example.com
+    password: test-password
+
+jwt:
+  secret: test-secret-key-for-jwt-signing-that-is-long-enough
+  expiration: 86400000
+
+minio:
+  endpoint: http://localhost:9000
+  access-key: test-access-key
+  secret-key: test-secret-key
+  region: us-east-1
+  bucket: test-bucket
+
+app:
+  frontend-base-url: http://localhost:3000
