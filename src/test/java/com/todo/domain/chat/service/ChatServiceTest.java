@@ -57,6 +57,7 @@ class ChatServiceTest {
         given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
             ChatMessage message = invocation.getArgument(0);
             ReflectionTestUtils.setField(message, "id", 1000L);
+            ReflectionTestUtils.setField(message, "createdAt", LocalDateTime.of(2026, 6, 4, 12, 0));
             return message;
         });
 
@@ -180,6 +181,7 @@ class ChatServiceTest {
     private ChatMessage messageWithId(Long id, Todo todo, User sender, String content) {
         ChatMessage message = ChatMessage.create(todo, sender, content);
         ReflectionTestUtils.setField(message, "id", id);
+        ReflectionTestUtils.setField(message, "createdAt", LocalDateTime.of(2026, 6, 4, 12, 0));
         return message;
     }
 }
