@@ -97,7 +97,7 @@ class TodoServiceTest {
                 participant(10L, 2L, "닉네임2", ParticipantStatus.IN_PROGRESS)
         ));
 
-        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null);
+        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null, null);
 
         assertThat(response).hasSize(1);
         assertThat(response.get(0).achievementCount()).isEqualTo("1 / 2");
@@ -120,7 +120,7 @@ class TodoServiceTest {
         given(todoRepository.findByTeamIdAndStatusWithCreator(100L, TodoStatus.IN_PROGRESS))
                 .willReturn(List.of());
 
-        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", "IN_PROGRESS");
+        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", "IN_PROGRESS", null);
 
         assertThat(response).isEmpty();
         then(todoRepository).should().findByTeamIdAndStatusWithCreator(100L, TodoStatus.IN_PROGRESS);
@@ -133,7 +133,7 @@ class TodoServiceTest {
         given(todoRepository.findByTeamIdAndStatusInWithCreator(100L, List.of(TodoStatus.SUCCESS, TodoStatus.FAIL)))
                 .willReturn(List.of());
 
-        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", "ENDED");
+        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", "ENDED", null);
 
         assertThat(response).isEmpty();
         then(todoRepository).should()
@@ -145,9 +145,47 @@ class TodoServiceTest {
         User user = userWithId(1L);
         givenValidTeamMember(user);
 
-        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", "UNKNOWN"))
+        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", "UNKNOWN", null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("알 수 없는 투두 필터입니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void 날짜_파라미터_조회는_해당_날짜_하루_범위를_전달한다() {
+        User user = userWithId(1L);
+        givenValidTeamMember(user);
+        given(todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(eq(100L), any(), any()))
+                .willReturn(List.of());
+
+        todoService.getTodoList(100L, "user1", null, "2026-05-20");
+
+        then(todoRepository).should().findByTeamIdAndDeadlineBetweenWithCreator(
+                100L,
+                LocalDateTime.of(2026, 5, 20, 0, 0),
+                LocalDateTime.of(2026, 5, 21, 0, 0)
+        );
+    }
+
+    @Test
+    void 필터와_날짜를_함께_사용하면_400_예외를_던진다() {
+        User user = userWithId(1L);
+        givenValidTeamMember(user);
+
+        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", "ENDED", "2026-05-20"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("filter와 date는 함께 사용할 수 없습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void 날짜_형식이_잘못되면_400_예외를_던진다() {
+        User user = userWithId(1L);
+        givenValidTeamMember(user);
+
+        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", null, "2026/05/20"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("date 형식은 yyyy-MM-dd 이어야 합니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
@@ -321,7 +359,7 @@ class TodoServiceTest {
         given(teamRepository.existsById(100L)).willReturn(true);
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", null))
+        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("팀에 접근할 권한이 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));

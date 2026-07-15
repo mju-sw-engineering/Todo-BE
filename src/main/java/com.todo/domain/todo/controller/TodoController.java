@@ -42,12 +42,16 @@ public class TodoController implements TodoControllerDocs {
     public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoList(
             @PathVariable Long teamId,
             @RequestParam(required = false) String filter,
+            @RequestParam(required = false) String date,
             Authentication authentication
     ) {
         String loginId = authentication.getName();
-        List<TodoSummaryResponse> result = todoService.getTodoList(teamId, loginId, filter);
+        List<TodoSummaryResponse> result = todoService.getTodoList(teamId, loginId, filter, date);
         if (result.isEmpty()) {
-            return ResponseEntity.ok(ApiResponse.success(null, "오늘 할 일이 없습니다"));
+            String message = (date != null && !date.isBlank())
+                    ? "해당 날짜의 할 일이 없습니다"
+                    : "조회된 할 일이 없습니다";
+            return ResponseEntity.ok(ApiResponse.success(null, message));
         }
         return ResponseEntity.ok(ApiResponse.success(result));
     }

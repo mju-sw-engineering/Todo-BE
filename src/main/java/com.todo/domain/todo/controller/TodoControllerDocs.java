@@ -44,13 +44,16 @@ public interface TodoControllerDocs {
 
     @Operation(
             summary = "투두 리스트 조회",
-            description = "팀의 전체 투두 목록을 조회합니다. filter=IN_PROGRESS 또는 filter=ENDED로 필터링할 수 있습니다."
+            description = "팀의 투두 목록을 조회합니다. " +
+                    "filter=IN_PROGRESS 또는 filter=ENDED로 상태 필터링하거나, " +
+                    "date=yyyy-MM-dd(Asia/Seoul 기준)로 해당 날짜 마감 투두를 조회할 수 있습니다. " +
+                    "filter와 date는 함께 사용할 수 없습니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
                     content = @Content(schema = @Schema(implementation = TodoSummaryResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "알 수 없는 필터",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "알 수 없는 필터, date 형식 오류 또는 filter·date 동시 사용",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
                     content = @Content(schema = @Schema(hidden = true))),
@@ -59,11 +62,17 @@ public interface TodoControllerDocs {
     })
     ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoList(
             @Parameter(description = "팀 ID", example = "1") Long teamId,
-            @Parameter(description = "조회 필터: IN_PROGRESS 또는 ENDED", example = "IN_PROGRESS") String filter,
+            @Parameter(description = "조회 필터: IN_PROGRESS 또는 ENDED (date와 동시 사용 불가)", example = "IN_PROGRESS") String filter,
+            @Parameter(description = "조회 날짜 (Asia/Seoul 기준, yyyy-MM-dd, filter와 동시 사용 불가)", example = "2026-07-15") String date,
             Authentication authentication
     );
 
-    @Operation(summary = "오늘 투두 조회", description = "Asia/Seoul 기준 오늘 마감인 팀 투두 목록을 deadline ASC로 조회합니다.")
+    @Operation(
+            summary = "오늘 투두 조회 (Deprecated)",
+            description = "[Deprecated] GET /api/teams/{teamId}/todos?date=오늘날짜 사용을 권장합니다. " +
+                    "Asia/Seoul 기준 오늘 마감인 팀 투두 목록을 deadline ASC로 조회합니다.",
+            deprecated = true
+    )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
@@ -78,7 +87,12 @@ public interface TodoControllerDocs {
             Authentication authentication
     );
 
-    @Operation(summary = "특정 날짜 투두 조회", description = "Asia/Seoul 기준 date 날짜에 마감인 팀 투두 목록을 deadline ASC로 조회합니다.")
+    @Operation(
+            summary = "특정 날짜 투두 조회 (Deprecated)",
+            description = "[Deprecated] GET /api/teams/{teamId}/todos?date= 사용을 권장합니다. " +
+                    "Asia/Seoul 기준 date 날짜에 마감인 팀 투두 목록을 deadline ASC로 조회합니다.",
+            deprecated = true
+    )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
