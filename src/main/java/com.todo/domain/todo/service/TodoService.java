@@ -123,40 +123,51 @@ public class TodoService {
 
 
     @Transactional
-    public List<TodoSummaryResponse> getTodoList(Long teamId, String loginId, String filter) {
+    public List<TodoSummaryResponse> getTodoList(Long teamId, String loginId, String filter, String date) {
         User user = validateTeamMember(teamId, loginId);
+
+        boolean hasFilter = filter != null && !filter.isBlank();
+        boolean hasDate = date != null && !date.isBlank();
+        if (hasFilter && hasDate) {
+            throw new BusinessException("filter와 date는 함께 사용할 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+
         markExpiredTodosAsFail();
-        List<Todo> todos = findTodosByFilter(teamId, filter);
+
+        List<Todo> todos;
+        if (hasDate) {
+            LocalDate targetDate = parseDate(date);
+            todos = todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
+                    teamId,
+                    targetDate.atStartOfDay(),
+                    targetDate.plusDays(1).atStartOfDay()
+            );
+        } else {
+            todos = findTodosByFilter(teamId, filter);
+        }
 
         return toSummaryResponses(todos, user.getId());
     }
 
+    /**
+     * @deprecated GET /todos?date= 통합 API로 대체됨. 웹/iOS 마이그레이션 완료 후 제거 예정.
+     */
+    @Deprecated
     @Transactional
     public List<TodoSummaryResponse> getTodayTodoList(Long teamId, String loginId) {
-        User user = validateTeamMember(teamId, loginId);
-        markExpiredTodosAsFail();
-        LocalDate today = LocalDate.now(KST);
-        List<Todo> todos = todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
-                teamId,
-                today.atStartOfDay(),
-                today.plusDays(1).atStartOfDay()
-        );
-
-        return toSummaryResponses(todos, user.getId());
+        return getTodoList(teamId, loginId, null, LocalDate.now(KST).toString());
     }
 
+    /**
+     * @deprecated GET /todos?date= 통합 API로 대체됨. 웹/iOS 마이그레이션 완료 후 제거 예정.
+     */
+    @Deprecated
     @Transactional
     public List<TodoSummaryResponse> getTodoHistory(Long teamId, String loginId, String date) {
-        User user = validateTeamMember(teamId, loginId);
-        LocalDate targetDate = parseDate(date);
-        markExpiredTodosAsFail();
-        List<Todo> todos = todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
-                teamId,
-                targetDate.atStartOfDay(),
-                targetDate.plusDays(1).atStartOfDay()
-        );
-
-        return toSummaryResponses(todos, user.getId());
+        if (date == null || date.isBlank()) {
+            throw new BusinessException("date 파라미터는 필수입니다.", HttpStatus.BAD_REQUEST);
+        }
+        return getTodoList(teamId, loginId, null, date);
     }
 
     @Transactional

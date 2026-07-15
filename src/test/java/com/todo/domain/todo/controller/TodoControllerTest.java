@@ -50,25 +50,49 @@ class TodoControllerTest {
     }
 
     @Test
-    void 투두_목록이_비어있으면_오늘_할일_없음_메시지를_반환한다() {
+    void 투두_목록이_비어있으면_조회된_할일_없음_메시지를_반환한다() {
         TodoController controller = new TodoController(todoService);
-        given(todoService.getTodoList(10L, "user1", null)).willReturn(List.of());
+        given(todoService.getTodoList(10L, "user1", null, null)).willReturn(List.of());
 
         ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
-                controller.getTodoList(10L, null, auth());
+                controller.getTodoList(10L, null, null, auth());
 
         assertThat(response.getBody().getData()).isNull();
-        assertThat(response.getBody().getMessage()).isEqualTo("오늘 할 일이 없습니다");
+        assertThat(response.getBody().getMessage()).isEqualTo("조회된 할 일이 없습니다");
     }
 
     @Test
     void 투두_목록이_있으면_목록을_반환한다() {
         TodoController controller = new TodoController(todoService);
         TodoSummaryResponse summary = summary();
-        given(todoService.getTodoList(10L, "user1", "ENDED")).willReturn(List.of(summary));
+        given(todoService.getTodoList(10L, "user1", "ENDED", null)).willReturn(List.of(summary));
 
         ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
-                controller.getTodoList(10L, "ENDED", auth());
+                controller.getTodoList(10L, "ENDED", null, auth());
+
+        assertThat(response.getBody().getData()).containsExactly(summary);
+    }
+
+    @Test
+    void 날짜_조회_결과가_비어있으면_해당날짜_할일_없음_메시지를_반환한다() {
+        TodoController controller = new TodoController(todoService);
+        given(todoService.getTodoList(10L, "user1", null, "2026-06-04")).willReturn(List.of());
+
+        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
+                controller.getTodoList(10L, null, "2026-06-04", auth());
+
+        assertThat(response.getBody().getData()).isNull();
+        assertThat(response.getBody().getMessage()).isEqualTo("해당 날짜의 할 일이 없습니다");
+    }
+
+    @Test
+    void 날짜_조회_결과가_있으면_목록을_반환한다() {
+        TodoController controller = new TodoController(todoService);
+        TodoSummaryResponse summary = summary();
+        given(todoService.getTodoList(10L, "user1", null, "2026-06-04")).willReturn(List.of(summary));
+
+        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
+                controller.getTodoList(10L, null, "2026-06-04", auth());
 
         assertThat(response.getBody().getData()).containsExactly(summary);
     }
