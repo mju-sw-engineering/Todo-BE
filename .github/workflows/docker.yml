@@ -40,3 +40,11 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Trigger Coolify deploy
+        if: github.event_name == 'push'
+        env:
+          WEBHOOK_URL: ${{ secrets.COOLIFY_BE_WEBHOOK_URL }}
+          API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          curl -f -X GET "$WEBHOOK_URL" -H "Authorization: Bearer $API_TOKEN"
