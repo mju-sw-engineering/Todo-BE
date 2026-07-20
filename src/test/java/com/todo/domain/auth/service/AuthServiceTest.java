@@ -45,7 +45,7 @@ class AuthServiceTest {
 
     @Test
     void 회원가입_성공() {
-        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", "profiles/1/a.png");
+        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", "profiles/1/a.png", true);
         given(userRepository.existsByLoginId("user1")).willReturn(false);
         given(passwordEncoder.encode("password123!")).willReturn("encoded");
         given(userRepository.save(any(User.class))).willAnswer(invocation -> {
@@ -65,11 +65,23 @@ class AuthServiceTest {
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         then(userRepository).should().save(captor.capture());
         assertThat(captor.getValue().getPassword()).isEqualTo("encoded");
+        assertThat(captor.getValue().isTermsAgreed()).isTrue();
+        assertThat(captor.getValue().getTermsAgreedAt()).isNotNull();
+    }
+
+    @Test
+    void 회원가입은_개인정보_동의_안하면_예외를_던진다() {
+        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null, false);
+
+        assertThatThrownBy(() -> authService.signup(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("개인정보 처리방침에 동의해야 합니다.");
+        then(userRepository).should(never()).save(any());
     }
 
     @Test
     void 회원가입은_비밀번호_확인이_다르면_예외를_던진다() {
-        SignupRequest request = signupRequest("user1", "password123!", "different", "닉네임", null);
+        SignupRequest request = signupRequest("user1", "password123!", "different", "닉네임", null, true);
 
         assertThatThrownBy(() -> authService.signup(request))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -79,7 +91,7 @@ class AuthServiceTest {
 
     @Test
     void 회원가입은_중복_아이디면_예외를_던진다() {
-        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null);
+        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null, true);
         given(userRepository.existsByLoginId("user1")).willReturn(true);
 
         assertThatThrownBy(() -> authService.signup(request))
@@ -146,7 +158,8 @@ class AuthServiceTest {
             String password,
             String passwordConfirm,
             String nickname,
-            String profileImageKey
+            String profileImageKey,
+            boolean termsAgreed
     ) {
         SignupRequest request = new SignupRequest();
         request.setLoginId(loginId);
@@ -154,6 +167,7 @@ class AuthServiceTest {
         request.setPasswordConfirm(passwordConfirm);
         request.setNickname(nickname);
         request.setProfileImageKey(profileImageKey);
+        request.setTermsAgreed(termsAgreed);
         return request;
     }
 }
