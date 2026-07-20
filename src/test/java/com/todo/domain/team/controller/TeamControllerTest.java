@@ -7,6 +7,7 @@ import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
+import com.todo.domain.team.dto.response.TeamAchievementResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.dto.response.UpdateTeamPersonaResponse;
@@ -32,6 +33,19 @@ class TeamControllerTest {
 
     @Mock
     private TeamService teamService;
+
+    @Test
+    void 팀_달성_통계_응답을_반환한다() {
+        TeamController controller = new TeamController(teamService);
+        TeamAchievementResponse serviceResponse = new TeamAchievementResponse(1L, 5, 3);
+        given(teamService.getTeamAchievement(1L, "user1")).willReturn(serviceResponse);
+
+        ResponseEntity<ApiResponse<TeamAchievementResponse>> response = controller.getTeamAchievement(1L, auth());
+
+        assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
+        assertThat(response.getBody().getData().successCount()).isEqualTo(5);
+        assertThat(response.getBody().getData().consecutiveTodoCount()).isEqualTo(3);
+    }
 
     @Test
     void 팀_상세_응답을_반환한다() {

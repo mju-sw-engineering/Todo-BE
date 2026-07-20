@@ -9,6 +9,7 @@ import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
+import com.todo.domain.team.dto.response.TeamAchievementResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.dto.response.TeamMemberResponse;
@@ -91,6 +92,17 @@ public class TeamService {
                 .toList();
         return TeamDetailResponse.from(team, resolvedMembers)
                 .withImageUrl(fileService.resolveImageUrl(team.getTeamImage()));
+    }
+
+    public TeamAchievementResponse getTeamAchievement(Long teamId, String loginId) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));
+        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())) {
+            throw new BusinessException("팀에 접근할 권한이 없습니다", HttpStatus.FORBIDDEN);
+        }
+        return TeamAchievementResponse.from(team);
     }
 
     public TeamListResponse getMyTeams(String loginId) {

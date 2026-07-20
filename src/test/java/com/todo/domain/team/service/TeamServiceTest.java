@@ -621,6 +621,56 @@ class TeamServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
     }
 
+    @Test
+    void 팀_달성_통계_조회_성공() {
+        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCDEFGH");
+        ReflectionTestUtils.setField(team, "id", 1L);
+        team.incrementSuccessCount();
+        team.incrementSuccessCount();
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(1L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(true);
+
+        var response = teamService.getTeamAchievement(1L, "user1");
+
+        assertThat(response.teamId()).isEqualTo(1L);
+        assertThat(response.successCount()).isEqualTo(2);
+    }
+
+    @Test
+    void 팀_달성_통계_조회_실패_존재하지_않는_팀() {
+        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.getTeamAchievement(99L, "user1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("존재하지 않는 팀입니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void 팀_달성_통계_조회_실패_팀에_속하지_않은_사용자() {
+        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCDEFGH");
+        ReflectionTestUtils.setField(team, "id", 1L);
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(1L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(false);
+
+        assertThatThrownBy(() -> teamService.getTeamAchievement(1L, "user1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("팀에 접근할 권한이 없습니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
     private void setupInviteLinkProperties() {
         ReflectionTestUtils.setField(teamService, "frontendBaseUrl", "https://todo.example.com/");
         ReflectionTestUtils.setField(teamService, "teamInvitePath", "/teams/join");
