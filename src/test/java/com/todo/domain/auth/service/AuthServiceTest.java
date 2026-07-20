@@ -6,8 +6,10 @@ import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
+import com.todo.global.exception.BusinessException;
 import com.todo.global.jwt.JwtUtil;
 import com.todo.global.service.FileService;
+import org.springframework.http.HttpStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -42,6 +44,8 @@ class AuthServiceTest {
     private JwtUtil jwtUtil;
     @Mock
     private FileService fileService;
+    @Mock
+    private EmailVerificationService emailVerificationService;
 
     @Test
     void 회원가입_성공() {
@@ -67,6 +71,19 @@ class AuthServiceTest {
         assertThat(captor.getValue().getPassword()).isEqualTo("encoded");
         assertThat(captor.getValue().isTermsAgreed()).isTrue();
         assertThat(captor.getValue().getTermsAgreedAt()).isNotNull();
+    }
+
+    @Test
+    void 회원가입은_이메일_인증_토큰이_유효하지_않으면_예외를_던진다() {
+        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null, true);
+        given(userRepository.existsByLoginId("user1")).willReturn(false);
+        org.mockito.BDDMockito.willThrow(new BusinessException("유효하지 않은 이메일 인증 토큰입니다.", HttpStatus.BAD_REQUEST))
+                .given(emailVerificationService).validateAndConsume("test-token", "user@example.com");
+
+        assertThatThrownBy(() -> authService.signup(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("유효하지 않은 이메일 인증 토큰입니다.");
+        then(userRepository).should(never()).save(any());
     }
 
     @Test
@@ -162,6 +179,8 @@ class AuthServiceTest {
             boolean termsAgreed
     ) {
         SignupRequest request = new SignupRequest();
+        request.setEmail("user@example.com");
+        request.setEmailVerificationToken("test-token");
         request.setLoginId(loginId);
         request.setPassword(password);
         request.setPasswordConfirm(passwordConfirm);

@@ -29,6 +29,8 @@ public class User extends BaseTimeEntity {
 
     private String profileImageUrl;
 
+    private String email;
+
     @Column(nullable = false)
     private boolean termsAgreed = false;
 
@@ -41,6 +43,10 @@ public class User extends BaseTimeEntity {
         user.nickname = nickname;
         user.profileImageUrl = profileImageUrl;
         return user;
+    }
+
+    public void assignEmail(String email) {
+        this.email = email;
     }
 
     public void agreeToTerms(LocalDateTime agreedAt) {
