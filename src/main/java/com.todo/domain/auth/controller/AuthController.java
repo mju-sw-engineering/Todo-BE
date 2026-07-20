@@ -1,10 +1,14 @@
 package com.todo.domain.auth.controller;
 
+import com.todo.domain.auth.dto.request.EmailSendRequest;
+import com.todo.domain.auth.dto.request.EmailVerifyRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
+import com.todo.domain.auth.dto.response.EmailVerifyResponse;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import com.todo.domain.auth.service.AuthService;
+import com.todo.domain.auth.service.EmailVerificationService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +24,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController implements AuthControllerDocs {
 
     private final AuthService authService;
+    private final EmailVerificationService emailVerificationService;
+
+    @PostMapping("/email/send")
+    public ResponseEntity<ApiResponse<Void>> sendEmailCode(@Valid @RequestBody EmailSendRequest request) {
+        emailVerificationService.sendCode(request.email());
+        return ResponseEntity.ok(ApiResponse.success(null, "인증 코드가 발송되었습니다"));
+    }
+
+    @PostMapping("/email/verify")
+    public ResponseEntity<ApiResponse<EmailVerifyResponse>> verifyEmailCode(@Valid @RequestBody EmailVerifyRequest request) {
+        String token = emailVerificationService.verifyCode(request.email(), request.code());
+        return ResponseEntity.ok(ApiResponse.success(new EmailVerifyResponse(token)));
+    }
 
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse<SignupResponse>> signup(@Valid @RequestBody SignupRequest request) {

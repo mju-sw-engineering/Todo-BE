@@ -27,6 +27,7 @@ public class AuthService implements UserDetailsService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final FileService fileService;
+    private final EmailVerificationService emailVerificationService;
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
@@ -39,6 +40,7 @@ public class AuthService implements UserDetailsService {
         if (!Boolean.TRUE.equals(request.getTermsAgreed())) {
             throw new IllegalArgumentException("개인정보 처리방침에 동의해야 합니다.");
         }
+        emailVerificationService.validateAndConsume(request.getEmailVerificationToken(), request.getEmail());
 
         User created = User.create(
                 request.getLoginId(),
@@ -46,6 +48,7 @@ public class AuthService implements UserDetailsService {
                 request.getNickname(),
                 request.getProfileImageKey()
         );
+        created.assignEmail(request.getEmail());
         created.agreeToTerms(LocalDateTime.now());
         User user = userRepository.save(created);
 

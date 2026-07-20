@@ -1,7 +1,10 @@
 package com.todo.domain.auth.controller;
 
+import com.todo.domain.auth.dto.request.EmailSendRequest;
+import com.todo.domain.auth.dto.request.EmailVerifyRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
+import com.todo.domain.auth.dto.response.EmailVerifyResponse;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,7 +20,26 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "Auth", description = "인증 API")
 public interface AuthControllerDocs {
 
-    @Operation(summary = "회원가입", description = "아이디, 비밀번호, 닉네임, 프로필 이미지(선택)로 계정을 생성합니다.")
+    @Operation(summary = "이메일 인증 코드 발송", description = "입력한 이메일로 6자리 인증 코드를 발송합니다. 코드는 3분간 유효합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "인증 코드 발송 성공"),
+            @ApiResponse(responseCode = "400", description = "이메일 형식 오류",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @ApiResponse(responseCode = "500", description = "메일 발송 실패",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<com.todo.global.response.ApiResponse<Void>> sendEmailCode(EmailSendRequest request);
+
+    @Operation(summary = "이메일 인증 코드 확인", description = "발송된 6자리 코드를 확인하고 회원가입에 사용할 인증 토큰을 반환합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "인증 성공 — emailVerificationToken 반환",
+                    content = @Content(schema = @Schema(implementation = EmailVerifyResponse.class))),
+            @ApiResponse(responseCode = "400", description = "코드 불일치 / 만료 / 인증 요청 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<com.todo.global.response.ApiResponse<EmailVerifyResponse>> verifyEmailCode(EmailVerifyRequest request);
+
+    @Operation(summary = "회원가입", description = "이메일 인증 후 아이디·비밀번호·닉네임으로 계정을 생성합니다. emailVerificationToken 필수.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "회원가입 성공",
                     content = @Content(schema = @Schema(implementation = SignupResponse.class))),
