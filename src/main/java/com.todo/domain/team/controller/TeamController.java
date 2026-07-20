@@ -7,6 +7,7 @@ import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
+import com.todo.domain.team.dto.response.TeamAchievementResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.dto.response.UpdateTeamPersonaResponse;
@@ -32,6 +33,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class TeamController implements TeamControllerDocs {
 
     private final TeamService teamService;
+
+    @GetMapping("/{teamId}/achievements")
+    public ResponseEntity<ApiResponse<TeamAchievementResponse>> getTeamAchievement(
+            @PathVariable Long teamId,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        TeamAchievementResponse response = teamService.getTeamAchievement(teamId, loginId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
 
     @GetMapping("/{teamId}")
     public ResponseEntity<ApiResponse<TeamDetailResponse>> getTeamDetail(
