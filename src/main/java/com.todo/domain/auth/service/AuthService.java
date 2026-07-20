@@ -16,6 +16,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -34,13 +36,18 @@ public class AuthService implements UserDetailsService {
         if (userRepository.existsByLoginId(request.getLoginId())) {
             throw new IllegalArgumentException("이미 사용 중인 아이디입니다.");
         }
+        if (!Boolean.TRUE.equals(request.getTermsAgreed())) {
+            throw new IllegalArgumentException("개인정보 처리방침에 동의해야 합니다.");
+        }
 
-        User user = userRepository.save(User.create(
+        User created = User.create(
                 request.getLoginId(),
                 passwordEncoder.encode(request.getPassword()),
                 request.getNickname(),
                 request.getProfileImageKey()
-        ));
+        );
+        created.agreeToTerms(LocalDateTime.now());
+        User user = userRepository.save(created);
 
         return SignupResponse.from(user).withImageUrl(fileService.resolveImageUrl(user.getProfileImageUrl()));
     }

@@ -6,6 +6,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "users")
 @Getter
@@ -27,6 +29,11 @@ public class User extends BaseTimeEntity {
 
     private String profileImageUrl;
 
+    @Column(nullable = false)
+    private boolean termsAgreed = false;
+
+    private LocalDateTime termsAgreedAt;
+
     public static User create(String loginId, String password, String nickname, String profileImageUrl) {
         User user = new User();
         user.loginId = loginId;
@@ -34,6 +41,11 @@ public class User extends BaseTimeEntity {
         user.nickname = nickname;
         user.profileImageUrl = profileImageUrl;
         return user;
+    }
+
+    public void agreeToTerms(LocalDateTime agreedAt) {
+        this.termsAgreed = true;
+        this.termsAgreedAt = agreedAt;
     }
 
     public void updateNickname(String nickname) {
