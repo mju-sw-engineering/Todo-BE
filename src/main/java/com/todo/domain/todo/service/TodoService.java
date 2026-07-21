@@ -298,23 +298,26 @@ public class TodoService {
             String proofThumbnailKey
     ) {
         markExpiredTodosAsFail();
+        // 더블클릭·동시 제출을 직렬화하기 위해 참가자 행에 비관적 락을 건다.
         TodoParticipant participant = todoParticipantRepository
-                .findByTodoIdAndUserIdWithTodo(todoId, userId)
+                .findByTodoIdAndUserIdWithLock(todoId, userId)
                 .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.FORBIDDEN));
+        Todo todo = participant.getTodo();
 
-        if (LocalDateTime.now(KST).isAfter(participant.getTodo().getDeadline())) {
+        if (LocalDateTime.now(KST).isAfter(todo.getDeadline())) {
             participant.markAsFail();
-            participant.getTodo().markAsFail();
+            todo.markAsFail();
             return SubmitTodoCheck.failed(userId, "마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
         }
 
         participant.submit(proofImageKey, proofThumbnailKey);
-        participant.getTodo().getTeam().incrementSuccessCount();
+        // 카운터 갱신은 팀 행을 잠그는 원자적 UPDATE로 처리해 동시 제출 시 유실을 막는다.
+        teamRepository.incrementSuccessCount(todo.getTeam().getId());
 
         long totalParticipants = todoParticipantRepository.countByTodoId(todoId);
         long successCount = todoParticipantRepository.countByTodoIdAndStatus(todoId, ParticipantStatus.SUCCESS);
         if (successCount == totalParticipants) {
-            participant.getTodo().markAsSuccess();
+            todo.markAsSuccess();
         }
 
         return SubmitTodoCheck.success(userId);

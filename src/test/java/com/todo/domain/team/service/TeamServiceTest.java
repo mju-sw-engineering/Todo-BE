@@ -633,8 +633,7 @@ class TeamServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCDEFGH");
         ReflectionTestUtils.setField(team, "id", 1L);
-        team.incrementSuccessCount();
-        team.incrementSuccessCount();
+        ReflectionTestUtils.setField(team, "successCount", 2);
 
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamRepository.findById(1L)).willReturn(Optional.of(team));
