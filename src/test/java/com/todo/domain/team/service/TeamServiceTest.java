@@ -1,6 +1,7 @@
 package com.todo.domain.team.service;
 
 import com.todo.domain.chat.repository.ChatMessageRepository;
+import com.todo.domain.chat.repository.ChatReadStatusRepository;
 import com.todo.domain.evaluation.repository.DailyEvaluationRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
@@ -74,6 +75,8 @@ class TeamServiceTest {
     private TodoReactionRepository todoReactionRepository;
     @Mock
     private ChatMessageRepository chatMessageRepository;
+    @Mock
+    private ChatReadStatusRepository chatReadStatusRepository;
     @Mock
     private DailyEvaluationRepository dailyEvaluationRepository;
 
@@ -533,9 +536,10 @@ class TeamServiceTest {
 
         teamService.leaveTeam("user1", 10L);
 
-        var inOrder = inOrder(todoReactionRepository, chatMessageRepository, todoParticipantRepository,
+        var inOrder = inOrder(todoReactionRepository, chatReadStatusRepository, chatMessageRepository, todoParticipantRepository,
                 todoRepository, dailyEvaluationRepository, teamMemberRepository, teamRepository);
         inOrder.verify(todoReactionRepository).deleteByTodoParticipantIdIn(List.of(1000L));
+        inOrder.verify(chatReadStatusRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(chatMessageRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoRepository).deleteByIdIn(List.of(100L));
@@ -565,6 +569,7 @@ class TeamServiceTest {
         inOrder.verify(teamRepository).deleteById(10L);
         verify(todoParticipantRepository, never()).findIdsByTodoIdIn(anyList());
         verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
+        verify(chatReadStatusRepository, never()).deleteByTodoIdIn(anyList());
         verify(chatMessageRepository, never()).deleteByTodoIdIn(anyList());
         verify(todoParticipantRepository, never()).deleteByTodoIdIn(anyList());
         verify(todoRepository, never()).deleteByIdIn(anyList());
@@ -586,8 +591,9 @@ class TeamServiceTest {
 
         teamService.leaveTeam("user1", 10L);
 
-        var inOrder = inOrder(chatMessageRepository, todoParticipantRepository, todoRepository,
+        var inOrder = inOrder(chatReadStatusRepository, chatMessageRepository, todoParticipantRepository, todoRepository,
                 dailyEvaluationRepository, teamMemberRepository, teamRepository);
+        inOrder.verify(chatReadStatusRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(chatMessageRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoRepository).deleteByIdIn(List.of(100L));
