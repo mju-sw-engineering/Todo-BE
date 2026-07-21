@@ -1,6 +1,7 @@
 package com.todo.domain.team.service;
 
 import com.todo.domain.chat.repository.ChatMessageRepository;
+import com.todo.domain.chat.repository.ChatReadStatusRepository;
 import com.todo.domain.evaluation.repository.DailyEvaluationRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
@@ -56,6 +57,7 @@ public class TeamService {
     private final TodoParticipantRepository todoParticipantRepository;
     private final TodoReactionRepository todoReactionRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final ChatReadStatusRepository chatReadStatusRepository;
     private final DailyEvaluationRepository dailyEvaluationRepository;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
@@ -238,6 +240,7 @@ public class TeamService {
         if (!participantIds.isEmpty()) {
             todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
         }
+        chatReadStatusRepository.deleteByTodoIdIn(todoIds);
         chatMessageRepository.deleteByTodoIdIn(todoIds);
         todoParticipantRepository.deleteByTodoIdIn(todoIds);
         todoRepository.deleteByIdIn(todoIds);
