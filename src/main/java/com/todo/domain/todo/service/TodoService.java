@@ -122,7 +122,6 @@ public class TodoService {
     }
 
 
-    @Transactional
     public List<TodoSummaryResponse> getTodoList(Long teamId, String loginId, String filter, String date) {
         User user = validateTeamMember(teamId, loginId);
 
@@ -131,8 +130,6 @@ public class TodoService {
         if (hasFilter && hasDate) {
             throw new BusinessException("filter와 date는 함께 사용할 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
-
-        markExpiredTodosAsFail();
 
         List<Todo> todos;
         if (hasDate) {
@@ -146,14 +143,13 @@ public class TodoService {
             todos = findTodosByFilter(teamId, filter);
         }
 
-        return toSummaryResponses(todos, user.getId());
+        return toSummaryResponses(todos, user.getId(), LocalDateTime.now(KST));
     }
 
     /**
      * @deprecated GET /todos?date= 통합 API로 대체됨. 웹/iOS 마이그레이션 완료 후 제거 예정.
      */
     @Deprecated
-    @Transactional
     public List<TodoSummaryResponse> getTodayTodoList(Long teamId, String loginId) {
         return getTodoList(teamId, loginId, null, LocalDate.now(KST).toString());
     }
@@ -162,7 +158,6 @@ public class TodoService {
      * @deprecated GET /todos?date= 통합 API로 대체됨. 웹/iOS 마이그레이션 완료 후 제거 예정.
      */
     @Deprecated
-    @Transactional
     public List<TodoSummaryResponse> getTodoHistory(Long teamId, String loginId, String date) {
         if (date == null || date.isBlank()) {
             throw new BusinessException("date 파라미터는 필수입니다.", HttpStatus.BAD_REQUEST);
@@ -170,7 +165,6 @@ public class TodoService {
         return getTodoList(teamId, loginId, null, date);
     }
 
-    @Transactional
     public TodoPeriodReportResponse getTodoPeriodReport(
             Long teamId,
             String loginId,
@@ -184,13 +178,12 @@ public class TodoService {
             throw new BusinessException("startDate는 endDate보다 늦을 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
 
-        markExpiredTodosAsFail();
         List<Todo> todos = todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
                 teamId,
                 start.atStartOfDay(),
                 end.plusDays(1).atStartOfDay()
         );
-        List<TodoSummaryResponse> todoSummaries = toSummaryResponses(todos, user.getId());
+        List<TodoSummaryResponse> todoSummaries = toSummaryResponses(todos, user.getId(), LocalDateTime.now(KST));
         List<TodoReportDailyStatResponse> dailyStats = buildDailyStats(start, end, todoSummaries);
         TodoReportSummaryResponse summary = buildPeriodSummary(dailyStats);
 
@@ -203,12 +196,10 @@ public class TodoService {
         );
     }
 
-    @Transactional
     public TodoDetailResponse getTodoDetail(Long todoId, String loginId) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
-        markExpiredTodosAsFail();
         Todo todo = todoRepository.findByIdWithCreatorAndTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
 
@@ -246,7 +237,7 @@ public class TodoService {
                 todo.getTitle(),
                 toKstOffset(todo.getDeadline()),
                 todo.getCreator().getNickname(),
-                todo.getStatus(),
+                resolveDisplayStatus(todo.getStatus(), todo.getDeadline(), LocalDateTime.now(KST)),
                 success + " / " + total,
                 participantResponses
         );
@@ -432,7 +423,7 @@ public class TodoService {
         }
     }
 
-    private List<TodoSummaryResponse> toSummaryResponses(List<Todo> todos, Long userId) {
+    private List<TodoSummaryResponse> toSummaryResponses(List<Todo> todos, Long userId, LocalDateTime now) {
         if (todos.isEmpty()) {
             return List.of();
         }
@@ -444,7 +435,7 @@ public class TodoService {
                 .collect(Collectors.groupingBy(TodoParticipantSummary::getTodoId));
 
         return todos.stream()
-                .map(todo -> toSummaryResponse(todo, participantsByTodoId.getOrDefault(todo.getId(), List.of()), userId))
+                .map(todo -> toSummaryResponse(todo, participantsByTodoId.getOrDefault(todo.getId(), List.of()), userId, now))
                 .toList();
     }
 
@@ -504,7 +495,8 @@ public class TodoService {
     private TodoSummaryResponse toSummaryResponse(
             Todo todo,
             List<TodoParticipantSummary> participants,
-            Long userId
+            Long userId,
+            LocalDateTime now
     ) {
         long total = participants.size();
         long success = participants.stream()
@@ -528,7 +520,7 @@ public class TodoService {
                 todo.getTitle(),
                 toKstOffset(todo.getDeadline()),
                 todo.getCreator().getNickname(),
-                todo.getStatus(),
+                resolveDisplayStatus(todo.getStatus(), todo.getDeadline(), now),
                 success + " / " + total,
                 myStatus,
                 calculateProgressRate(success, total),
@@ -696,6 +688,17 @@ public class TodoService {
             case IN_PROGRESS -> "미완료";
             case FAIL -> "실패";
         };
+    }
+
+    /**
+     * 마감이 지난 IN_PROGRESS 투두는 스케줄러가 FAIL로 바꾸기 전이라도 응답에서는 FAIL로 표시한다.
+     * (스케줄러 주기 사이 조회 시 표시 값이 흔들리지 않도록 계산으로 보정)
+     */
+    private TodoStatus resolveDisplayStatus(TodoStatus status, LocalDateTime deadline, LocalDateTime now) {
+        if (status == TodoStatus.IN_PROGRESS && deadline != null && deadline.isBefore(now)) {
+            return TodoStatus.FAIL;
+        }
+        return status;
     }
 
     private OffsetDateTime toKstOffset(LocalDateTime dateTime) {

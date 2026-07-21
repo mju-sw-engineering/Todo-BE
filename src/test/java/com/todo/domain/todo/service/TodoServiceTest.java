@@ -241,14 +241,18 @@ class TodoServiceTest {
     @Test
     void 기간_리포트는_요약_일별통계_액션후보를_계산한다() {
         User user = userWithId(1L);
-        Todo successTodo = todoWithId(10L, TodoStatus.SUCCESS, LocalDateTime.of(2026, 5, 20, 10, 0));
-        Todo failTodo = todoWithId(11L, TodoStatus.FAIL, LocalDateTime.of(2026, 5, 20, 18, 0));
-        Todo progressTodo = todoWithId(12L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 5, 21, 21, 0));
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        LocalDate yesterday = today.minusDays(1);
+        LocalDate tomorrow = today.plusDays(1);
+        LocalDateTime futureDeadline = LocalDateTime.now(ZoneId.of("Asia/Seoul")).plusDays(1);
+        Todo successTodo = todoWithId(10L, TodoStatus.SUCCESS, yesterday.atTime(10, 0));
+        Todo failTodo = todoWithId(11L, TodoStatus.FAIL, yesterday.atTime(18, 0));
+        Todo progressTodo = todoWithId(12L, TodoStatus.IN_PROGRESS, futureDeadline);
         givenValidTeamMember(user);
         given(todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
                 100L,
-                LocalDateTime.of(2026, 5, 20, 0, 0),
-                LocalDateTime.of(2026, 5, 22, 0, 0)
+                yesterday.atStartOfDay(),
+                tomorrow.plusDays(1).atStartOfDay()
         )).willReturn(List.of(successTodo, failTodo, progressTodo));
         given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L, 11L, 12L))).willReturn(List.of(
                 participant(10L, 1L, "닉네임1", ParticipantStatus.SUCCESS),
@@ -262,26 +266,42 @@ class TodoServiceTest {
         TodoPeriodReportResponse response = todoService.getTodoPeriodReport(
                 100L,
                 "user1",
-                "2026-05-20",
-                "2026-05-21"
+                yesterday.toString(),
+                tomorrow.toString()
         );
 
-        assertThat(response.period().dateCount()).isEqualTo(2);
+        assertThat(response.period().dateCount()).isEqualTo(3);
         assertThat(response.summary().totalTodoCount()).isEqualTo(3);
         assertThat(response.summary().successCount()).isEqualTo(1);
         assertThat(response.summary().failCount()).isEqualTo(1);
         assertThat(response.summary().inProgressCount()).isEqualTo(1);
         assertThat(response.summary().achievementRate()).isEqualTo(33);
-        assertThat(response.dailyStats()).hasSize(2);
-        assertThat(response.dailyStats().get(0).date()).isEqualTo(LocalDate.of(2026, 5, 20));
+        assertThat(response.dailyStats()).hasSize(3);
+        assertThat(response.dailyStats().get(0).date()).isEqualTo(yesterday);
         assertThat(response.dailyStats().get(0).achievementRate()).isEqualTo(50);
-        assertThat(response.weakestDay().date()).isEqualTo(LocalDate.of(2026, 5, 21));
+        assertThat(response.weakestDay().date()).isEqualTo(tomorrow);
         assertThat(response.actionCandidates()).hasSize(1);
         assertThat(response.actionCandidates().get(0).todoId()).isEqualTo(12L);
         assertThat(response.actionCandidates().get(0).achievementCount()).isEqualTo(1);
         assertThat(response.actionCandidates().get(0).participantCount()).isEqualTo(2);
         assertThat(response.actionCandidates().get(0).unverifiedCount()).isEqualTo(1);
         assertThat(response.actionCandidates().get(0).progressRate()).isEqualTo(50);
+    }
+
+    @Test
+    void 마감이_지난_진행중_투두는_응답에서_실패로_표시된다() {
+        User user = userWithId(1L);
+        Todo expiredTodo = todoWithId(10L, TodoStatus.IN_PROGRESS, LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusMinutes(1));
+        givenValidTeamMember(user);
+        given(todoRepository.findByTeamIdWithCreator(100L)).willReturn(List.of(expiredTodo));
+        given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L))).willReturn(List.of(
+                participant(10L, 1L, "닉네임1", ParticipantStatus.IN_PROGRESS)
+        ));
+
+        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null, null);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).status()).isEqualTo(TodoStatus.FAIL);
     }
 
     @Test
@@ -568,7 +588,6 @@ class TodoServiceTest {
         TodoParticipant mine = submittedParticipantWithId(20L, todo, viewer);
         TodoReaction myReaction = TodoReaction.create(mine, viewer, TodoReactionType.LIKE);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
-        given(todoRepository.markExpiredTodosAsFail(any())).willReturn(0);
         given(todoRepository.findByIdWithCreatorAndTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
         given(todoParticipantRepository.findDetailByTodoId(10L)).willReturn(List.of(
@@ -606,7 +625,6 @@ class TodoServiceTest {
         Team team = teamWithId(100L);
         Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 6, 4, 12, 0));
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
-        given(todoRepository.markExpiredTodosAsFail(any())).willReturn(0);
         given(todoRepository.findByIdWithCreatorAndTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
         given(todoParticipantRepository.findDetailByTodoId(10L)).willReturn(List.of());
