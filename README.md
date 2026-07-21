@@ -51,20 +51,17 @@ Claude CLI(`claude`)가 PATH에 없으면 hook은 조용히 스킵됩니다.
 
 ## 컨테이너 배포
 
-`main` push가 발생하면 동일한 이미지를 두 레지스트리에 게시합니다.
+`main` push가 발생하면 이미지를 GHCR에 게시합니다.
 
-- Docker Hub: `yunjin1213/todo:latest`, `yunjin1213/todo:<commit-sha>`
 - GHCR: `ghcr.io/mju-sw-engineering/todo-be:latest`, `ghcr.io/mju-sw-engineering/todo-be:<commit-sha>`
 
-Coolify는 전환 기간 동안 기존 Docker Hub 이미지를 계속 사용하며,
+Coolify는 GHCR의 `latest` 이미지를 사용하며,
 이미지 게시가 완료되면 기존 webhook으로 재배포합니다.
 
 ### GitHub Actions 설정
 
 필수 Repository Secrets:
 
-- `DOCKERHUB_USERNAME`
-- `DOCKERHUB_TOKEN`
 - `COOLIFY_BE_WEBHOOK_URL`
 - `COOLIFY_API_TOKEN`
 

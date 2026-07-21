@@ -5,7 +5,6 @@ on:
     branches: [ "main" ]
 
 env:
-  DOCKERHUB_IMAGE: yunjin1213/todo
   GHCR_IMAGE: ghcr.io/mju-sw-engineering/todo-be
 
 permissions:
@@ -36,12 +35,6 @@ jobs:
       - name: Test
         run: ./gradlew test
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -55,8 +48,6 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.DOCKERHUB_IMAGE }}:latest
-            ${{ env.DOCKERHUB_IMAGE }}:${{ github.sha }}
             ${{ env.GHCR_IMAGE }}:latest
             ${{ env.GHCR_IMAGE }}:${{ github.sha }}
           labels: |
@@ -65,7 +56,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trigger Coolify deploy from Docker Hub
+      - name: Trigger Coolify deploy from GHCR
         env:
           WEBHOOK_URL: ${{ secrets.COOLIFY_BE_WEBHOOK_URL }}
           API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
