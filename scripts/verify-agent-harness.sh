@@ -28,6 +28,14 @@ for command in feature plan impl review commit pr merge; do
     test -f ".agents/commands/${command}.md" || fail "${command} 커맨드가 없습니다."
 done
 
+if grep -Eq 'gh label create "agent:|--label "<현재 에이전트 라벨>"' \
+    .agents/commands/pr.md; then
+    fail "PR 커맨드가 AI 에이전트 라벨을 자동 생성하거나 부착합니다."
+fi
+
+grep -q 'AI 작업 metadata를 절대 추가하지 않음' .githooks/prepare-commit-msg \
+    || fail "자동 커밋 메시지에 AI attribution 금지 규칙이 없습니다."
+
 bash -n .githooks/pre-commit
 bash -n .githooks/prepare-commit-msg
 bash -n scripts/setup-hooks.sh

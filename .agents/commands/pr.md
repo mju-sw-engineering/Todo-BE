@@ -81,15 +81,14 @@ git push origin <현재 브랜치명>
 
 ### 6. PR 생성 승인 대기
 push가 성공하면 PR 제목, PR 본문, 실행할 명령어를 보여주고 승인 여부를 묻는다.
-기본값은 draft PR이며, 에이전트가 만든 PR임을 추적할 수 있도록 라벨을 붙인다.
+기본값은 draft PR이다.
+AI 에이전트나 사용한 도구를 나타내는 라벨, 제목, 본문 문구를 자동으로 추가하지 않는다.
 
 ```bash
-gh label create "agent:codex" --color "6366F1" --description "Codex가 작성한 PR" 2>/dev/null || true
-gh label create "agent:claude-code" --color "D97706" --description "Claude Code가 작성한 PR" 2>/dev/null || true
-gh pr create --draft --title "<제목>" --body-file .ai-workspace/pr.md --label "<현재 에이전트 라벨>"
+gh pr create --draft --title "<제목>" --body-file .ai-workspace/pr.md
 ```
 
-Codex는 `agent:codex`, Claude Code는 `agent:claude-code`를 사용한다.
+사용자가 명시적으로 요청한 경우에만 일반 프로젝트 라벨을 추가한다.
 
 **사용자 응답별 처리**
 - 승인: `gh pr create` 실행
@@ -106,3 +105,4 @@ PR URL을 사용자에게 보고한다.
 - `git push --force` 또는 `--force-with-lease` 사용 절대 금지
 - 1000줄 이상 diff인 경우 전체 분석 대신 `--stat` 기반으로 요약하고 사용자에게 알림
 - main 브랜치에서 실행 중이라면 경고 후 중단
+- PR과 merge commit 메시지에 `Co-authored-by`, `Generated-by`, 에이전트 이름 등 AI 작업 metadata를 자동으로 추가하지 않음

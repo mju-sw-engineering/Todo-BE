@@ -42,6 +42,7 @@ GENERATED=$(echo "$DIFF" | claude -p "
 3. 본문: 2-3줄, '무엇을'이 아니라 '왜' 변경했는지 작성
 4. 제목과 본문 사이 빈 줄 하나
 5. 커밋 메시지만 출력하고 설명 없이 종료
+6. Co-authored-by, Generated-by, 에이전트 이름이나 이메일 등 AI 작업 metadata를 절대 추가하지 않음
 
 예시:
 feat: 할 일 목록 조회 API 추가
@@ -54,6 +55,10 @@ feat: 할 일 목록 조회 API 추가
 if [ -z "$GENERATED" ]; then
     exit 0
 fi
+
+# AI 도구가 attribution trailer를 출력하더라도 커밋 메시지에 넣지 않는다.
+GENERATED=$(printf '%s\n' "$GENERATED" \
+    | sed -E '/^[[:space:]]*(Co-authored-by|Generated-by):/d')
 
 # 기존 커밋 메시지 파일 내용 읽기
 EXISTING=$(cat "$COMMIT_MSG_FILE")

@@ -333,6 +333,9 @@ public class Task {
   fix: 로그인 시 비밀번호 검증 오류 수정
   ```
 - PR은 `.github/pull_request_template.md` 형식 준수
+- 커밋 작성자 이름과 이메일은 각 개발자의 Git 설정을 사용하며 저장소에서 공통 identity를 강제하지 않는다
+- 커밋, PR, merge commit에는 `Co-authored-by`, `Generated-by`, 에이전트 이름·이메일, AI 도구 라벨 등 작업 도구를 식별하는 metadata를 자동으로 남기지 않는다
+- 공동 작성자 또는 별도 라벨은 사용자가 명시적으로 요청한 경우에만 추가한다
 
 ---
 
@@ -373,6 +376,7 @@ AI는 Git 작업을 자동화할 수 있지만, 아래 게이트마다 사용자
 4. **민감정보 커밋 금지** — API 키, 비밀번호, JWT 시크릿, DB 접속 정보 등 파일에 직접 작성 및 커밋 금지
 5. **보안 변경 사람 리뷰 필수** — `SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter`, `WebSocketAuthChannelInterceptor` 등 보안 관련 파일 수정 시 반드시 사람이 리뷰한 후 병합
 6. **커밋 전 사용자 승인 필수** — AI가 자동으로 커밋 메시지를 확정하고 커밋 실행 금지. 항상 메시지 제안 후 승인 대기
+7. **AI 작업 metadata 자동 추가 금지** — 커밋, PR, merge commit에 공동 작성자 trailer, 에이전트 이름·이메일, AI 라벨을 자동으로 추가하지 않는다
 
 ---
 
