@@ -49,6 +49,29 @@ Claude CLI(`claude`)가 PATH에 없으면 hook은 조용히 스킵됩니다.
 - `.codex/commands/`, `.claude/commands/`는 같은 원본을 가리키는 심링크
 - CI는 테스트, 전체/변경분 커버리지, 시크릿, 에이전트 설정, Docker 빌드를 검증
 
+## 컨테이너 배포
+
+`main` push가 발생하면 동일한 이미지를 두 레지스트리에 게시합니다.
+
+- Docker Hub: `yunjin1213/todo:latest`, `yunjin1213/todo:<commit-sha>`
+- GHCR: `ghcr.io/mju-sw-engineering/todo-be:latest`, `ghcr.io/mju-sw-engineering/todo-be:<commit-sha>`
+
+Coolify는 전환 기간 동안 기존 Docker Hub 이미지를 계속 사용하며,
+이미지 게시가 완료되면 기존 webhook으로 재배포합니다.
+
+### GitHub Actions 설정
+
+필수 Repository Secrets:
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+- `COOLIFY_BE_WEBHOOK_URL`
+- `COOLIFY_API_TOKEN`
+
+GHCR 게시는 GitHub Actions가 자동으로 제공하는 `GITHUB_TOKEN`과
+workflow의 `packages: write` 권한을 사용하므로 별도 GHCR Secret은 필요하지 않습니다.
+최초 게시 후 GitHub Packages에서 컨테이너 패키지의 공개 범위를 확인해야 합니다.
+
 ### 참고 문서
 
 - `AGENTS.md` — AI 에이전트 행동 규칙 및 코딩 컨벤션
