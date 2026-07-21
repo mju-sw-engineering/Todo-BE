@@ -42,11 +42,6 @@ public class Team extends BaseTimeEntity {
         this.aiPersona = aiPersona == null ? AiPersona.ANGEL : aiPersona;
     }
 
-    public void incrementSuccessCount() {
-        this.successCount++;
-        this.consecutiveTodoCount++;
-    }
-
     public static Team create(String teamName, String teamImage, String inviteCode) {
         return create(teamName, teamImage, inviteCode, AiPersona.ANGEL);
     }

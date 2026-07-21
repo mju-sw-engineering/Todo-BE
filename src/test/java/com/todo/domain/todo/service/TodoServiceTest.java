@@ -393,6 +393,7 @@ class TodoServiceTest {
         TodoParticipant participant = todoParticipantWithId(20L, todo, user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L)).willReturn(Optional.of(participant));
         given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
         given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
         given(todoParticipantRepository.countByTodoIdAndStatus(10L, ParticipantStatus.SUCCESS)).willReturn(1L);
@@ -403,6 +404,8 @@ class TodoServiceTest {
         assertThat(participant.getProofImageKey()).isEqualTo("proof-key");
         assertThat(participant.getProofThumbnailKey()).isEqualTo("proof-thumb-key");
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
+        then(todoParticipantRepository).should().findByTodoIdAndUserIdWithLock(10L, 1L);
+        then(teamRepository).should().incrementSuccessCount(100L);
     }
 
     @Test
@@ -413,6 +416,7 @@ class TodoServiceTest {
         TodoParticipant participant = todoParticipantWithId(20L, todo, user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L)).willReturn(Optional.of(participant));
         given(fileService.createProofThumbnail("proof-key")).willReturn(null);
         given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
         given(todoParticipantRepository.countByTodoIdAndStatus(10L, ParticipantStatus.SUCCESS)).willReturn(1L);
@@ -434,7 +438,9 @@ class TodoServiceTest {
         TodoParticipant alreadySubmittedParticipant = submittedParticipantWithId(20L, todo, user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
-                .willReturn(Optional.of(participantForCheck), Optional.of(alreadySubmittedParticipant));
+                .willReturn(Optional.of(participantForCheck));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L))
+                .willReturn(Optional.of(alreadySubmittedParticipant));
         given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
 
         assertThatThrownBy(() -> todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key")))
@@ -455,7 +461,9 @@ class TodoServiceTest {
         IllegalStateException deleteFailure = new IllegalStateException("delete failed");
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
-                .willReturn(Optional.of(participantForCheck), Optional.of(alreadySubmittedParticipant));
+                .willReturn(Optional.of(participantForCheck));
+        given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L))
+                .willReturn(Optional.of(alreadySubmittedParticipant));
         given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
         doThrow(deleteFailure).when(fileService).deleteObject("proof-thumb-key");
 
