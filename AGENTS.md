@@ -15,6 +15,8 @@
 | 빌드 도구 | Gradle 8.13 (Groovy DSL) |
 | 데이터베이스 | MySQL |
 | 인증 | JWT (jjwt 0.12.3) + Spring Security |
+| 파일 스토리지 | S3 호환 오브젝트 스토리지 (AWS SDK v2) |
+| 실시간 통신 | Spring WebSocket/STOMP |
 | 모듈 구조 | 단일 모듈 |
 
 **주요 의존성**
@@ -22,7 +24,11 @@
 - `spring-boot-starter-data-jpa` — JPA/Hibernate
 - `spring-boot-starter-security` — 인증/인가
 - `spring-boot-starter-validation` — 입력 검증
+- `spring-boot-starter-websocket` — 채팅 및 실시간 상태 전달
+- `spring-boot-starter-mail` — 이메일 인증 및 팀 초대 메일
 - `springdoc-openapi-starter-webmvc-ui:2.7.0` — Swagger UI
+- `software.amazon.awssdk:s3` — S3 파일 업로드/조회
+- `thumbnailator` — 인증 사진 썸네일 생성
 - `lombok` — 보일러플레이트 코드 제거
 - `mysql-connector-j` — MySQL 드라이버
 
@@ -50,10 +56,19 @@
 ./gradlew build -x test
 ```
 
+**최초 셋업 (clone 후 1회)**
+```bash
+bash scripts/setup-hooks.sh
+```
+- main 직접 커밋과 staged 시크릿을 차단하는 Git hook을 활성화한다.
+- 로컬에 gitleaks가 없으면 제한된 패턴 폴백을 사용하며, CI의 secret-scan이 최종 방어선이다.
+
 **로컬 실행 전 필요한 설정** (`src/main/resources/application-local.yml`):
 - DB 접속 정보 (`spring.datasource.url`, `username`, `password`)
 - JWT 시크릿 (`jwt.secret`)
-- 파일 업로드 경로 (`file.upload-dir`)
+- 메일 서버 정보 (`spring.mail.*`)
+- S3 호환 스토리지 정보 (`minio.endpoint`, `access-key`, `secret-key`, `bucket`)
+- 프론트엔드 기준 URL (`app.frontend-base-url`)
 
 ---
 
@@ -63,26 +78,20 @@
 com.todo
 ├── TodoApplication.java
 ├── domain/                         # 비즈니스 도메인
-│   ├── auth/                       # 인증 (로그인, 회원가입, JWT 발급)
-│   │   ├── controller/
-│   │   │   ├── AuthController.java
-│   │   │   └── AuthControllerDocs.java  # Swagger 문서 전용 인터페이스
-│   │   ├── service/
-│   │   │   └── AuthService.java
-│   │   └── dto/
-│   │       ├── request/            # 요청 DTO
-│   │       └── response/           # 응답 DTO
-│   └── user/                       # 사용자 도메인
-│       ├── entity/
-│       │   └── User.java
-│       └── repository/
-│           └── UserRepository.java
+│   ├── auth/                       # 로그인, 회원가입, 이메일 인증
+│   ├── user/                       # 마이페이지, 닉네임 수정, 회원 탈퇴
+│   ├── team/                       # 팀 생성/초대/가입, AI 페르소나
+│   ├── todo/                       # 할 일 생성/제출/반응/리포트
+│   ├── chat/                       # 팀 채팅, 읽음 상태, 타이핑 상태
+│   ├── notification/               # 사용자 알림과 미읽음 개수
+│   └── evaluation/                 # 일일 평가 생성 및 AI 서버 연동
 └── global/                         # 공통/인프라
-    ├── config/                     # Spring 설정 (Security, CORS, Swagger 등)
+    ├── config/                     # Security, CORS, Swagger, S3, WebSocket 설정
     ├── exception/                  # 전역 예외 처리
     ├── jwt/                        # JWT 유틸리티, 필터
+    ├── websocket/                  # STOMP CONNECT 인증 인터셉터
     ├── response/                   # 공통 응답 형식 (ApiResponse)
-    └── service/                    # 공통 서비스 (FileService 등)
+    └── service/                    # 파일 업로드/썸네일 등 공통 서비스
 ```
 
 **도메인 책임 경계**
@@ -90,8 +99,13 @@ com.todo
 | 도메인 | 책임 |
 |---|---|
 | `auth` | 로그인, 회원가입, 토큰 발급/검증 |
-| `user` | 사용자 엔티티, 저장소 (현재는 auth에서 사용) |
-| `global` | 설정, 공통 응답, 예외 핸들러, JWT 인프라 |
+| `user` | 사용자 조회/수정/탈퇴 |
+| `team` | 팀과 팀원, 초대, AI 페르소나 관리 |
+| `todo` | 팀 할 일, 참가자 제출, 반응, 기간별 리포트 |
+| `chat` | WebSocket 채팅과 읽음/타이핑 상태 |
+| `notification` | 도메인 이벤트에 따른 사용자 알림 |
+| `evaluation` | Todo 통계 기반 AI 일일 평가 |
+| `global` | 설정, 공통 응답, 예외, JWT, WebSocket, 파일 인프라 |
 
 ---
 
@@ -275,12 +289,37 @@ public class Task {
 
 ---
 
-#### 9. 도메인 책임 경계 (향후 규칙)
+#### 9. 도메인 책임 경계
 
 - `AuthService`: 인증/인가만 담당 (로그인, 회원가입, 토큰 발급)
   - `UserDetailsService` 구현은 현재 허용
-  - 사용자 조회/수정 기능은 `UserService`에 추가 (현재 미구현)
-- 사용자 CRUD는 `UserService`로 분리 예정 — `AuthService`에 추가 금지
+  - 사용자 조회/수정/탈퇴 기능은 `UserService`가 담당
+- 사용자 CRUD를 `AuthService`에 추가하지 않는다
+- 외부 AI 호출은 `evaluation/client` 경계를 통해 수행한다
+- 실시간 인증 변경 시 REST Security와 WebSocket CONNECT 인증을 함께 검토한다
+
+---
+
+## 테스트 컨벤션
+
+**작성 의무**: 새 서비스 로직 또는 기존 비즈니스 로직 변경 시 관련 테스트를 함께 작성한다.
+구현 완료의 정의에는 컴파일과 전체 테스트 통과가 포함된다.
+
+| 계층 | 기본 전략 |
+|---|---|
+| Entity | 상태 전이와 불변식 단위 테스트 |
+| Service | JUnit 5 + Mockito 단위 테스트 |
+| Repository | 쿼리 동작이 중요할 때 `@DataJpaTest` |
+| Controller | 요청 검증·인증·응답 계약 중심 테스트 |
+| Security/WebSocket | 필터·인터셉터의 허용/거부 경계 테스트 |
+
+**작성 규칙**
+- 현재 코드 스타일에 맞춰 동작과 기대 결과가 드러나는 한글 테스트 이름을 사용한다
+- 정상 케이스와 주요 예외/경계 케이스를 각각 검증한다
+- assertion 없는 테스트나 커버리지 수치만 올리는 getter/setter 테스트는 금지한다
+- 외부 AI, 메일, S3 의존성은 단위 테스트에서 mock으로 격리한다
+- PR 변경 코드의 patch line coverage 80% 이상을 유지한다
+- 전체 line coverage 85%, branch coverage 74%를 하한선으로 유지한다
 
 ---
 
@@ -320,7 +359,7 @@ AI는 Git 작업을 자동화할 수 있지만, 아래 게이트마다 사용자
 - 승인 요청에는 실행할 명령어, 대상 브랜치/PR, 검증 결과를 함께 표시한다.
 - 사용자가 "취소", "중단" 또는 동등한 의사를 밝히면 즉시 중단한다.
 - 리뷰 코멘트 확인 중 수정 필요 사항이 발견되면 기본 동작은 병합 보류이며, 사용자의 "수정해줘" 또는 "그냥 머지해줘" 같은 명시 지시를 기다린다.
-- 보안 관련 파일(`SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter` 등)이 변경된 PR은 사람 리뷰 완료 전 merge 금지.
+- 보안 관련 파일(`SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter`, `WebSocketAuthChannelInterceptor` 등)이 변경된 PR은 사람 리뷰 완료 전 merge 금지.
 
 ---
 
@@ -332,30 +371,42 @@ AI는 Git 작업을 자동화할 수 있지만, 아래 게이트마다 사용자
 2. **force push 금지** — `git push --force` 절대 실행 금지
 3. **main 직접 커밋 금지** — main 브랜치에 직접 commit 금지
 4. **민감정보 커밋 금지** — API 키, 비밀번호, JWT 시크릿, DB 접속 정보 등 파일에 직접 작성 및 커밋 금지
-5. **보안 변경 사람 리뷰 필수** — `SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter` 등 보안 관련 파일 수정 시 반드시 사람이 리뷰한 후 병합
+5. **보안 변경 사람 리뷰 필수** — `SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter`, `WebSocketAuthChannelInterceptor` 등 보안 관련 파일 수정 시 반드시 사람이 리뷰한 후 병합
 6. **커밋 전 사용자 승인 필수** — AI가 자동으로 커밋 메시지를 확정하고 커밋 실행 금지. 항상 메시지 제안 후 승인 대기
 
 ---
 
 ## Codex 커맨드 워크플로우
 
-Codex가 이 레포지토리에서 작업할 때 사용자가 아래 명령을 요청하면
-`.codex/commands/<command>.md` 파일을 먼저 읽고 해당 절차를 따른다.
-Claude Code용 동일 절차는 `.claude/commands/<command>.md`에 동기화해 둔다.
+커맨드 원본은 `.agents/commands/`에 있다.
+`.codex/commands/`와 `.claude/commands/`는 이 디렉터리를 가리키는 심링크이므로
+커맨드 수정은 반드시 `.agents/commands/`에서만 한다.
+
+Codex 또는 Claude Code가 아래 명령을 요청받으면
+`.agents/commands/<command>.md` 파일을 먼저 읽고 해당 절차를 따른다.
 
 | 명령 | 파일 | 용도 |
 |---|---|---|
-| `/feature` | `.codex/commands/feature.md` | 계획부터 PR 생성까지 전체 기능 워크플로우 |
-| `/plan` | `.codex/commands/plan.md` | 구현 전 계획 수립 |
-| `/impl` | `.codex/commands/impl.md` | 승인된 계획 기반 구현 |
-| `/review` | `.codex/commands/review.md` | 변경사항 셀프 리뷰 |
-| `/commit` | `.codex/commands/commit.md` | 커밋 메시지 제안 및 승인 후 커밋 |
-| `/pr` | `.codex/commands/pr.md` | PR 설명 작성 및 승인 후 push/PR 생성 |
-| `/merge` | `.codex/commands/merge.md` | 승인 후 PR 병합 |
+| `/feature` | `.agents/commands/feature.md` | 계획부터 PR 생성까지 전체 기능 워크플로우 |
+| `/plan` | `.agents/commands/plan.md` | 구현 전 계획 수립 |
+| `/impl` | `.agents/commands/impl.md` | 승인된 계획 기반 구현 |
+| `/review` | `.agents/commands/review.md` | 변경사항 셀프 리뷰 |
+| `/commit` | `.agents/commands/commit.md` | 커밋 메시지 제안 및 승인 후 커밋 |
+| `/pr` | `.agents/commands/pr.md` | PR 설명 작성 및 승인 후 push/PR 생성 |
+| `/merge` | `.agents/commands/merge.md` | 승인 후 PR 병합 |
 
 **적용 규칙**
-- `.codex/commands`의 내용이 AGENTS.md와 충돌하면 AGENTS.md를 우선한다.
+- `.agents/commands`의 내용이 AGENTS.md와 충돌하면 AGENTS.md를 우선한다.
 - 커맨드 파일을 읽었더라도 절대 규칙은 항상 유지한다.
 - `/commit`은 커밋 메시지 제안 후 사용자 승인을 받은 경우에만 실행한다.
 - `/pr`은 PR 제목/본문을 작성하고, 사용자 승인 후 브랜치 push 및 `gh pr create`를 실행할 수 있다.
 - `/merge`는 사용자가 명시적으로 병합을 요청하고 승인한 경우에만 실행한다.
+
+---
+
+## 계획·핸드오프 상태 문서
+
+- `.ai-workspace/plan.md`, `pr.md` 상단에 작성일·브랜치·기준 HEAD를 기록한다
+- 브랜치나 작업 내용이 다른 상태 문서를 다음 구현에 재사용하지 않는다
+- 작업 완료 또는 폐기 시 완료 상태와 날짜를 상단에 기록한다
+- 영구 규칙은 상태 문서가 아니라 AGENTS.md로 이관한다

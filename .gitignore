@@ -26,4 +26,5 @@ application-local.yml
 
 ### AI Workspace ###
 .ai-workspace/
+.claude/settings.local.json
 chat-test.html

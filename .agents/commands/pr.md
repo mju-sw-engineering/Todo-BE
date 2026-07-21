@@ -1,4 +1,4 @@
-# /pr — PR 설명 작성 및 생성
+# /pr - PR 설명 작성 및 생성
 
 ## 역할
 현재 브랜치와 main의 차이를 분석하여 PR 설명을 작성한다.
@@ -9,9 +9,10 @@
 ### 1. 브랜치 및 변경사항 파악
 ```bash
 git branch --show-current
-git log main..HEAD --oneline
-git diff main...HEAD --stat
-git diff main...HEAD
+git fetch origin main
+git log origin/main..HEAD --oneline
+git diff origin/main...HEAD --stat
+git diff origin/main...HEAD
 ```
 
 ### 2. PR 템플릿 확인
@@ -47,7 +48,7 @@ PR 템플릿을 기반으로 작성하되, 다음 내용을 포함한다.
 - API 변경, DB 스키마 변경, 환경변수 추가 등 배포 시 추가 작업 필요 여부
 
 **보안 관련 변경 포함 여부**
-- SecurityConfig, JwtUtil, JwtAuthenticationFilter 등 수정 포함 시 명시
+- SecurityConfig, JwtUtil, JwtAuthenticationFilter, WebSocketAuthChannelInterceptor 등 수정 포함 시 명시
 
 ### 4. PR 설명 저장 및 보고
 `.ai-workspace/pr.md`에 저장하고 사용자에게 전문을 보여준다.
@@ -80,10 +81,15 @@ git push origin <현재 브랜치명>
 
 ### 6. PR 생성 승인 대기
 push가 성공하면 PR 제목, PR 본문, 실행할 명령어를 보여주고 승인 여부를 묻는다.
+기본값은 draft PR이며, 에이전트가 만든 PR임을 추적할 수 있도록 라벨을 붙인다.
 
 ```bash
-gh pr create --title "<제목>" --body "$(cat .ai-workspace/pr.md)"
+gh label create "agent:codex" --color "6366F1" --description "Codex가 작성한 PR" 2>/dev/null || true
+gh label create "agent:claude-code" --color "D97706" --description "Claude Code가 작성한 PR" 2>/dev/null || true
+gh pr create --draft --title "<제목>" --body-file .ai-workspace/pr.md --label "<현재 에이전트 라벨>"
 ```
+
+Codex는 `agent:codex`, Claude Code는 `agent:claude-code`를 사용한다.
 
 **사용자 응답별 처리**
 - 승인: `gh pr create` 실행
@@ -92,6 +98,7 @@ gh pr create --title "<제목>" --body "$(cat .ai-workspace/pr.md)"
 
 ### 7. PR 생성 후 보고
 PR URL을 사용자에게 보고한다.
+`.ai-workspace/pr.md` 상단에 완료 상태, PR URL, 생성일을 기록한다.
 사용자가 merge를 원하면 `/merge` 절차로 이어간다.
 
 ## 주의사항

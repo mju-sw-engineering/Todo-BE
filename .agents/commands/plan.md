@@ -1,11 +1,11 @@
-# /plan — 구현 계획 수립
+# /plan - 구현 계획 수립
 
 ## 역할
 기능 구현 전, 코드를 작성하지 않고 계획만 수립한다.
 사용자 승인 없이 코드를 수정하거나 생성하면 안 된다.
 
 ## 입력
-$ARGUMENTS — 구현할 기능 설명
+$ARGUMENTS - 구현할 기능 설명
 
 ## 실행 순서
 
@@ -20,7 +20,7 @@ $ARGUMENTS — 구현할 기능 설명
 - 파일 경로, 변경 유형(신규/수정), 변경 이유
 
 **작업 순서**
-- 의존성 순서를 고려한 단계별 구현 순서 (예: Entity → Repository → Service → Controller → DTO)
+- 의존성 순서를 고려한 단계별 구현 순서 (예: Entity -> Repository -> Service -> Controller -> DTO)
 
 **엣지 케이스**
 - 예외 상황, 경계값, 누락될 수 있는 케이스
@@ -36,6 +36,14 @@ $ARGUMENTS — 구현할 기능 설명
 ### 3. 계획 저장
 `.ai-workspace/plan.md` 파일에 저장한다.
 
+파일 상단에 계획의 기준점을 기록한다.
+```text
+> 작성: <날짜> · 브랜치: <현재 브랜치> · 기준 HEAD: <git rev-parse --short HEAD>
+```
+
+계획이 완료되거나 폐기되면 상단에 완료/폐기 상태와 날짜를 기록해
+다음 작업에서 낡은 계획을 현재 계획으로 오인하지 않게 한다.
+
 ### 4. 사용자 보고 및 승인 대기
 계획 전문을 사용자에게 보여주고 다음을 명시한다.
 - "승인하시면 /impl로 구현을 시작합니다."
@@ -44,4 +52,5 @@ $ARGUMENTS — 구현할 기능 설명
 ## 주의사항
 - 추측 금지. 불확실한 부분은 계획에 "확인 필요" 로 표시하고 사용자에게 질문
 - AGENTS.md의 코딩 컨벤션 기준으로 계획 수립
-- 보안 관련 파일(SecurityConfig, JwtUtil, JwtAuthenticationFilter) 수정 포함 시 계획에 명시
+- 보안 관련 파일(SecurityConfig, JwtUtil, JwtAuthenticationFilter, WebSocketAuthChannelInterceptor) 수정 포함 시 계획에 명시
+- 현재 브랜치와 HEAD를 확인하지 않은 계획은 저장하지 않는다

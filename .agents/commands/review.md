@@ -1,4 +1,4 @@
-# /review — 변경사항 셀프 리뷰
+# /review - 변경사항 셀프 리뷰
 
 ## 역할
 구현된 변경사항을 AGENTS.md 기준으로 셀프 리뷰한다.
@@ -8,11 +8,13 @@ FAIL 항목은 수정안을 제시하고 사용자 승인을 받는다.
 
 ### 1. 변경사항 파악
 ```bash
+git fetch origin main
+git diff origin/main...HEAD
 git diff HEAD
-git diff --cached
 ```
 
-두 명령 모두 결과가 비어있으면 즉시 다음 메시지를 출력하고 종료한다:
+브랜치에서 이미 커밋된 변경과 아직 커밋되지 않은 변경을 모두 리뷰한다.
+두 diff 모두 비어있으면 즉시 다음 메시지를 출력하고 종료한다:
 ```
 리뷰할 변경사항이 없습니다.
 ```
@@ -58,7 +60,12 @@ git diff --cached
 **[보안]**
 - [ ] 인증이 필요한 엔드포인트에 `SecurityConfig`의 인가 설정이 추가됐는가
 - [ ] 민감정보(비밀번호, 토큰)가 Response DTO에 포함되지 않는가
-- [ ] 보안 관련 파일(SecurityConfig, JwtUtil, JwtAuthenticationFilter)이 수정됐다면 리뷰 필요 명시
+- [ ] 보안 관련 파일(SecurityConfig, JwtUtil, JwtAuthenticationFilter, WebSocketAuthChannelInterceptor)이 수정됐다면 리뷰 필요 명시
+- [ ] WebSocket CONNECT 인증과 REST 인증 정책이 일관적인가
+
+**[외부 시스템 / 파일 저장소]**
+- [ ] S3, 메일, AI 서버 호출 실패가 트랜잭션과 응답을 예측 불가능하게 만들지 않는가
+- [ ] 외부 시스템 요청/응답에 비밀번호, 토큰, 개인 정보가 로그로 남지 않는가
 
 **[코드 정리]**
 - [ ] 사용하지 않는 import가 없는가
@@ -77,13 +84,13 @@ git diff --cached
 ```
 [컨벤션] PASS
 [N+1 쿼리] PASS
-[트랜잭션 경계] N/A — 단순 조회만 포함
-[예외 처리] FAIL — FileService에서 RuntimeException 직접 사용. 수정안: ...
+[트랜잭션 경계] N/A - 단순 조회만 포함
+[예외 처리] FAIL - FileService에서 RuntimeException 직접 사용. 수정안: ...
 ...
 
-총 FAIL: X건 — 수정안 검토 후 승인 부탁드립니다.
+총 FAIL: X건 - 수정안 검토 후 승인 부탁드립니다.
 ```
 
 ## 주의사항
-- 코드를 직접 수정하지 않는다. 리뷰 → 승인 → 수정 순서를 지킨다
+- 코드를 직접 수정하지 않는다. 리뷰 -> 승인 -> 수정 순서를 지킨다
 - PASS로 처리하기 애매한 항목은 FAIL로 처리하고 사용자에게 판단을 맡긴다
