@@ -1,0 +1,10 @@
+# 기본 gitleaks 룰셋을 확장한다.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "테스트 더미 값과 검사 스크립트 자체의 패턴 문자열"
+paths = [
+  '''src/test/resources/application-test\.yml''',
+  '''\.githooks/.*''',
+]
