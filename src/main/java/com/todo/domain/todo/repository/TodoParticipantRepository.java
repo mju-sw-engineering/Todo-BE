@@ -9,10 +9,22 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 public interface TodoParticipantRepository extends JpaRepository<TodoParticipant, Long> {
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE TodoParticipant tp
+            SET tp.status = com.todo.domain.todo.entity.ParticipantStatus.FAIL
+            WHERE tp.status = com.todo.domain.todo.entity.ParticipantStatus.IN_PROGRESS
+              AND tp.todo.id IN (
+                  SELECT t.id FROM Todo t WHERE t.deadline < :now
+              )
+            """)
+    int markExpiredParticipantsAsFail(@Param("now") LocalDateTime now);
 
     @Query("""
             SELECT tp.todo.id AS todoId, tp.user.id AS userId,

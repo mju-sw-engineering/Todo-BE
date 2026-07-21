@@ -31,3 +31,7 @@ minio:
 
 app:
   frontend-base-url: http://localhost:3000
+
+todo:
+  scheduling:
+    enabled: false

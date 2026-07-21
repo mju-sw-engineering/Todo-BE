@@ -25,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -77,8 +76,6 @@ public class DailyEvaluationService {
         if (savedEvaluation.isPresent() && savedEvaluation.get().getPersona() == team.getAiPersona()) {
             return DailyEvaluationCheck.cached(DailyEvaluationResponse.from(savedEvaluation.get()));
         }
-
-        todoRepository.markExpiredTodosAsFail(LocalDateTime.now(KST));
 
         List<TodoDailyEvaluationStat> todos = todoRepository.findDailyEvaluationStats(
                 team.getId(),
