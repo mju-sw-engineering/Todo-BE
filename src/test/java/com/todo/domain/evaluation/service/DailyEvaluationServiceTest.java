@@ -16,6 +16,7 @@ import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -24,6 +25,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -38,7 +41,9 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class DailyEvaluationServiceTest {
@@ -58,6 +63,16 @@ class DailyEvaluationServiceTest {
     private TodoRepository todoRepository;
     @Mock
     private AiDailyEvaluationClient aiDailyEvaluationClient;
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+    }
 
     @Test
     void 저장된_평가가_있으면_AI_서버를_호출하지_않고_반환한다() {
@@ -119,11 +134,44 @@ class DailyEvaluationServiceTest {
     }
 
     @Test
+    void AI_응답_저장_시_동시성_충돌이_발생하면_새_트랜잭션에서_기존_평가를_재조회해_갱신한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(10L, AiPersona.ANGEL);
+        LocalDate yesterday = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        DailyEvaluation concurrentlyInsertedEvaluation = DailyEvaluation.create(team, yesterday, AiPersona.DEVIL, "동시에 저장된 평가");
+        List<TodoDailyEvaluationStat> stats = List.of(
+                stat("성공 투두", TodoStatus.SUCCESS, 2, 3),
+                stat("진행 투두", TodoStatus.IN_PROGRESS, 1, 3)
+        );
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
+        given(dailyEvaluationRepository.findByTeamIdAndEvaluationDate(10L, yesterday))
+                .willReturn(Optional.empty())
+                .willReturn(Optional.of(concurrentlyInsertedEvaluation));
+        given(todoRepository.findDailyEvaluationStats(eq(10L), any(), any())).willReturn(stats);
+        given(aiDailyEvaluationClient.createDailyEvaluation(any()))
+                .willReturn(new AiDailyEvaluationResponse(AiPersona.ANGEL, "생성된 평가"));
+        given(dailyEvaluationRepository.saveAndFlush(any(DailyEvaluation.class)))
+                .willThrow(new org.springframework.dao.DataIntegrityViolationException("동시 삽입"));
+
+        DailyEvaluationResponse response = dailyEvaluationService.getDailyEvaluation(10L, "user1");
+
+        assertThat(response.persona()).isEqualTo(AiPersona.ANGEL);
+        assertThat(response.message()).isEqualTo("생성된 평가");
+        assertThat(concurrentlyInsertedEvaluation.getPersona()).isEqualTo(AiPersona.ANGEL);
+        assertThat(concurrentlyInsertedEvaluation.getMessage()).isEqualTo("생성된 평가");
+        then(dailyEvaluationRepository).should(times(2)).findByTeamIdAndEvaluationDate(10L, yesterday);
+    }
+
+    @Test
     void 저장된_평가의_persona가_현재_팀_persona와_다르면_다시_생성해_갱신한다() {
         User user = userWithId(1L);
         Team team = teamWithId(10L, AiPersona.ANGEL);
         LocalDate yesterday = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
         DailyEvaluation evaluation = DailyEvaluation.create(team, yesterday, AiPersona.DEVIL, "이전 평가");
+        ReflectionTestUtils.setField(evaluation, "id", 100L);
         List<TodoDailyEvaluationStat> stats = List.of(
                 stat("성공 투두", TodoStatus.SUCCESS, 2, 3),
                 stat("실패 투두", TodoStatus.FAIL, 0, 3)
@@ -134,6 +182,7 @@ class DailyEvaluationServiceTest {
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
         given(dailyEvaluationRepository.findByTeamIdAndEvaluationDate(10L, yesterday))
                 .willReturn(Optional.of(evaluation));
+        given(dailyEvaluationRepository.findById(100L)).willReturn(Optional.of(evaluation));
         given(todoRepository.findDailyEvaluationStats(eq(10L), any(), any())).willReturn(stats);
         given(aiDailyEvaluationClient.createDailyEvaluation(any()))
                 .willReturn(new AiDailyEvaluationResponse(AiPersona.ANGEL, "새 평가"));

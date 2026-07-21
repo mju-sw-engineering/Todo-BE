@@ -3,6 +3,9 @@ spring:
     default: local
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 3000
   jpa:
     properties:
       hibernate:
@@ -13,8 +16,11 @@ spring:
     multipart:
       max-file-size: 5MB
       max-request-size: 5MB
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
 server:
   port: 8080
+  shutdown: graceful
 
 management:
   endpoints:
@@ -36,3 +42,5 @@ jwt:
 ai:
   server:
     base-url: https://ai.swe.bluerack.org
+    connect-timeout: 3s
+    read-timeout: 15s
