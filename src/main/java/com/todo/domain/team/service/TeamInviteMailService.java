@@ -1,15 +1,9 @@
 package com.todo.domain.team.service;
 
 import com.todo.domain.team.entity.Team;
-import com.todo.global.exception.BusinessException;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
+import com.todo.global.mail.entity.MailType;
+import com.todo.global.mail.service.MailOutboxService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
 
@@ -19,31 +13,24 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TeamInviteMailService {
 
-    private final JavaMailSender mailSender;
+    private static final int MAIL_MAX_ATTEMPTS = 5;
 
-    @Value("${spring.mail.username:}")
-    private String fromEmail;
+    private final MailOutboxService mailOutboxService;
 
     public void sendInvitations(Team team, String inviteLink, List<String> emails) {
-        try {
-            for (String email : emails) {
-                mailSender.send(buildMessage(team, inviteLink, email));
-            }
-        } catch (MailException | MessagingException e) {
-            throw new BusinessException("초대 메일 발송에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
+        String textBody = buildTextBody(team, inviteLink);
+        String htmlBody = buildHtmlBody(team, inviteLink);
+        for (String email : emails) {
+            mailOutboxService.enqueue(
+                    MailType.TEAM_INVITE,
+                    email,
+                    "팀 초대가 도착했어요",
+                    textBody,
+                    htmlBody,
+                    null,
+                    MAIL_MAX_ATTEMPTS
+            );
         }
-    }
-
-    private MimeMessage buildMessage(Team team, String inviteLink, String email) throws MessagingException {
-        MimeMessage message = mailSender.createMimeMessage();
-        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-        if (fromEmail != null && !fromEmail.isBlank()) {
-            helper.setFrom(fromEmail);
-        }
-        helper.setTo(email);
-        helper.setSubject("팀 초대가 도착했어요");
-        helper.setText(buildTextBody(team, inviteLink), buildHtmlBody(team, inviteLink));
-        return message;
     }
 
     private String buildTextBody(Team team, String inviteLink) {
