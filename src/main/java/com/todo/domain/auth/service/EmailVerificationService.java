@@ -3,14 +3,10 @@ package com.todo.domain.auth.service;
 import com.todo.domain.auth.entity.EmailVerification;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.global.exception.BusinessException;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
+import com.todo.global.mail.entity.MailType;
+import com.todo.global.mail.service.MailOutboxService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,31 +19,27 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class EmailVerificationService {
 
-    private final EmailVerificationRepository emailVerificationRepository;
-    private final JavaMailSender mailSender;
+    private static final int MAIL_MAX_ATTEMPTS = 2;
 
-    @Value("${spring.mail.username:}")
-    private String fromEmail;
+    private final EmailVerificationRepository emailVerificationRepository;
+    private final MailOutboxService mailOutboxService;
 
     @Transactional
     public void sendCode(String email) {
         String code = String.format("%06d", new SecureRandom().nextInt(1_000_000));
-        EmailVerification ev = EmailVerification.create(email, code, LocalDateTime.now().plusMinutes(3));
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(3);
+        EmailVerification ev = EmailVerification.create(email, code, expiresAt);
         emailVerificationRepository.save(ev);
 
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            if (fromEmail != null && !fromEmail.isBlank()) {
-                helper.setFrom(fromEmail);
-            }
-            helper.setTo(email);
-            helper.setSubject("[Todo] 이메일 인증 코드");
-            helper.setText(buildTextBody(code), buildHtmlBody(code));
-            mailSender.send(message);
-        } catch (MailException | MessagingException e) {
-            throw new BusinessException("인증 메일 발송에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+        mailOutboxService.enqueue(
+                MailType.VERIFICATION,
+                email,
+                "[Todo] 이메일 인증 코드",
+                buildTextBody(code),
+                buildHtmlBody(code),
+                expiresAt,
+                MAIL_MAX_ATTEMPTS
+        );
     }
 
     @Transactional

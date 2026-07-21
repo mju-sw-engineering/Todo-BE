@@ -3,24 +3,25 @@ package com.todo.domain.auth.service;
 import com.todo.domain.auth.entity.EmailVerification;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.mail.entity.MailType;
+import com.todo.global.mail.service.MailOutboxService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.test.util.ReflectionTestUtils;
 
-import jakarta.mail.internet.MimeMessage;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
 class EmailVerificationServiceTest {
@@ -32,14 +33,10 @@ class EmailVerificationServiceTest {
     private EmailVerificationRepository emailVerificationRepository;
 
     @Mock
-    private JavaMailSender mailSender;
+    private MailOutboxService mailOutboxService;
 
     @Test
     void 인증코드_발송_성공() {
-        MimeMessage mimeMessage = mock(MimeMessage.class);
-        given(mailSender.createMimeMessage()).willReturn(mimeMessage);
-        ReflectionTestUtils.setField(emailVerificationService, "fromEmail", "test@example.com");
-
         emailVerificationService.sendCode("user@example.com");
 
         ArgumentCaptor<EmailVerification> captor = ArgumentCaptor.forClass(EmailVerification.class);
@@ -47,7 +44,18 @@ class EmailVerificationServiceTest {
         assertThat(captor.getValue().getEmail()).isEqualTo("user@example.com");
         assertThat(captor.getValue().getCode()).hasSize(6);
         assertThat(captor.getValue().isExpired()).isFalse();
-        then(mailSender).should().send(mimeMessage);
+
+        ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
+        then(mailOutboxService).should().enqueue(
+                eq(MailType.VERIFICATION),
+                eq("user@example.com"),
+                eq("[Todo] 이메일 인증 코드"),
+                codeCaptor.capture(),
+                anyString(),
+                any(LocalDateTime.class),
+                eq(2)
+        );
+        assertThat(codeCaptor.getValue()).contains(captor.getValue().getCode());
     }
 
     @Test

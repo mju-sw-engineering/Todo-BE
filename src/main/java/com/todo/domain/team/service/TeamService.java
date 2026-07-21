@@ -138,6 +138,7 @@ public class TeamService {
         return JoinTeamResponse.from(team);
     }
 
+    @Transactional
     public InviteTeamResponse inviteTeamMembers(String loginId, Long teamId, InviteTeamRequest request) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
