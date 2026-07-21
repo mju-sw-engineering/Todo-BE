@@ -50,11 +50,20 @@ reviews:
         - DTO와 Entity 간 직접 참조가 없는지 확인하세요.
         - 요청/응답 DTO에 적절한 Bean Validation 어노테이션이 적용됐는지 확인하세요.
 
-    - path: "src/main/java/**/global/security/**"
+    - path: "src/main/java/com/todo/global/config/SecurityConfig.java"
       instructions: |
         - 보안 설정이 올바른지 꼼꼼히 확인하세요.
-        - JWT 토큰 검증 로직에 취약점이 없는지 확인하세요.
         - CORS 설정이 프로덕션 환경에 적합한지 확인하세요.
+
+    - path: "src/main/java/com/todo/global/jwt/**"
+      instructions: |
+        - JWT 생성·파싱·만료·서명 검증 로직에 취약점이 없는지 확인하세요.
+        - 토큰 또는 인증 실패 원인이 응답이나 로그에 과도하게 노출되지 않는지 확인하세요.
+
+    - path: "src/main/java/com/todo/global/websocket/WebSocketAuthChannelInterceptor.java"
+      instructions: |
+        - STOMP CONNECT 인증이 REST API의 JWT 검증 정책과 일관적인지 확인하세요.
+        - 인증되지 않은 연결과 잘못된 Bearer 토큰이 확실히 거부되는지 확인하세요.
 
     - path: "src/test/**"
       instructions: |

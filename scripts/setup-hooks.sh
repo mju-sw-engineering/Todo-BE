@@ -15,3 +15,7 @@ done
 echo ""
 echo "Claude CLI가 PATH에 있으면 커밋 시 메시지가 자동 생성됩니다."
 echo "Claude CLI 설치 여부: $(command -v claude &>/dev/null && echo '확인됨' || echo '미설치 (hook은 조용히 스킵됨)')"
+
+chmod +x .githooks/pre-commit 2>/dev/null || true
+echo "pre-commit: main 직접 커밋 차단 + staged 시크릿 검사 활성화됨"
+echo "gitleaks 설치 여부: $(command -v gitleaks &>/dev/null && echo '확인됨' || echo '미설치 (제한된 패턴 폴백 사용)')"

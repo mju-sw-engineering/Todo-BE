@@ -1,4 +1,4 @@
-# /pr — PR 설명 작성 및 생성
+# /pr - PR 설명 작성 및 생성
 
 ## 역할
 현재 브랜치와 main의 차이를 분석하여 PR 설명을 작성한다.
@@ -9,9 +9,10 @@
 ### 1. 브랜치 및 변경사항 파악
 ```bash
 git branch --show-current
-git log main..HEAD --oneline
-git diff main...HEAD --stat
-git diff main...HEAD
+git fetch origin main
+git log origin/main..HEAD --oneline
+git diff origin/main...HEAD --stat
+git diff origin/main...HEAD
 ```
 
 ### 2. PR 템플릿 확인
@@ -47,7 +48,7 @@ PR 템플릿을 기반으로 작성하되, 다음 내용을 포함한다.
 - API 변경, DB 스키마 변경, 환경변수 추가 등 배포 시 추가 작업 필요 여부
 
 **보안 관련 변경 포함 여부**
-- SecurityConfig, JwtUtil, JwtAuthenticationFilter 등 수정 포함 시 명시
+- SecurityConfig, JwtUtil, JwtAuthenticationFilter, WebSocketAuthChannelInterceptor 등 수정 포함 시 명시
 
 ### 4. PR 설명 저장 및 보고
 `.ai-workspace/pr.md`에 저장하고 사용자에게 전문을 보여준다.
@@ -80,10 +81,14 @@ git push origin <현재 브랜치명>
 
 ### 6. PR 생성 승인 대기
 push가 성공하면 PR 제목, PR 본문, 실행할 명령어를 보여주고 승인 여부를 묻는다.
+기본값은 draft PR이다.
+AI 에이전트나 사용한 도구를 나타내는 라벨, 제목, 본문 문구를 자동으로 추가하지 않는다.
 
 ```bash
-gh pr create --title "<제목>" --body "$(cat .ai-workspace/pr.md)"
+gh pr create --draft --title "<제목>" --body-file .ai-workspace/pr.md
 ```
+
+사용자가 명시적으로 요청한 경우에만 일반 프로젝트 라벨을 추가한다.
 
 **사용자 응답별 처리**
 - 승인: `gh pr create` 실행
@@ -92,6 +97,7 @@ gh pr create --title "<제목>" --body "$(cat .ai-workspace/pr.md)"
 
 ### 7. PR 생성 후 보고
 PR URL을 사용자에게 보고한다.
+`.ai-workspace/pr.md` 상단에 완료 상태, PR URL, 생성일을 기록한다.
 사용자가 merge를 원하면 `/merge` 절차로 이어간다.
 
 ## 주의사항
@@ -99,3 +105,4 @@ PR URL을 사용자에게 보고한다.
 - `git push --force` 또는 `--force-with-lease` 사용 절대 금지
 - 1000줄 이상 diff인 경우 전체 분석 대신 `--stat` 기반으로 요약하고 사용자에게 알림
 - main 브랜치에서 실행 중이라면 경고 후 중단
+- PR과 merge commit 메시지에 `Co-authored-by`, `Generated-by`, 에이전트 이름 등 AI 작업 metadata를 자동으로 추가하지 않음

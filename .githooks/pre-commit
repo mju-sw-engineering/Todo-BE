@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+# AGENTS.md의 로컬 Git 방어선
+# 1. main 직접 커밋 차단
+# 2. 민감 파일과 staged 시크릿 차단
+
+set -u
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || echo detached)"
+if [ "$branch" = "main" ]; then
+    echo "[pre-commit] 차단: main 브랜치에는 직접 커밋할 수 없습니다." >&2
+    echo "  작업 브랜치를 생성한 뒤 다시 시도하세요." >&2
+    exit 1
+fi
+
+staged_files="$(git diff --cached --name-only)"
+blocked_files='(^|/)\.env(\..*)?$|(^|/)(id_rsa|id_ed25519)$|\.(pem|p12|pfx)$|(^|/)(credentials|secrets?)\.(json|ya?ml)$'
+
+if printf '%s\n' "$staged_files" | grep -qE "$blocked_files"; then
+    echo "[pre-commit] 차단: 민감정보 파일이 staged 되어 있습니다:" >&2
+    printf '%s\n' "$staged_files" | grep -E "$blocked_files" >&2
+    exit 1
+fi
+
+# 운영 application 설정에는 리터럴 비밀번호/키를 허용하지 않는다.
+# 테스트 전용 application-test.yml의 명시적 더미 값은 제외한다.
+yml_secrets="$(
+    git diff --cached -U0 -- '*application*.yml' ':(exclude)src/test/resources/application-test.yml' \
+        | grep -E '^\+' \
+        | grep -iE '(password|secret|access-?key|secret-?key)\s*:' \
+        | grep -vE ':\s*(\$\{[A-Z0-9_]+\}|\s*)$' \
+        || true
+)"
+
+if [ -n "$yml_secrets" ]; then
+    echo "[pre-commit] 차단: application 설정에 리터럴 시크릿이 감지됐습니다." >&2
+    echo '  ${ENV_VAR} 플레이스홀더를 사용하세요.' >&2
+    printf '%s\n' "$yml_secrets" >&2
+    exit 1
+fi
+
+if command -v gitleaks >/dev/null 2>&1; then
+    if ! gitleaks protect --staged --no-banner --redact; then
+        echo "[pre-commit] 차단: gitleaks가 staged 변경에서 시크릿을 감지했습니다." >&2
+        exit 1
+    fi
+else
+    echo "[pre-commit] 경고: gitleaks가 없어 제한된 패턴 검사만 실행합니다." >&2
+    if git diff --cached -U0 -- . ':(exclude).githooks' ':(exclude)scripts/verify-agent-harness.sh' \
+        | grep -E '^\+' \
+        | grep -qE 'AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{20,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|aws_secret_access_key'; then
+        echo "[pre-commit] 차단: staged 변경에서 시크릿 패턴이 감지됐습니다." >&2
+        echo "  정밀 검사를 위해 gitleaks 설치를 권장합니다." >&2
+        exit 1
+    fi
+fi
+
+exit 0

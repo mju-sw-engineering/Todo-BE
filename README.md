@@ -7,7 +7,7 @@
 ### 처음 클론 후 설정
 
 ```bash
-# Git hook 활성화 (커밋 메시지 자동 생성)
+# Git hook 활성화 (main 커밋·시크릿 차단, 커밋 메시지 생성)
 bash scripts/setup-hooks.sh
 ```
 
@@ -36,8 +36,18 @@ AI는 다음 단계별로 사용자 승인을 받은 경우에만 Git 상태 변
 
 ### Git Hook
 
+`pre-commit` hook은 main 직접 커밋과 staged 시크릿을 차단합니다.
+gitleaks가 없으면 제한된 패턴 폴백을 사용하므로 정밀 검사를 위해 gitleaks 설치를 권장합니다.
+
 `prepare-commit-msg` hook이 활성화된 경우, `git commit` 시 Claude가 staged 변경사항을 분석해 Conventional Commits 형식의 커밋 메시지를 자동 생성합니다.
 Claude CLI(`claude`)가 PATH에 없으면 hook은 조용히 스킵됩니다.
+
+### 설정 원본
+
+- 에이전트 규칙: `AGENTS.md`
+- 커맨드 원본: `.agents/commands/`
+- `.codex/commands/`, `.claude/commands/`는 같은 원본을 가리키는 심링크
+- CI는 테스트, 전체/변경분 커버리지, 시크릿, 에이전트 설정, Docker 빌드를 검증
 
 ### 참고 문서
 

@@ -27,7 +27,7 @@ gh api repos/{owner}/{repo}/pulls/<PR번호>/comments
 - GitHub Actions 등 필수 체크 결과
 - 사람 리뷰의 `CHANGES_REQUESTED`, 미해결 코멘트, 승인 여부
 - CodeRabbit 등 리뷰 봇의 코멘트와 수정 제안
-- 보안 관련 파일(`SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter` 등) 변경 여부
+- 보안 관련 파일(`SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter`, `WebSocketAuthChannelInterceptor` 등) 변경 여부
 
 ### 3. 수정 필요 사항 보고 및 사용자 선택 대기
 리뷰어 또는 리뷰 봇이 수정 요청/제안/미해결 코멘트를 남겼다면 병합을 바로 진행하지 않는다.
@@ -55,7 +55,7 @@ gh api repos/{owner}/{repo}/pulls/<PR번호>/comments
 - 필수 체크가 통과했는지
 - 리뷰 상태가 승인됐는지
 - 리뷰어 또는 CodeRabbit 등 리뷰 봇의 미해결 수정 요청을 사용자에게 보고했는지
-- 보안 관련 파일(`SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter` 등)이 변경됐다면 사람 리뷰가 완료됐는지
+- 보안 관련 파일(`SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter`, `WebSocketAuthChannelInterceptor` 등)이 변경됐다면 사람 리뷰가 완료됐는지
 
 체크 실패, 리뷰 미승인, 충돌, 보안 리뷰 미완료가 있으면 병합하지 않고 중단한다.
 
