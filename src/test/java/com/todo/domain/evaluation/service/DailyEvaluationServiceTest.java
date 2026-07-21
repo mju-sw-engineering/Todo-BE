@@ -43,6 +43,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class DailyEvaluationServiceTest {
@@ -130,6 +131,38 @@ class DailyEvaluationServiceTest {
         assertThat(request.basisDate()).isEqualTo(yesterday);
         assertThat(request.fallback()).isFalse();
         assertThat(request.todos()).hasSize(2);
+    }
+
+    @Test
+    void AI_응답_저장_시_동시성_충돌이_발생하면_새_트랜잭션에서_기존_평가를_재조회해_갱신한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(10L, AiPersona.ANGEL);
+        LocalDate yesterday = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        DailyEvaluation concurrentlyInsertedEvaluation = DailyEvaluation.create(team, yesterday, AiPersona.DEVIL, "동시에 저장된 평가");
+        List<TodoDailyEvaluationStat> stats = List.of(
+                stat("성공 투두", TodoStatus.SUCCESS, 2, 3),
+                stat("진행 투두", TodoStatus.IN_PROGRESS, 1, 3)
+        );
+
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
+        given(dailyEvaluationRepository.findByTeamIdAndEvaluationDate(10L, yesterday))
+                .willReturn(Optional.empty())
+                .willReturn(Optional.of(concurrentlyInsertedEvaluation));
+        given(todoRepository.findDailyEvaluationStats(eq(10L), any(), any())).willReturn(stats);
+        given(aiDailyEvaluationClient.createDailyEvaluation(any()))
+                .willReturn(new AiDailyEvaluationResponse(AiPersona.ANGEL, "생성된 평가"));
+        given(dailyEvaluationRepository.saveAndFlush(any(DailyEvaluation.class)))
+                .willThrow(new org.springframework.dao.DataIntegrityViolationException("동시 삽입"));
+
+        DailyEvaluationResponse response = dailyEvaluationService.getDailyEvaluation(10L, "user1");
+
+        assertThat(response.persona()).isEqualTo(AiPersona.ANGEL);
+        assertThat(response.message()).isEqualTo("생성된 평가");
+        assertThat(concurrentlyInsertedEvaluation.getPersona()).isEqualTo(AiPersona.ANGEL);
+        assertThat(concurrentlyInsertedEvaluation.getMessage()).isEqualTo("생성된 평가");
+        then(dailyEvaluationRepository).should(times(2)).findByTeamIdAndEvaluationDate(10L, yesterday);
     }
 
     @Test

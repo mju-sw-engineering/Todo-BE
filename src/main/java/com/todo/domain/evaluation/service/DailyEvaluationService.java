@@ -55,7 +55,11 @@ public class DailyEvaluationService {
 
         AiDailyEvaluationResponse aiResponse = aiDailyEvaluationClient.createDailyEvaluation(check.request());
 
-        return transactionTemplate.execute(status -> saveDailyEvaluation(check, aiResponse));
+        try {
+            return transactionTemplate.execute(status -> saveDailyEvaluation(check, aiResponse));
+        } catch (DataIntegrityViolationException e) {
+            return transactionTemplate.execute(status -> handleConcurrentSave(check, aiResponse));
+        }
     }
 
     private DailyEvaluationCheck prepareDailyEvaluation(Long teamId, String loginId) {
@@ -121,22 +125,26 @@ public class DailyEvaluationService {
             return DailyEvaluationResponse.from(evaluation);
         }
 
-        try {
-            DailyEvaluation evaluation = dailyEvaluationRepository.saveAndFlush(DailyEvaluation.create(
-                    team,
-                    check.evaluationDate(),
-                    currentPersona,
-                    aiResponse.message()
-            ));
-            return DailyEvaluationResponse.from(evaluation);
-        } catch (DataIntegrityViolationException e) {
-            DailyEvaluation evaluation = dailyEvaluationRepository.findByTeamIdAndEvaluationDate(check.teamId(), check.evaluationDate())
-                    .orElseThrow(() -> new BusinessException("AI 평가 저장에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR));
-            if (evaluation.getPersona() != currentPersona) {
-                evaluation.updateEvaluation(currentPersona, aiResponse.message());
-            }
-            return DailyEvaluationResponse.from(evaluation);
+        DailyEvaluation evaluation = dailyEvaluationRepository.saveAndFlush(DailyEvaluation.create(
+                team,
+                check.evaluationDate(),
+                currentPersona,
+                aiResponse.message()
+        ));
+        return DailyEvaluationResponse.from(evaluation);
+    }
+
+    private DailyEvaluationResponse handleConcurrentSave(DailyEvaluationCheck check, AiDailyEvaluationResponse aiResponse) {
+        Team team = teamRepository.findById(check.teamId())
+                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND));
+        AiPersona currentPersona = team.getAiPersona();
+
+        DailyEvaluation evaluation = dailyEvaluationRepository.findByTeamIdAndEvaluationDate(check.teamId(), check.evaluationDate())
+                .orElseThrow(() -> new BusinessException("AI 평가 저장에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR));
+        if (evaluation.getPersona() != currentPersona) {
+            evaluation.updateEvaluation(currentPersona, aiResponse.message());
         }
+        return DailyEvaluationResponse.from(evaluation);
     }
 
     private record DailyEvaluationCheck(
