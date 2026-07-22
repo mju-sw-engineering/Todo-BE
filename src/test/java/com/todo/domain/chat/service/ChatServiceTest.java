@@ -189,8 +189,8 @@ class ChatServiceTest {
 
         chatService.saveMessage(10L, "user1", new ChatMessageRequest("안녕"));
 
-        then(notificationService).should().send(
-                eq(receiver), eq(NotificationType.CHAT_MESSAGE), any(), any(), eq(10L));
+        then(notificationService).should().sendAll(
+                eq(List.of(receiver)), eq(NotificationType.CHAT_MESSAGE), any(), any(), eq(10L));
     }
 
     @Test

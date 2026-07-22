@@ -1,6 +1,10 @@
 package com.todo.domain.todo.service;
 
+import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
+import com.todo.domain.team.entity.TeamMember;
+import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
@@ -77,6 +81,8 @@ class TodoServiceTest {
     private TodoReactionRepository todoReactionRepository;
     @Mock
     private TransactionTemplate transactionTemplate;
+    @Mock
+    private NotificationService notificationService;
 
     @BeforeEach
     void setUp() {
@@ -564,6 +570,30 @@ class TodoServiceTest {
         assertThat(response.description()).isEqualTo("설명");
         assertThat(response.assigneeIds()).containsExactly(2L);
         then(todoParticipantRepository).should().save(any(TodoParticipant.class));
+    }
+
+    @Test
+    void 투두_생성시_본인을_제외한_팀원에게_알림을_일괄_발송한다() {
+        User creator = userWithId(1L);
+        User other = userWithId(3L);
+        Team team = teamWithId(100L);
+        OffsetDateTime deadline = OffsetDateTime.parse("2026-06-04T12:00:00+09:00");
+        CreateTodoRequest request = new CreateTodoRequest("투두", "설명", deadline, List.of());
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
+        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(todoRepository.save(any(Todo.class))).willAnswer(invocation -> {
+            Todo todo = invocation.getArgument(0);
+            ReflectionTestUtils.setField(todo, "id", 10L);
+            return todo;
+        });
+        given(teamMemberRepository.findByTeamIdExcludingUser(100L, 1L))
+                .willReturn(List.of(TeamMember.create(team, other, TeamMemberRole.MEMBER)));
+
+        todoService.createTodo("user1", 100L, request);
+
+        then(notificationService).should().sendAll(
+                eq(List.of(other)), eq(NotificationType.TODO_CREATED), any(), any(), eq(10L));
     }
 
     @Test

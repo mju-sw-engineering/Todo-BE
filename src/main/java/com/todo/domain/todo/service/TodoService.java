@@ -116,9 +116,13 @@ public class TodoService {
         );
         String title = "새로운 투두가 생성되었습니다.";
         String content = creator.getNickname() + "님이 '" + todo.getTitle() + "'을(를) 만들었습니다.";
-        for (TeamMember member : receivers) {
-            notificationService.send(member.getUser(), NotificationType.TODO_CREATED, title, content, todo.getId());
-        }
+        notificationService.sendAll(
+                receivers.stream().map(TeamMember::getUser).toList(),
+                NotificationType.TODO_CREATED,
+                title,
+                content,
+                todo.getId()
+        );
     }
 
 
