@@ -143,9 +143,13 @@ public class ChatService {
         );
         String title = sender.getNickname() + "님이 메시지를 보냈습니다.";
         String notificationContent = todo.getTitle() + ": " + content;
-        for (TeamMember member : receivers) {
-            notificationService.send(member.getUser(), NotificationType.CHAT_MESSAGE, title, notificationContent, todo.getId());
-        }
+        notificationService.sendAll(
+                receivers.stream().map(TeamMember::getUser).toList(),
+                NotificationType.CHAT_MESSAGE,
+                title,
+                notificationContent,
+                todo.getId()
+        );
     }
 
     private List<ChatMessage> fetchMessages(Long todoId, Long cursorId, int limit) {
