@@ -32,6 +32,9 @@ public class EmailVerification extends BaseTimeEntity {
     @Column(nullable = false)
     private boolean used = false;
 
+    @Column(nullable = false)
+    private int attemptCount = 0;
+
     public static EmailVerification create(String email, String code, LocalDateTime expiresAt) {
         EmailVerification ev = new EmailVerification();
         ev.email = email;
@@ -42,6 +45,14 @@ public class EmailVerification extends BaseTimeEntity {
 
     public boolean isExpired() {
         return LocalDateTime.now().isAfter(expiresAt);
+    }
+
+    public void increaseAttempt() {
+        this.attemptCount++;
+    }
+
+    public boolean isAttemptExceeded(int maxAttempts) {
+        return this.attemptCount >= maxAttempts;
     }
 
     public void verify(String token) {
