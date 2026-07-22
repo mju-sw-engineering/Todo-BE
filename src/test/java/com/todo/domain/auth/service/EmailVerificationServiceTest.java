@@ -5,12 +5,17 @@ import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.mail.entity.MailType;
 import com.todo.global.mail.service.MailOutboxService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -22,6 +27,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class EmailVerificationServiceTest {
@@ -34,6 +41,17 @@ class EmailVerificationServiceTest {
 
     @Mock
     private MailOutboxService mailOutboxService;
+
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+    }
 
     @Test
     void 인증코드_발송_성공() {
@@ -56,6 +74,64 @@ class EmailVerificationServiceTest {
                 eq(2)
         );
         assertThat(codeCaptor.getValue()).contains(captor.getValue().getCode());
+    }
+
+    @Test
+    void 인증코드는_1분_이내_재요청하면_429_예외를_던진다() {
+        EmailVerification recent = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
+        ReflectionTestUtils.setField(recent, "createdAt", LocalDateTime.now().minusSeconds(30));
+        given(emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc("user@example.com"))
+                .willReturn(Optional.of(recent));
+
+        assertThatThrownBy(() -> emailVerificationService.sendCode("user@example.com"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("인증 코드는 1분에 한 번만 요청할 수 있습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus())
+                        .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+
+        then(emailVerificationRepository).should(never()).save(any(EmailVerification.class));
+        then(mailOutboxService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 인증코드는_1분이_지난_뒤에는_재요청할_수_있다() {
+        EmailVerification old = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
+        ReflectionTestUtils.setField(old, "createdAt", LocalDateTime.now().minusMinutes(2));
+        given(emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc("user@example.com"))
+                .willReturn(Optional.of(old));
+
+        emailVerificationService.sendCode("user@example.com");
+
+        then(emailVerificationRepository).should().save(any(EmailVerification.class));
+    }
+
+    @Test
+    void 인증코드_확인_실패가_누적되면_코드를_무효화한다() {
+        EmailVerification ev = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
+        ReflectionTestUtils.setField(ev, "attemptCount", 4);
+        given(emailVerificationRepository.findTopByEmailAndUsedFalseOrderByCreatedAtDesc("user@example.com"))
+                .willReturn(Optional.of(ev));
+
+        assertThatThrownBy(() -> emailVerificationService.verifyCode("user@example.com", "999999"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("인증 시도 횟수를 초과했습니다. 인증 코드를 다시 요청해 주세요.");
+
+        assertThat(ev.getAttemptCount()).isEqualTo(5);
+        assertThat(ev.isUsed()).isTrue();
+    }
+
+    @Test
+    void 인증코드_확인_실패는_시도_횟수를_증가시킨다() {
+        EmailVerification ev = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
+        given(emailVerificationRepository.findTopByEmailAndUsedFalseOrderByCreatedAtDesc("user@example.com"))
+                .willReturn(Optional.of(ev));
+
+        assertThatThrownBy(() -> emailVerificationService.verifyCode("user@example.com", "999999"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("인증 코드가 올바르지 않습니다.");
+
+        assertThat(ev.getAttemptCount()).isEqualTo(1);
+        assertThat(ev.isUsed()).isFalse();
     }
 
     @Test

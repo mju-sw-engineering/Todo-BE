@@ -51,14 +51,19 @@ public class FileService {
         String ext = extractExtension(request.fileName());
         String key = buildObjectKey(userId, request.type(), ext);
 
+        PutObjectRequest.Builder putObjectRequest = PutObjectRequest.builder()
+                .bucket(props.getBucket())
+                .key(key)
+                .contentType(request.contentType());
+        // 크기를 함께 서명하면 해당 크기로만 업로드할 수 있어 대용량 업로드 남용을 막는다.
+        if (request.fileSize() != null) {
+            putObjectRequest.contentLength(request.fileSize());
+        }
+
         String uploadUrl = s3Presigner.presignPutObject(
                 PutObjectPresignRequest.builder()
                         .signatureDuration(Duration.ofSeconds(props.getPutPresignedUrlExpiration()))
-                        .putObjectRequest(PutObjectRequest.builder()
-                                .bucket(props.getBucket())
-                                .key(key)
-                                .contentType(request.contentType())
-                                .build())
+                        .putObjectRequest(putObjectRequest.build())
                         .build()
         ).url().toExternalForm();
 

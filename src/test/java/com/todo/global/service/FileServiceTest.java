@@ -73,7 +73,7 @@ class FileServiceTest {
 
         PresignedUploadResponse response = fileService.generatePresignedPutUrl(
                 1L,
-                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png")
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", null)
         );
 
         assertThat(response.uploadUrl()).isEqualTo("https://storage.example.com/upload");
@@ -85,6 +85,28 @@ class FileServiceTest {
         assertThat(captor.getValue().signatureDuration().getSeconds()).isEqualTo(600);
         assertThat(captor.getValue().putObjectRequest().bucket()).isEqualTo("uploads");
         assertThat(captor.getValue().putObjectRequest().contentType()).isEqualTo("image/png");
+        assertThat(captor.getValue().putObjectRequest().contentLength()).isNull();
+    }
+
+    @Test
+    void 파일_크기를_전달하면_contentLength까지_서명한다() throws Exception {
+        given(s3Presigner.presignPutObject(any(PutObjectPresignRequest.class))).willReturn(
+                PresignedPutObjectRequest.builder()
+                        .httpRequest(httpRequest("https://storage.example.com/upload", SdkHttpMethod.PUT))
+                        .expiration(Instant.now().plusSeconds(600))
+                        .isBrowserExecutable(false)
+                        .signedHeaders(Map.of("host", List.of("storage.example.com")))
+                        .build()
+        );
+
+        fileService.generatePresignedPutUrl(
+                1L,
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", 1024L)
+        );
+
+        ArgumentCaptor<PutObjectPresignRequest> captor = ArgumentCaptor.forClass(PutObjectPresignRequest.class);
+        then(s3Presigner).should().presignPutObject(captor.capture());
+        assertThat(captor.getValue().putObjectRequest().contentLength()).isEqualTo(1024L);
     }
 
     @Test
@@ -100,7 +122,7 @@ class FileServiceTest {
 
         PresignedUploadResponse response = fileService.generatePresignedPutUrl(
                 7L,
-                new PresignedUploadRequest(UploadType.TEAM, "team-image", "image/jpeg")
+                new PresignedUploadRequest(UploadType.TEAM, "team-image", "image/jpeg", null)
         );
 
         assertThat(response.objectKey()).startsWith("teams/temp/7/");
@@ -120,7 +142,7 @@ class FileServiceTest {
 
         PresignedUploadResponse response = fileService.generatePresignedPutUrl(
                 3L,
-                new PresignedUploadRequest(UploadType.PROOF, "proof.webp", "image/webp")
+                new PresignedUploadRequest(UploadType.PROOF, "proof.webp", "image/webp", null)
         );
 
         assertThat(response.objectKey()).startsWith("proofs/3/");
@@ -131,7 +153,7 @@ class FileServiceTest {
     void 지원하지_않는_이미지_형식이면_400_예외를_던진다() {
         assertThatThrownBy(() -> fileService.generatePresignedPutUrl(
                 1L,
-                new PresignedUploadRequest(UploadType.PROFILE, "profile.gif", "image/gif")
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.gif", "image/gif", null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("지원하지 않는 이미지 형식입니다.")

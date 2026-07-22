@@ -8,9 +8,12 @@ import com.todo.global.mail.service.MailOutboxService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -20,12 +23,17 @@ import java.util.UUID;
 public class EmailVerificationService {
 
     private static final int MAIL_MAX_ATTEMPTS = 2;
+    private static final int MAX_VERIFY_ATTEMPTS = 5;
+    private static final Duration RESEND_INTERVAL = Duration.ofMinutes(1);
 
     private final EmailVerificationRepository emailVerificationRepository;
     private final MailOutboxService mailOutboxService;
+    private final TransactionTemplate transactionTemplate;
 
     @Transactional
     public void sendCode(String email) {
+        requireResendInterval(email);
+
         String code = String.format("%06d", new SecureRandom().nextInt(1_000_000));
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(3);
         EmailVerification ev = EmailVerification.create(email, code, expiresAt);
@@ -42,22 +50,66 @@ public class EmailVerificationService {
         );
     }
 
-    @Transactional
+    private void requireResendInterval(String email) {
+        LocalDateTime resendAvailableAfter = LocalDateTime.now().minus(RESEND_INTERVAL);
+        boolean requestedTooSoon = emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc(email)
+                .map(EmailVerification::getCreatedAt)
+                .filter(createdAt -> createdAt.isAfter(resendAvailableAfter))
+                .isPresent();
+        if (requestedTooSoon) {
+            throw new BusinessException("인증 코드는 1분에 한 번만 요청할 수 있습니다.", HttpStatus.TOO_MANY_REQUESTS);
+        }
+    }
+
+    /**
+     * 실패 시도 횟수는 실패 응답과 함께 남아야 하므로, 검증을 커밋되는 트랜잭션에서 끝내고 예외는 트랜잭션 밖에서 던진다.
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String verifyCode(String email, String code) {
+        VerifyCodeResult result = transactionTemplate.execute(status -> verifyCodeInTransaction(email, code));
+        result.throwIfFailed();
+        return result.token();
+    }
+
+    private VerifyCodeResult verifyCodeInTransaction(String email, String code) {
         EmailVerification ev = emailVerificationRepository
                 .findTopByEmailAndUsedFalseOrderByCreatedAtDesc(email)
-                .orElseThrow(() -> new BusinessException("이메일 인증 요청이 없습니다.", HttpStatus.BAD_REQUEST));
-
+                .orElse(null);
+        if (ev == null) {
+            return VerifyCodeResult.failed("이메일 인증 요청이 없습니다.", HttpStatus.BAD_REQUEST);
+        }
         if (ev.isExpired()) {
-            throw new BusinessException("인증 코드가 만료되었습니다.", HttpStatus.BAD_REQUEST);
+            return VerifyCodeResult.failed("인증 코드가 만료되었습니다.", HttpStatus.BAD_REQUEST);
         }
         if (!ev.getCode().equals(code)) {
-            throw new BusinessException("인증 코드가 올바르지 않습니다.", HttpStatus.BAD_REQUEST);
+            ev.increaseAttempt();
+            if (ev.isAttemptExceeded(MAX_VERIFY_ATTEMPTS)) {
+                ev.markAsUsed();
+                return VerifyCodeResult.failed(
+                        "인증 시도 횟수를 초과했습니다. 인증 코드를 다시 요청해 주세요.", HttpStatus.BAD_REQUEST);
+            }
+            return VerifyCodeResult.failed("인증 코드가 올바르지 않습니다.", HttpStatus.BAD_REQUEST);
         }
 
         String token = UUID.randomUUID().toString();
         ev.verify(token);
-        return token;
+        return VerifyCodeResult.success(token);
+    }
+
+    private record VerifyCodeResult(String token, BusinessException failure) {
+        static VerifyCodeResult success(String token) {
+            return new VerifyCodeResult(token, null);
+        }
+
+        static VerifyCodeResult failed(String message, HttpStatus status) {
+            return new VerifyCodeResult(null, new BusinessException(message, status));
+        }
+
+        void throwIfFailed() {
+            if (failure != null) {
+                throw failure;
+            }
+        }
     }
 
     @Transactional

@@ -6,10 +6,12 @@ import com.todo.global.dto.UploadType;
 import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.ratelimit.SimpleRateLimiter;
 import com.todo.global.response.ApiResponse;
 import com.todo.global.service.FileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,14 +22,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
+
 @RestController
 @RequestMapping("/api/files")
 @RequiredArgsConstructor
 @Tag(name = "File", description = "파일 업로드 API")
 public class FileController {
 
+    private static final int ANONYMOUS_ISSUE_LIMIT = 10;
+    private static final Duration ANONYMOUS_ISSUE_WINDOW = Duration.ofMinutes(1);
+
     private final FileService fileService;
     private final UserRepository userRepository;
+    private final SimpleRateLimiter rateLimiter;
 
     @PostMapping("/presigned-upload")
     @Operation(
@@ -39,7 +47,8 @@ public class FileController {
     )
     public ResponseEntity<ApiResponse<PresignedUploadResponse>> generatePresignedUploadUrl(
             @Valid @RequestBody PresignedUploadRequest request,
-            Authentication authentication
+            Authentication authentication,
+            HttpServletRequest httpRequest
     ) {
         if (request.type() != UploadType.PROFILE) {
             if (authentication == null || !authentication.isAuthenticated()) {
@@ -57,6 +66,31 @@ public class FileController {
                     .map(User::getId)
                     .orElse(null);
         }
+        if (userId == null) {
+            requireAnonymousIssueQuota(httpRequest);
+        }
         return ResponseEntity.ok(ApiResponse.success(fileService.generatePresignedPutUrl(userId, request)));
+    }
+
+    /**
+     * 비인증 PROFILE 발급은 누구나 호출할 수 있으므로 IP 단위로 발급 횟수를 제한한다.
+     */
+    private void requireAnonymousIssueQuota(HttpServletRequest httpRequest) {
+        String clientIp = resolveClientIp(httpRequest);
+        if (!rateLimiter.tryAcquire("presigned-upload:" + clientIp, ANONYMOUS_ISSUE_LIMIT, ANONYMOUS_ISSUE_WINDOW)) {
+            throw new BusinessException("요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.", HttpStatus.TOO_MANY_REQUESTS);
+        }
+    }
+
+    private String resolveClientIp(HttpServletRequest httpRequest) {
+        if (httpRequest == null) {
+            return "unknown";
+        }
+        String forwardedFor = httpRequest.getHeader("X-Forwarded-For");
+        if (forwardedFor != null && !forwardedFor.isBlank()) {
+            return forwardedFor.split(",")[0].trim();
+        }
+        String remoteAddr = httpRequest.getRemoteAddr();
+        return remoteAddr == null ? "unknown" : remoteAddr;
     }
 }
