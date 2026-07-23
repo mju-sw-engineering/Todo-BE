@@ -21,12 +21,17 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
     private final JwtUtil jwtUtil;
     private final AuthService authService;
+    private final TodoSubscriptionValidator subscriptionValidator;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 
-        if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
+        if (accessor == null) {
+            return message;
+        }
+
+        if (StompCommand.CONNECT.equals(accessor.getCommand())) {
             String bearerToken = accessor.getFirstNativeHeader("Authorization");
 
             if (!StringUtils.hasText(bearerToken) || !bearerToken.startsWith("Bearer ")) {
@@ -45,6 +50,13 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
                     new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 
             accessor.setUser(authentication);
+
+        } else if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+            java.security.Principal user = accessor.getUser();
+            if (user == null) {
+                throw new MessageDeliveryException("인증이 필요합니다.");
+            }
+            subscriptionValidator.validate(accessor.getDestination(), user.getName());
         }
 
         return message;
