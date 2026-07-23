@@ -8,6 +8,8 @@ import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -19,7 +21,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class TodoSubscriptionValidatorTest {
@@ -80,21 +82,57 @@ class TodoSubscriptionValidatorTest {
                 .hasMessage("존재하지 않는 투두입니다.");
     }
 
-    @Test
-    void 보호_대상이_아닌_destination은_검증을_건너뛴다() {
-        assertThatCode(() -> validator.validate("/queue/notifications", "user1"))
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/user/queue/notifications",
+            "/user/queue/errors"
+    })
+    void 사용자_전용_큐는_구독을_허용한다(String destination) {
+        assertThatCode(() -> validator.validate(destination, "user1"))
                 .doesNotThrowAnyException();
 
-        then(todoRepository).shouldHaveNoInteractions();
-        then(teamMemberRepository).shouldHaveNoInteractions();
+        verifyNoInteractions(todoRepository, teamMemberRepository, userRepository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/topic/todos/*",
+            "/topic/todos/**",
+            "/topic/todos/{todoId}",
+            "/topic/todos/10/admin",
+            "/topic/unknown",
+            "/user/queue/**",
+            "/user/queue/unknown",
+            "/queue/**",
+            "/queue/notifications"
+    })
+    void 허용되지_않은_destination은_구독을_거부한다(String destination) {
+        assertThatThrownBy(() -> validator.validate(destination, "user1"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("허용되지 않은 구독 채널입니다.");
+
+        verifyNoInteractions(todoRepository, teamMemberRepository, userRepository);
     }
 
     @Test
-    void destination이_null이면_검증을_건너뛴다() {
-        assertThatCode(() -> validator.validate(null, "user1"))
-                .doesNotThrowAnyException();
+    void destination이_null이면_구독을_거부한다() {
+        assertThatThrownBy(() -> validator.validate(null, "user1"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("허용되지 않은 구독 채널입니다.");
 
-        then(todoRepository).shouldHaveNoInteractions();
+        verifyNoInteractions(todoRepository, teamMemberRepository, userRepository);
+    }
+
+    @Test
+    void Long_범위를_넘는_todoId는_구독을_거부한다() {
+        assertThatThrownBy(() -> validator.validate(
+                "/topic/todos/999999999999999999999999999999",
+                "user1"
+        ))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("유효하지 않은 투두 채널입니다.");
+
+        verifyNoInteractions(todoRepository, teamMemberRepository, userRepository);
     }
 
     private Todo todoWithTeamId(Long todoId, Long teamId) {
