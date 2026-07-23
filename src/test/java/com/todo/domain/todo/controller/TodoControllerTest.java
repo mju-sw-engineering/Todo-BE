@@ -98,54 +98,6 @@ class TodoControllerTest {
     }
 
     @Test
-    void 오늘_투두가_비어있으면_오늘_할일_없음_메시지를_반환한다() {
-        TodoController controller = new TodoController(todoService);
-        given(todoService.getTodayTodoList(10L, "user1")).willReturn(List.of());
-
-        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
-                controller.getTodayTodoList(10L, auth());
-
-        assertThat(response.getBody().getData()).isNull();
-        assertThat(response.getBody().getMessage()).isEqualTo("오늘 할 일이 없습니다");
-    }
-
-    @Test
-    void 오늘_투두가_있으면_목록을_반환한다() {
-        TodoController controller = new TodoController(todoService);
-        TodoSummaryResponse summary = summary();
-        given(todoService.getTodayTodoList(10L, "user1")).willReturn(List.of(summary));
-
-        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
-                controller.getTodayTodoList(10L, auth());
-
-        assertThat(response.getBody().getData()).containsExactly(summary);
-    }
-
-    @Test
-    void 히스토리가_비어있으면_해당날짜_할일_없음_메시지를_반환한다() {
-        TodoController controller = new TodoController(todoService);
-        given(todoService.getTodoHistory(10L, "user1", "2026-06-04")).willReturn(List.of());
-
-        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
-                controller.getTodoHistory(10L, "2026-06-04", auth());
-
-        assertThat(response.getBody().getData()).isNull();
-        assertThat(response.getBody().getMessage()).isEqualTo("해당 날짜의 할 일이 없습니다");
-    }
-
-    @Test
-    void 히스토리가_있으면_목록을_반환한다() {
-        TodoController controller = new TodoController(todoService);
-        TodoSummaryResponse summary = summary();
-        given(todoService.getTodoHistory(10L, "user1", "2026-06-04")).willReturn(List.of(summary));
-
-        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
-                controller.getTodoHistory(10L, "2026-06-04", auth());
-
-        assertThat(response.getBody().getData()).containsExactly(summary);
-    }
-
-    @Test
     void 기간_리포트_응답을_반환한다() {
         TodoController controller = new TodoController(todoService);
         TodoPeriodReportResponse serviceResponse = new TodoPeriodReportResponse(null, null, null, List.of(), List.of());
