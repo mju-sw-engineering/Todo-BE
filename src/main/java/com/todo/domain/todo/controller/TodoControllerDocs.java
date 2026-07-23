@@ -68,49 +68,6 @@ public interface TodoControllerDocs {
     );
 
     @Operation(
-            summary = "오늘 투두 조회 (Deprecated)",
-            description = "[Deprecated] GET /api/teams/{teamId}/todos?date=오늘날짜 사용을 권장합니다. " +
-                    "Asia/Seoul 기준 오늘 마감인 팀 투두 목록을 deadline ASC로 조회합니다.",
-            deprecated = true
-    )
-    @SecurityRequirement(name = "bearerAuth")
-    @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
-                    content = @Content(schema = @Schema(implementation = TodoSummaryResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
-                    content = @Content(schema = @Schema(hidden = true))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀을 찾을 수 없음",
-                    content = @Content(schema = @Schema(hidden = true)))
-    })
-    ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodayTodoList(
-            @Parameter(description = "팀 ID", example = "1") Long teamId,
-            Authentication authentication
-    );
-
-    @Operation(
-            summary = "특정 날짜 투두 조회 (Deprecated)",
-            description = "[Deprecated] GET /api/teams/{teamId}/todos?date= 사용을 권장합니다. " +
-                    "Asia/Seoul 기준 date 날짜에 마감인 팀 투두 목록을 deadline ASC로 조회합니다.",
-            deprecated = true
-    )
-    @SecurityRequirement(name = "bearerAuth")
-    @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
-                    content = @Content(schema = @Schema(implementation = TodoSummaryResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "date 누락 또는 형식 오류",
-                    content = @Content(schema = @Schema(hidden = true))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
-                    content = @Content(schema = @Schema(hidden = true))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀을 찾을 수 없음",
-                    content = @Content(schema = @Schema(hidden = true)))
-    })
-    ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getTodoHistory(
-            @Parameter(description = "팀 ID", example = "1") Long teamId,
-            @Parameter(description = "조회 날짜", example = "2026-05-20") String date,
-            Authentication authentication
-    );
-
-    @Operation(
             summary = "기간 투두 리포트 조회",
             description = "Asia/Seoul 기준 startDate부터 endDate까지의 팀 투두 통계와 액션 후보를 조회합니다."
     )

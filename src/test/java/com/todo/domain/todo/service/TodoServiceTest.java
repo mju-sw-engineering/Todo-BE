@@ -34,7 +34,6 @@ import com.todo.global.service.FileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -196,52 +195,19 @@ class TodoServiceTest {
     }
 
     @Test
-    void 오늘_조회는_Asia_Seoul_오늘_범위를_전달한다() {
-        User user = userWithId(1L);
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(eq(100L), any(), any()))
-                .willReturn(List.of());
-
-        todoService.getTodayTodoList(100L, "user1");
-
-        ArgumentCaptor<LocalDateTime> startCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
-        ArgumentCaptor<LocalDateTime> endCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
-        then(todoRepository).should()
-                .findByTeamIdAndDeadlineBetweenWithCreator(eq(100L), startCaptor.capture(), endCaptor.capture());
-        assertThat(startCaptor.getValue()).isEqualTo(today.atStartOfDay());
-        assertThat(endCaptor.getValue()).isEqualTo(today.plusDays(1).atStartOfDay());
-    }
-
-    @Test
     void 특정날짜_조회는_date_기준_하루_범위를_전달한다() {
         User user = userWithId(1L);
         givenValidTeamMember(user);
         given(todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(eq(100L), any(), any()))
                 .willReturn(List.of());
 
-        todoService.getTodoHistory(100L, "user1", "2026-05-20");
+        todoService.getTodoList(100L, "user1", null, "2026-05-20");
 
         then(todoRepository).should().findByTeamIdAndDeadlineBetweenWithCreator(
                 100L,
                 LocalDateTime.of(2026, 5, 20, 0, 0),
                 LocalDateTime.of(2026, 5, 21, 0, 0)
         );
-    }
-
-    @Test
-    void 특정날짜_조회는_date가_없거나_잘못되면_400_예외를_던진다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-
-        assertThatThrownBy(() -> todoService.getTodoHistory(100L, "user1", null))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-
-        assertThatThrownBy(() -> todoService.getTodoHistory(100L, "user1", "2026/05/20"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("date 형식은 yyyy-MM-dd 이어야 합니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test

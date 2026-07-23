@@ -150,25 +150,6 @@ public class TodoService {
         return toSummaryResponses(todos, user.getId(), LocalDateTime.now(KST));
     }
 
-    /**
-     * @deprecated GET /todos?date= 통합 API로 대체됨. 웹/iOS 마이그레이션 완료 후 제거 예정.
-     */
-    @Deprecated
-    public List<TodoSummaryResponse> getTodayTodoList(Long teamId, String loginId) {
-        return getTodoList(teamId, loginId, null, LocalDate.now(KST).toString());
-    }
-
-    /**
-     * @deprecated GET /todos?date= 통합 API로 대체됨. 웹/iOS 마이그레이션 완료 후 제거 예정.
-     */
-    @Deprecated
-    public List<TodoSummaryResponse> getTodoHistory(Long teamId, String loginId, String date) {
-        if (date == null || date.isBlank()) {
-            throw new BusinessException("date 파라미터는 필수입니다.", HttpStatus.BAD_REQUEST);
-        }
-        return getTodoList(teamId, loginId, null, date);
-    }
-
     public TodoPeriodReportResponse getTodoPeriodReport(
             Long teamId,
             String loginId,
