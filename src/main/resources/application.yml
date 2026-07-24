@@ -44,3 +44,10 @@ ai:
     base-url: https://ai.swe.bluerack.org
     connect-timeout: 3s
     read-timeout: 15s
+
+mail:
+  async:
+    core-pool-size: ${MAIL_ASYNC_CORE_POOL_SIZE:2}
+    max-pool-size: ${MAIL_ASYNC_MAX_POOL_SIZE:4}
+    queue-capacity: ${MAIL_ASYNC_QUEUE_CAPACITY:100}
+    await-termination-seconds: ${MAIL_ASYNC_AWAIT_TERMINATION_SECONDS:15}

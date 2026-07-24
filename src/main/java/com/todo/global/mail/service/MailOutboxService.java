@@ -7,6 +7,7 @@ import com.todo.global.mail.repository.MailOutboxRepository;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mail.MailException;
@@ -20,6 +21,7 @@ import java.time.ZoneId;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MailOutboxService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
@@ -72,6 +74,14 @@ public class MailOutboxService {
             outbox.markSent();
         } catch (MailException | MessagingException e) {
             outbox.recordFailure(now);
+            log.warn(
+                    "MAIL_SMTP_FAILED outboxId={}, type={}, attemptCount={}, status={}, exceptionType={}",
+                    outbox.getId(),
+                    outbox.getType(),
+                    outbox.getAttemptCount(),
+                    outbox.getStatus(),
+                    e.getClass().getSimpleName()
+            );
         }
     }
 
