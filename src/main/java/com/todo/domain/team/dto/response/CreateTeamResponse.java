@@ -1,6 +1,5 @@
 package com.todo.domain.team.dto.response;
 
-import com.todo.domain.team.entity.AiPersona;
 import com.todo.domain.team.entity.Team;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -13,7 +12,6 @@ public record CreateTeamResponse(
         @Schema(description = "팀 이름") String teamName,
         @Schema(description = "팀 이미지 URL") String teamImage,
         @Schema(description = "초대 코드") String inviteCode,
-        @Schema(description = "AI 평가 페르소나") AiPersona aiPersona,
         @Schema(description = "팀장 ID") Long leaderId,
         @Schema(description = "연속 todo 횟수") int consecutiveTodoCount,
         @Schema(description = "생성 시각", example = "2026-05-21T12:34:56+09:00") OffsetDateTime createdAt
@@ -24,7 +22,6 @@ public record CreateTeamResponse(
                 team.getTeamName(),
                 team.getTeamImage(),
                 team.getInviteCode(),
-                team.getAiPersona(),
                 leaderId,
                 team.getConsecutiveTodoCount(),
                 toKstOffset(team.getCreatedAt())
@@ -32,7 +29,7 @@ public record CreateTeamResponse(
     }
 
     public CreateTeamResponse withImageUrl(String resolvedImageUrl) {
-        return new CreateTeamResponse(teamId, teamName, resolvedImageUrl, inviteCode, aiPersona, leaderId, consecutiveTodoCount, createdAt);
+        return new CreateTeamResponse(teamId, teamName, resolvedImageUrl, inviteCode, leaderId, consecutiveTodoCount, createdAt);
     }
 
     private static OffsetDateTime toKstOffset(LocalDateTime dateTime) {

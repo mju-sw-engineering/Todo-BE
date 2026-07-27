@@ -2,11 +2,9 @@ package com.todo.domain.team.service;
 
 import com.todo.domain.chat.repository.ChatMessageRepository;
 import com.todo.domain.chat.repository.ChatReadStatusRepository;
-import com.todo.domain.evaluation.repository.DailyEvaluationRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
-import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
@@ -15,7 +13,6 @@ import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.dto.response.TeamMemberResponse;
 import com.todo.domain.team.dto.response.TeamSummaryResponse;
-import com.todo.domain.team.dto.response.UpdateTeamPersonaResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
@@ -58,7 +55,6 @@ public class TeamService {
     private final TodoReactionRepository todoReactionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ChatReadStatusRepository chatReadStatusRepository;
-    private final DailyEvaluationRepository dailyEvaluationRepository;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -72,7 +68,7 @@ public class TeamService {
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
         String inviteCode = generateUniqueInviteCode();
-        Team team = teamRepository.save(Team.create(request.teamName(), request.teamImageKey(), inviteCode, request.aiPersona()));
+        Team team = teamRepository.save(Team.create(request.teamName(), request.teamImageKey(), inviteCode));
         teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.LEADER));
 
         return CreateTeamResponse.from(team, user.getId())
@@ -162,23 +158,6 @@ public class TeamService {
     }
 
     @Transactional
-    public UpdateTeamPersonaResponse updateTeamPersona(String loginId, Long teamId, UpdateTeamPersonaRequest request) {
-        User user = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));
-        TeamMember member = teamMemberRepository.findByTeamIdAndUserId(teamId, user.getId())
-                .orElseThrow(() -> new BusinessException("팀에 접근할 권한이 없습니다", HttpStatus.FORBIDDEN));
-
-        if (member.getRole() != TeamMemberRole.LEADER) {
-            throw new BusinessException("팀 설정을 변경할 권한이 없습니다", HttpStatus.FORBIDDEN);
-        }
-
-        team.updateAiPersona(request.aiPersona());
-        return UpdateTeamPersonaResponse.from(team);
-    }
-
-    @Transactional
     public void removeMember(String loginId, Long teamId, Long targetUserId) {
         User requester = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
@@ -227,7 +206,6 @@ public class TeamService {
     public void deleteTeamWithAllData(Long teamId) {
         List<Long> todoIds = todoRepository.findIdsByTeamId(teamId);
         deleteTodosWithAllData(todoIds);
-        dailyEvaluationRepository.deleteByTeamId(teamId);
         teamMemberRepository.deleteByTeamId(teamId);
         teamRepository.deleteById(teamId);
     }

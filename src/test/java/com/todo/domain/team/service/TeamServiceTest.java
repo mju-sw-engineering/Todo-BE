@@ -2,18 +2,14 @@ package com.todo.domain.team.service;
 
 import com.todo.domain.chat.repository.ChatMessageRepository;
 import com.todo.domain.chat.repository.ChatReadStatusRepository;
-import com.todo.domain.evaluation.repository.DailyEvaluationRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
-import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
-import com.todo.domain.team.dto.response.UpdateTeamPersonaResponse;
-import com.todo.domain.team.entity.AiPersona;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
@@ -77,8 +73,6 @@ class TeamServiceTest {
     private ChatMessageRepository chatMessageRepository;
     @Mock
     private ChatReadStatusRepository chatReadStatusRepository;
-    @Mock
-    private DailyEvaluationRepository dailyEvaluationRepository;
 
     @Test
     void 팀_생성_성공_이미지없음() {
@@ -93,25 +87,7 @@ class TeamServiceTest {
         assertThat(response.teamName()).isEqualTo("우리팀");
         assertThat(response.teamImage()).isNull();
         assertThat(response.inviteCode()).hasSize(8);
-        assertThat(response.aiPersona()).isEqualTo(AiPersona.ANGEL);
         assertThat(response.consecutiveTodoCount()).isZero();
-    }
-
-    @Test
-    void 팀_생성_시_aiPersona_저장() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
-        given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
-        given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
-
-        CreateTeamResponse response = teamService.createTeam(
-                "user1",
-                new CreateTeamRequest("우리팀", null, AiPersona.DEVIL)
-        );
-
-        assertThat(response.aiPersona()).isEqualTo(AiPersona.DEVIL);
-        then(teamRepository).should().save(argThat(team -> team.getAiPersona() == AiPersona.DEVIL));
     }
 
     @Test
@@ -460,51 +436,6 @@ class TeamServiceTest {
     }
 
     @Test
-    void 팀장이_aiPersona를_변경한다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        ReflectionTestUtils.setField(user, "id", 1L);
-        Team team = Team.create("스터디 팀", null, "ABCD1234", AiPersona.ANGEL);
-        ReflectionTestUtils.setField(team, "id", 10L);
-        TeamMember member = TeamMember.create(team, user, TeamMemberRole.LEADER);
-
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
-        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
-
-        UpdateTeamPersonaResponse response = teamService.updateTeamPersona(
-                "user1",
-                10L,
-                new UpdateTeamPersonaRequest(AiPersona.DEVIL)
-        );
-
-        assertThat(response.teamId()).isEqualTo(10L);
-        assertThat(response.aiPersona()).isEqualTo(AiPersona.DEVIL);
-        assertThat(team.getAiPersona()).isEqualTo(AiPersona.DEVIL);
-    }
-
-    @Test
-    void 팀원이_aiPersona를_변경하면_실패한다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        ReflectionTestUtils.setField(user, "id", 1L);
-        Team team = Team.create("스터디 팀", null, "ABCD1234", AiPersona.ANGEL);
-        ReflectionTestUtils.setField(team, "id", 10L);
-        TeamMember member = TeamMember.create(team, user, TeamMemberRole.MEMBER);
-
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
-        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
-
-        assertThatThrownBy(() -> teamService.updateTeamPersona(
-                "user1",
-                10L,
-                new UpdateTeamPersonaRequest(AiPersona.DEVIL)
-        ))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("팀 설정을 변경할 권한이 없습니다")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
-    }
-
-    @Test
     void 팀_나가기_성공() {
         User user = User.create("user1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
@@ -537,13 +468,12 @@ class TeamServiceTest {
         teamService.leaveTeam("user1", 10L);
 
         var inOrder = inOrder(todoReactionRepository, chatReadStatusRepository, chatMessageRepository, todoParticipantRepository,
-                todoRepository, dailyEvaluationRepository, teamMemberRepository, teamRepository);
+                todoRepository, teamMemberRepository, teamRepository);
         inOrder.verify(todoReactionRepository).deleteByTodoParticipantIdIn(List.of(1000L));
         inOrder.verify(chatReadStatusRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(chatMessageRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoRepository).deleteByIdIn(List.of(100L));
-        inOrder.verify(dailyEvaluationRepository).deleteByTeamId(10L);
         inOrder.verify(teamMemberRepository).deleteByTeamId(10L);
         inOrder.verify(teamRepository).deleteById(10L);
     }
@@ -563,8 +493,7 @@ class TeamServiceTest {
 
         teamService.leaveTeam("user1", 10L);
 
-        var inOrder = inOrder(dailyEvaluationRepository, teamMemberRepository, teamRepository);
-        inOrder.verify(dailyEvaluationRepository).deleteByTeamId(10L);
+        var inOrder = inOrder(teamMemberRepository, teamRepository);
         inOrder.verify(teamMemberRepository).deleteByTeamId(10L);
         inOrder.verify(teamRepository).deleteById(10L);
         verify(todoParticipantRepository, never()).findIdsByTodoIdIn(anyList());
@@ -592,12 +521,11 @@ class TeamServiceTest {
         teamService.leaveTeam("user1", 10L);
 
         var inOrder = inOrder(chatReadStatusRepository, chatMessageRepository, todoParticipantRepository, todoRepository,
-                dailyEvaluationRepository, teamMemberRepository, teamRepository);
+                teamMemberRepository, teamRepository);
         inOrder.verify(chatReadStatusRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(chatMessageRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoRepository).deleteByIdIn(List.of(100L));
-        inOrder.verify(dailyEvaluationRepository).deleteByTeamId(10L);
         inOrder.verify(teamMemberRepository).deleteByTeamId(10L);
         inOrder.verify(teamRepository).deleteById(10L);
         verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
