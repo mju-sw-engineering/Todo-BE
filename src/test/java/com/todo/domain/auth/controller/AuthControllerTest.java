@@ -42,7 +42,8 @@ class AuthControllerTest {
     @Test
     void 회원가입_응답을_반환한다() {
         AuthController controller = new AuthController(authService, emailVerificationService);
-        SignupRequest request = new SignupRequest();
+        SignupRequest request = new SignupRequest(
+                "user@example.com", "token", "user1", "password123!", "password123!", "닉네임", null, true, true, false);
         SignupResponse signupResponse = new SignupResponse(1L, "user1", "닉네임", null);
         given(authService.signup(request)).willReturn(signupResponse);
 

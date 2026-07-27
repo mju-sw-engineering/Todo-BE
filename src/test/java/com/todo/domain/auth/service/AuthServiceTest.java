@@ -4,23 +4,27 @@ import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
+import com.todo.domain.auth.entity.ConsentType;
+import com.todo.domain.auth.entity.UserConsent;
+import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.jwt.JwtUtil;
 import com.todo.global.service.FileService;
-import org.springframework.http.HttpStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +43,8 @@ class AuthServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
+    private UserConsentRepository userConsentRepository;
+    @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
     private JwtUtil jwtUtil;
@@ -49,7 +55,7 @@ class AuthServiceTest {
 
     @Test
     void 회원가입_성공() {
-        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", "profiles/1/a.png", true);
+        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", "profiles/1/a.png", false);
         given(userRepository.existsByLoginId("user1")).willReturn(false);
         given(passwordEncoder.encode("password123!")).willReturn("encoded");
         given(userRepository.save(any(User.class))).willAnswer(invocation -> {
@@ -66,16 +72,42 @@ class AuthServiceTest {
         assertThat(response.nickname()).isEqualTo("닉네임");
         assertThat(response.profileImageUrl()).isEqualTo("https://cdn.example.com/a.png");
 
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        then(userRepository).should().save(captor.capture());
-        assertThat(captor.getValue().getPassword()).isEqualTo("encoded");
-        assertThat(captor.getValue().isTermsAgreed()).isTrue();
-        assertThat(captor.getValue().getTermsAgreedAt()).isNotNull();
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        then(userRepository).should().save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getPassword()).isEqualTo("encoded");
+
+        ArgumentCaptor<List<UserConsent>> consentCaptor = ArgumentCaptor.forClass(List.class);
+        then(userConsentRepository).should().saveAll(consentCaptor.capture());
+        List<UserConsent> savedConsents = consentCaptor.getValue();
+        assertThat(savedConsents).hasSize(2);
+        assertThat(savedConsents).extracting(UserConsent::getConsentType)
+                .containsExactlyInAnyOrder(ConsentType.TERMS, ConsentType.PRIVACY);
+    }
+
+    @Test
+    void 회원가입_성공_마케팅_동의_시_동의_이력_3건_저장() {
+        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null, true);
+        given(userRepository.existsByLoginId("user1")).willReturn(false);
+        given(passwordEncoder.encode("password123!")).willReturn("encoded");
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            ReflectionTestUtils.setField(user, "id", 1L);
+            return user;
+        });
+
+        authService.signup(request);
+
+        ArgumentCaptor<List<UserConsent>> consentCaptor = ArgumentCaptor.forClass(List.class);
+        then(userConsentRepository).should().saveAll(consentCaptor.capture());
+        List<UserConsent> savedConsents = consentCaptor.getValue();
+        assertThat(savedConsents).hasSize(3);
+        assertThat(savedConsents).extracting(UserConsent::getConsentType)
+                .containsExactlyInAnyOrder(ConsentType.TERMS, ConsentType.PRIVACY, ConsentType.MARKETING);
     }
 
     @Test
     void 회원가입은_이메일_인증_토큰이_유효하지_않으면_예외를_던진다() {
-        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null, true);
+        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null, false);
         given(userRepository.existsByLoginId("user1")).willReturn(false);
         org.mockito.BDDMockito.willThrow(new BusinessException("유효하지 않은 이메일 인증 토큰입니다.", HttpStatus.BAD_REQUEST))
                 .given(emailVerificationService).validateAndConsume("test-token", "user@example.com");
@@ -87,33 +119,23 @@ class AuthServiceTest {
     }
 
     @Test
-    void 회원가입은_개인정보_동의_안하면_예외를_던진다() {
-        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null, false);
-
-        assertThatThrownBy(() -> authService.signup(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("개인정보 처리방침에 동의해야 합니다.");
-        then(userRepository).should(never()).save(any());
-    }
-
-    @Test
     void 회원가입은_비밀번호_확인이_다르면_예외를_던진다() {
-        SignupRequest request = signupRequest("user1", "password123!", "different", "닉네임", null, true);
+        SignupRequest request = signupRequest("user1", "password123!", "different", "닉네임", null, false);
 
         assertThatThrownBy(() -> authService.signup(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("비밀번호가 일치하지 않습니다.");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("비밀번호가 일치하지 않습니다.");
         then(userRepository).should(never()).save(any());
     }
 
     @Test
     void 회원가입은_중복_아이디면_예외를_던진다() {
-        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null, true);
+        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", null, false);
         given(userRepository.existsByLoginId("user1")).willReturn(true);
 
         assertThatThrownBy(() -> authService.signup(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("이미 사용 중인 아이디입니다.");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 사용 중인 아이디입니다.");
         then(userRepository).should(never()).save(any());
     }
 
@@ -134,8 +156,8 @@ class AuthServiceTest {
         given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("unknown", "password123!")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("아이디 또는 비밀번호가 올바르지 않습니다.");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
 
     @Test
@@ -145,8 +167,8 @@ class AuthServiceTest {
         given(passwordEncoder.matches("wrong", "encoded")).willReturn(false);
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("user1", "wrong")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("아이디 또는 비밀번호가 올바르지 않습니다.");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
 
     @Test
@@ -176,17 +198,19 @@ class AuthServiceTest {
             String passwordConfirm,
             String nickname,
             String profileImageKey,
-            boolean termsAgreed
+            boolean marketingAgreed
     ) {
-        SignupRequest request = new SignupRequest();
-        request.setEmail("user@example.com");
-        request.setEmailVerificationToken("test-token");
-        request.setLoginId(loginId);
-        request.setPassword(password);
-        request.setPasswordConfirm(passwordConfirm);
-        request.setNickname(nickname);
-        request.setProfileImageKey(profileImageKey);
-        request.setTermsAgreed(termsAgreed);
-        return request;
+        return new SignupRequest(
+                "user@example.com",
+                "test-token",
+                loginId,
+                password,
+                passwordConfirm,
+                nickname,
+                profileImageKey,
+                true,
+                true,
+                marketingAgreed
+        );
     }
 }
