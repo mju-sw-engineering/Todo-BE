@@ -514,6 +514,7 @@ class TodoServiceTest {
         User creator = userWithId(1L);
         User assignee = userWithId(2L);
         Team team = teamWithId(100L);
+        TeamMember assigneeMember = TeamMember.create(team, assignee, TeamMemberRole.MEMBER);
         OffsetDateTime deadline = OffsetDateTime.parse("2026-06-04T12:00:00+09:00");
         CreateTodoRequest request = new CreateTodoRequest("투두", "설명", deadline, List.of(2L));
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
@@ -524,8 +525,8 @@ class TodoServiceTest {
             ReflectionTestUtils.setField(todo, "id", 10L);
             return todo;
         });
-        given(userRepository.findById(2L)).willReturn(Optional.of(assignee));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 2L)).willReturn(true);
+        given(userRepository.findAllById(List.of(2L))).willReturn(List.of(assignee));
+        given(teamMemberRepository.findByTeamIdWithUser(100L)).willReturn(List.of(assigneeMember));
 
         CreateTodoResponse response = todoService.createTodo("user1", 100L, request);
 
@@ -536,6 +537,52 @@ class TodoServiceTest {
         assertThat(response.description()).isEqualTo("설명");
         assertThat(response.assigneeIds()).containsExactly(2L);
         then(todoParticipantRepository).should().save(any(TodoParticipant.class));
+    }
+
+    @Test
+    void 투두_생성은_존재하지_않는_사용자_배정시_404_예외를_던진다() {
+        User creator = userWithId(1L);
+        Team team = teamWithId(100L);
+        OffsetDateTime deadline = OffsetDateTime.parse("2026-06-04T12:00:00+09:00");
+        CreateTodoRequest request = new CreateTodoRequest("투두", null, deadline, List.of(99L));
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
+        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(todoRepository.save(any(Todo.class))).willAnswer(invocation -> {
+            Todo todo = invocation.getArgument(0);
+            ReflectionTestUtils.setField(todo, "id", 10L);
+            return todo;
+        });
+        given(userRepository.findAllById(List.of(99L))).willReturn(List.of());
+
+        assertThatThrownBy(() -> todoService.createTodo("user1", 100L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("존재하지 않는 사용자가 포함되어 있습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void 투두_생성은_팀원이_아닌_사용자_배정시_400_예외를_던진다() {
+        User creator = userWithId(1L);
+        User outsider = userWithId(99L);
+        Team team = teamWithId(100L);
+        OffsetDateTime deadline = OffsetDateTime.parse("2026-06-04T12:00:00+09:00");
+        CreateTodoRequest request = new CreateTodoRequest("투두", null, deadline, List.of(99L));
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
+        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(todoRepository.save(any(Todo.class))).willAnswer(invocation -> {
+            Todo todo = invocation.getArgument(0);
+            ReflectionTestUtils.setField(todo, "id", 10L);
+            return todo;
+        });
+        given(userRepository.findAllById(List.of(99L))).willReturn(List.of(outsider));
+        given(teamMemberRepository.findByTeamIdWithUser(100L)).willReturn(List.of());
+
+        assertThatThrownBy(() -> todoService.createTodo("user1", 100L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("팀 멤버가 아닌 사용자는 배정할 수 없습니다: 99")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test

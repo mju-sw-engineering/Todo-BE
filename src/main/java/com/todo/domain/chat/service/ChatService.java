@@ -45,7 +45,7 @@ public class ChatService {
         User sender = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
-        Todo todo = todoRepository.findById(todoId)
+        Todo todo = todoRepository.findByIdWithTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
 
         if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), sender.getId())) {
@@ -63,7 +63,7 @@ public class ChatService {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
-        Todo todo = todoRepository.findById(todoId)
+        Todo todo = todoRepository.findByIdWithTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
 
         if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), user.getId())) {
@@ -88,7 +88,7 @@ public class ChatService {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
-        Todo todo = todoRepository.findById(todoId)
+        Todo todo = todoRepository.findByIdWithTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
 
         if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), user.getId())) {
@@ -103,7 +103,7 @@ public class ChatService {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
-        Todo todo = todoRepository.findById(todoId)
+        Todo todo = todoRepository.findByIdWithTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
 
         if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), user.getId())) {
@@ -121,7 +121,7 @@ public class ChatService {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
-        Todo todo = todoRepository.findById(todoId)
+        Todo todo = todoRepository.findByIdWithTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
 
         if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), user.getId())) {

@@ -53,8 +53,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -95,19 +97,23 @@ public class TodoService {
                 toKstLocalDateTime(request.deadline())
         ));
 
-        List<Long> assigneeIds = request.assigneeIds();
-        for (Long assigneeId : assigneeIds) {
-            User assignee = userRepository.findById(assigneeId)
-                    .orElseThrow(() -> new BusinessException("존재하지 않는 사용자입니다: " + assigneeId, HttpStatus.NOT_FOUND));
-            if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, assigneeId)) {
-                throw new BusinessException("팀 멤버가 아닌 사용자는 배정할 수 없습니다: " + assigneeId, HttpStatus.BAD_REQUEST);
+        List<Long> uniqueAssigneeIds = request.assigneeIds().stream().distinct().toList();
+        List<User> assignees = userRepository.findAllById(uniqueAssigneeIds);
+        if (assignees.size() != uniqueAssigneeIds.size()) {
+            throw new BusinessException("존재하지 않는 사용자가 포함되어 있습니다.", HttpStatus.NOT_FOUND);
+        }
+        Set<Long> memberIds = teamMemberRepository.findByTeamIdWithUser(teamId)
+                .stream().map(tm -> tm.getUser().getId()).collect(Collectors.toSet());
+        for (User assignee : assignees) {
+            if (!memberIds.contains(assignee.getId())) {
+                throw new BusinessException("팀 멤버가 아닌 사용자는 배정할 수 없습니다: " + assignee.getId(), HttpStatus.BAD_REQUEST);
             }
             todoParticipantRepository.save(TodoParticipant.create(todo, assignee));
         }
 
         sendTodoCreatedNotifications(todo, creator);
 
-        return CreateTodoResponse.from(todo, assigneeIds);
+        return CreateTodoResponse.from(todo, uniqueAssigneeIds);
     }
 
     private void sendTodoCreatedNotifications(Todo todo, User creator) {
