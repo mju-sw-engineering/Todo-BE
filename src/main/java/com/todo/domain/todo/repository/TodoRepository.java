@@ -80,37 +80,4 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
 
     @Query("SELECT t FROM Todo t JOIN FETCH t.creator JOIN FETCH t.team WHERE t.id = :todoId")
     Optional<Todo> findByIdWithCreatorAndTeam(@Param("todoId") Long todoId);
-
-    @Query("""
-            SELECT t.title AS title,
-                   t.status AS status,
-                   t.deadline AS deadline,
-                   SUM(CASE WHEN tp.status = com.todo.domain.todo.entity.ParticipantStatus.SUCCESS THEN 1 ELSE 0 END) AS achievementCount,
-                   COUNT(tp.id) AS participantCount
-            FROM Todo t
-            LEFT JOIN TodoParticipant tp ON tp.todo = t
-            WHERE t.team.id = :teamId
-              AND t.deadline >= :start
-              AND t.deadline < :end
-            GROUP BY t.id, t.title, t.status, t.deadline
-            ORDER BY t.deadline ASC
-            """)
-    List<TodoDailyEvaluationStat> findDailyEvaluationStats(
-            @Param("teamId") Long teamId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end
-    );
-
-    @Query(value = """
-            SELECT DATE(MAX(t.deadline))
-            FROM todos t
-            WHERE t.team_id = :teamId
-              AND t.deadline >= :start
-              AND t.deadline < :end
-            """, nativeQuery = true)
-    Optional<LocalDate> findLatestDailyEvaluationTodoDate(
-            @Param("teamId") Long teamId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end
-    );
 }

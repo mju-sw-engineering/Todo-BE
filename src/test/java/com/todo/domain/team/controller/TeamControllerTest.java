@@ -3,15 +3,12 @@ package com.todo.domain.team.controller;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
-import com.todo.domain.team.dto.request.UpdateTeamPersonaRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamAchievementResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
-import com.todo.domain.team.dto.response.UpdateTeamPersonaResponse;
-import com.todo.domain.team.entity.AiPersona;
 import com.todo.domain.team.service.TeamService;
 import com.todo.global.response.ApiResponse;
 import org.junit.jupiter.api.Test;
@@ -51,7 +48,7 @@ class TeamControllerTest {
     void 팀_상세_응답을_반환한다() {
         TeamController controller = new TeamController(teamService);
         TeamDetailResponse serviceResponse = new TeamDetailResponse(
-                1L, "팀", null, "ABCDEFGH", AiPersona.ANGEL, 0, 0, 0, List.of()
+                1L, "팀", null, "ABCDEFGH", 0, 0, 0, List.of()
         );
         given(teamService.getTeamDetail(1L, "user1")).willReturn(serviceResponse);
 
@@ -104,7 +101,7 @@ class TeamControllerTest {
         TeamController controller = new TeamController(teamService);
         CreateTeamRequest request = new CreateTeamRequest("팀", null);
         CreateTeamResponse serviceResponse = new CreateTeamResponse(
-                1L, "팀", null, "ABCDEFGH", AiPersona.ANGEL, 1L, 0, null
+                1L, "팀", null, "ABCDEFGH", 1L, 0, null
         );
         given(teamService.createTeam("user1", request)).willReturn(serviceResponse);
 
@@ -112,20 +109,6 @@ class TeamControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().getMessage()).isEqualTo("팀 생성이 완료됐습니다");
-        assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
-    }
-
-    @Test
-    void 페르소나_변경_응답을_반환한다() {
-        TeamController controller = new TeamController(teamService);
-        UpdateTeamPersonaRequest request = new UpdateTeamPersonaRequest(AiPersona.DEVIL);
-        UpdateTeamPersonaResponse serviceResponse = new UpdateTeamPersonaResponse(1L, AiPersona.DEVIL);
-        given(teamService.updateTeamPersona("user1", 1L, request)).willReturn(serviceResponse);
-
-        ResponseEntity<ApiResponse<UpdateTeamPersonaResponse>> response =
-                controller.updateTeamPersona(1L, request, auth());
-
-        assertThat(response.getBody().getMessage()).isEqualTo("AI 평가 페르소나가 변경되었습니다");
         assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
     }
 

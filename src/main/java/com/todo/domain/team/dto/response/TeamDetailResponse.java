@@ -1,6 +1,5 @@
 package com.todo.domain.team.dto.response;
 
-import com.todo.domain.team.entity.AiPersona;
 import com.todo.domain.team.entity.Team;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -11,7 +10,6 @@ public record TeamDetailResponse(
         @Schema(description = "팀 이름") String teamName,
         @Schema(description = "팀 이미지 URL") String teamImageUrl,
         @Schema(description = "초대 코드") String inviteCode,
-        @Schema(description = "AI 평가 페르소나") AiPersona aiPersona,
         @Schema(description = "팀원 수") int memberCount,
         @Schema(description = "성공 개수") int successCount,
         @Schema(description = "연속 todo 횟수") int continuousTodoCount,
@@ -23,7 +21,6 @@ public record TeamDetailResponse(
                 team.getTeamName(),
                 team.getTeamImage(),
                 team.getInviteCode(),
-                team.getAiPersona(),
                 members.size(),
                 team.getSuccessCount(),
                 team.getConsecutiveTodoCount(),
@@ -32,6 +29,6 @@ public record TeamDetailResponse(
     }
 
     public TeamDetailResponse withImageUrl(String resolvedImageUrl) {
-        return new TeamDetailResponse(teamId, teamName, resolvedImageUrl, inviteCode, aiPersona, memberCount, successCount, continuousTodoCount, members);
+        return new TeamDetailResponse(teamId, teamName, resolvedImageUrl, inviteCode, memberCount, successCount, continuousTodoCount, members);
     }
 }
