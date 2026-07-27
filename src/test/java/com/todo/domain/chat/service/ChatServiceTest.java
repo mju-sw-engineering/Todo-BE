@@ -67,7 +67,7 @@ class ChatServiceTest {
         User sender = userWithId(1L);
         Todo todo = todoWithId(10L, teamWithId(100L), sender);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
-        given(todoRepository.findById(10L)).willReturn(Optional.of(todo));
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
         given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
             ChatMessage message = invocation.getArgument(0);
@@ -98,7 +98,7 @@ class ChatServiceTest {
     void 메시지_저장은_투두가_없으면_404_예외를_던진다() {
         User sender = userWithId(1L);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
-        given(todoRepository.findById(10L)).willReturn(Optional.empty());
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> chatService.saveMessage(10L, "user1", new ChatMessageRequest("안녕")))
                 .isInstanceOf(BusinessException.class)
@@ -111,7 +111,7 @@ class ChatServiceTest {
         User sender = userWithId(1L);
         Todo todo = todoWithId(10L, teamWithId(100L), sender);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
-        given(todoRepository.findById(10L)).willReturn(Optional.of(todo));
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
         assertThatThrownBy(() -> chatService.saveMessage(10L, "user1", new ChatMessageRequest("안녕")))
@@ -160,7 +160,7 @@ class ChatServiceTest {
         User user = userWithId(1L);
         Todo todo = todoWithId(10L, teamWithId(100L), user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoRepository.findById(10L)).willReturn(Optional.of(todo));
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
         assertThatThrownBy(() -> chatService.getMessages(10L, "user1", null, 20))
@@ -177,7 +177,7 @@ class ChatServiceTest {
         Todo todo = todoWithId(10L, team, sender);
         TeamMember member = TeamMember.create(team, receiver, TeamMemberRole.MEMBER);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
-        given(todoRepository.findById(10L)).willReturn(Optional.of(todo));
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
         given(teamMemberRepository.findByTeamIdExcludingUser(100L, 1L)).willReturn(List.of(member));
         given(chatMessageRepository.save(any(ChatMessage.class))).willAnswer(invocation -> {
@@ -220,7 +220,7 @@ class ChatServiceTest {
     void 타이핑은_투두가_없으면_404_예외를_던진다() {
         User user = userWithId(1L);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoRepository.findById(10L)).willReturn(Optional.empty());
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> chatService.handleTyping(10L, "user1", new TypingStatusRequest(true)))
                 .isInstanceOf(BusinessException.class)
@@ -233,7 +233,7 @@ class ChatServiceTest {
         User user = userWithId(1L);
         Todo todo = todoWithId(10L, teamWithId(100L), user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoRepository.findById(10L)).willReturn(Optional.of(todo));
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
         assertThatThrownBy(() -> chatService.handleTyping(10L, "user1", new TypingStatusRequest(true)))
@@ -289,7 +289,7 @@ class ChatServiceTest {
         User user = userWithId(1L);
         Todo todo = todoWithId(10L, teamWithId(100L), user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoRepository.findById(10L)).willReturn(Optional.of(todo));
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
         assertThatThrownBy(() -> chatService.markAsRead(10L, "user1", new MarkAsReadRequest(500L)))
@@ -346,7 +346,7 @@ class ChatServiceTest {
         User user = userWithId(1L);
         Todo todo = todoWithId(10L, teamWithId(100L), user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoRepository.findById(10L)).willReturn(Optional.of(todo));
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
         assertThatThrownBy(() -> chatService.getUnreadCount(10L, "user1"))
@@ -357,7 +357,7 @@ class ChatServiceTest {
 
     private void givenReadableTodo(User user, Todo todo) {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoRepository.findById(10L)).willReturn(Optional.of(todo));
+        given(todoRepository.findByIdWithTeam(10L)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
     }
 
