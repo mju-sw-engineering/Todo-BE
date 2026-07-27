@@ -29,7 +29,8 @@ public class AuthController implements AuthControllerDocs {
     @PostMapping("/email/send")
     public ResponseEntity<ApiResponse<Void>> sendEmailCode(@Valid @RequestBody EmailSendRequest request) {
         emailVerificationService.sendCode(request.email());
-        return ResponseEntity.ok(ApiResponse.success(null, "인증 코드가 발송되었습니다"));
+        return ResponseEntity.accepted()
+                .body(ApiResponse.success(null, "인증 코드 발송 요청이 접수되었습니다."));
     }
 
     @PostMapping("/email/verify")

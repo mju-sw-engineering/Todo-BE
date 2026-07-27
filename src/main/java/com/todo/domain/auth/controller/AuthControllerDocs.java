@@ -20,12 +20,18 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "Auth", description = "인증 API")
 public interface AuthControllerDocs {
 
-    @Operation(summary = "이메일 인증 코드 발송", description = "입력한 이메일로 6자리 인증 코드를 발송합니다. 코드는 3분간 유효합니다.")
+    @Operation(
+            summary = "이메일 인증 코드 발송 요청",
+            description = "6자리 인증 코드 발송 요청을 outbox에 저장하고 비동기로 처리합니다. "
+                    + "202 응답은 발송 요청 접수를 의미하며 실제 메일 도착을 보장하지 않습니다. 코드는 3분간 유효합니다."
+    )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "인증 코드 발송 성공"),
+            @ApiResponse(responseCode = "202", description = "인증 코드 발송 요청 접수"),
             @ApiResponse(responseCode = "400", description = "이메일 형식 오류",
                     content = @Content(schema = @Schema(hidden = true))),
-            @ApiResponse(responseCode = "500", description = "메일 발송 실패",
+            @ApiResponse(responseCode = "429", description = "인증 코드 재요청 제한",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @ApiResponse(responseCode = "500", description = "발송 요청 저장 실패",
                     content = @Content(schema = @Schema(hidden = true)))
     })
     ResponseEntity<com.todo.global.response.ApiResponse<Void>> sendEmailCode(EmailSendRequest request);
