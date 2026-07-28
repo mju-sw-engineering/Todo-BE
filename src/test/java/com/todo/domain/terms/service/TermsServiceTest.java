@@ -111,4 +111,16 @@ class TermsServiceTest {
         String version = termsService.getCurrentVersion(ConsentType.TERMS);
         assertThat(version).isEqualTo("v1.0");
     }
+
+    @Test
+    void 존재하지_않는_버전_조회시_404_예외() {
+        UserConsent consent = mock(UserConsent.class);
+        given(consent.getConsentVersion()).willReturn("v999.0");
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+                .willReturn(Optional.of(consent));
+
+        assertThatThrownBy(() -> termsService.getAllAgreedTerms("user1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("요청한 버전의 약관이 존재하지 않습니다");
+    }
 }
