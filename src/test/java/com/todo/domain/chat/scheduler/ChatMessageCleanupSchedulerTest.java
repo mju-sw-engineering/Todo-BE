@@ -9,12 +9,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class ChatMessageCleanupSchedulerTest {
+
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     @InjectMocks
     private ChatMessageCleanupScheduler scheduler;
@@ -24,7 +27,7 @@ class ChatMessageCleanupSchedulerTest {
 
     @Test
     void 일주일_초과_메시지를_삭제한다() {
-        LocalDateTime before = LocalDateTime.now().minusDays(7);
+        LocalDateTime before = LocalDateTime.now(KST).minusDays(7);
 
         scheduler.cleanupOldMessages();
 
@@ -32,7 +35,7 @@ class ChatMessageCleanupSchedulerTest {
         verify(teamChatMessageRepository).deleteByCreatedAtBefore(captor.capture());
 
         LocalDateTime cutoff = captor.getValue();
-        LocalDateTime after = LocalDateTime.now().minusDays(7);
+        LocalDateTime after = LocalDateTime.now(KST).minusDays(7);
         assertThat(cutoff).isBetween(before, after);
     }
 
