@@ -1,0 +1,105 @@
+package com.todo.global.websocket;
+
+import com.todo.domain.team.repository.TeamMemberRepository;
+import com.todo.domain.team.repository.TeamRepository;
+import com.todo.domain.user.entity.User;
+import com.todo.domain.user.repository.UserRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.messaging.MessageDeliveryException;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.BDDMockito.given;
+
+@ExtendWith(MockitoExtension.class)
+class TeamSubscriptionValidatorTest {
+
+    @InjectMocks
+    private TeamSubscriptionValidator validator;
+
+    @Mock private TeamRepository teamRepository;
+    @Mock private TeamMemberRepository teamMemberRepository;
+    @Mock private UserRepository userRepository;
+
+    @Test
+    void 알림_채널_구독은_허용한다() {
+        assertThatCode(() -> validator.validate("/user/queue/notifications", "user1"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 에러_채널_구독은_허용한다() {
+        assertThatCode(() -> validator.validate("/user/queue/errors", "user1"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 팀_채팅_채널은_팀원이면_구독을_허용한다() {
+        User user = userWithId(1L);
+        given(teamRepository.existsById(100L)).willReturn(true);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+
+        assertThatCode(() -> validator.validate("/topic/teams/100", "user1"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 타이핑_채널은_팀원이면_구독을_허용한다() {
+        User user = userWithId(1L);
+        given(teamRepository.existsById(100L)).willReturn(true);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+
+        assertThatCode(() -> validator.validate("/topic/teams/100/typing", "user1"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 팀원이_아니면_구독을_거부한다() {
+        User user = userWithId(1L);
+        given(teamRepository.existsById(100L)).willReturn(true);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
+
+        assertThatThrownBy(() -> validator.validate("/topic/teams/100", "user1"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("해당 채널을 구독할 권한이 없습니다.");
+    }
+
+    @Test
+    void 존재하지_않는_팀_채널은_구독을_거부한다() {
+        given(teamRepository.existsById(999L)).willReturn(false);
+
+        assertThatThrownBy(() -> validator.validate("/topic/teams/999", "user1"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("존재하지 않는 팀입니다.");
+    }
+
+    @Test
+    void 허용되지_않은_경로는_구독을_거부한다() {
+        assertThatThrownBy(() -> validator.validate("/topic/todos/10", "user1"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("허용되지 않은 구독 채널입니다.");
+    }
+
+    @Test
+    void destination이_null이면_구독을_거부한다() {
+        assertThatThrownBy(() -> validator.validate(null, "user1"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("허용되지 않은 구독 채널입니다.");
+    }
+
+    private User userWithId(Long id) {
+        User user = User.create("user" + id, "encoded", "닉네임" + id, "profiles/" + id + ".png");
+        ReflectionTestUtils.setField(user, "id", id);
+        return user;
+    }
+}

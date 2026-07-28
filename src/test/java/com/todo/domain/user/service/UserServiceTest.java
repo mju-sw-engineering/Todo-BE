@@ -1,7 +1,7 @@
 package com.todo.domain.user.service;
 
-import com.todo.domain.chat.repository.ChatMessageRepository;
-import com.todo.domain.chat.repository.ChatReadStatusRepository;
+import com.todo.domain.chat.repository.TeamChatMessageRepository;
+import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
@@ -54,9 +54,9 @@ class UserServiceTest {
     @Mock
     private TodoReactionRepository todoReactionRepository;
     @Mock
-    private ChatMessageRepository chatMessageRepository;
+    private TeamChatMessageRepository teamChatMessageRepository;
     @Mock
-    private ChatReadStatusRepository chatReadStatusRepository;
+    private TeamChatReadStatusRepository teamChatReadStatusRepository;
     @Mock
     private TodoRepository todoRepository;
 
@@ -145,8 +145,8 @@ class UserServiceTest {
         userService.deleteUser("user1");
 
         verify(teamService).deleteTeamWithAllData(10L);
-        verify(chatReadStatusRepository).deleteByUserId(1L);
-        verify(chatMessageRepository).clearSenderByUserId(1L);
+        verify(teamChatReadStatusRepository).deleteByUserId(1L);
+        verify(teamChatMessageRepository).clearSenderByUserId(1L);
         verify(todoReactionRepository).deleteByUserId(1L);
         verify(todoParticipantRepository).deleteByUserId(1L);
         verify(teamMemberRepository).deleteByUserId(1L);
@@ -165,14 +165,12 @@ class UserServiceTest {
 
         userService.deleteUser("user1");
 
-        var inOrder = inOrder(todoReactionRepository, chatReadStatusRepository, chatMessageRepository,
-                todoParticipantRepository, todoRepository);
+        var inOrder = inOrder(todoReactionRepository, todoParticipantRepository, todoRepository);
         inOrder.verify(todoReactionRepository).deleteByTodoParticipantIdIn(List.of(1000L, 1001L));
-        inOrder.verify(chatReadStatusRepository).deleteByTodoIdIn(List.of(100L, 101L));
-        inOrder.verify(chatMessageRepository).deleteByTodoIdIn(List.of(100L, 101L));
         inOrder.verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L, 101L));
         inOrder.verify(todoRepository).deleteByIdIn(List.of(100L, 101L));
-        verify(chatReadStatusRepository).deleteByUserId(1L);
+        verify(teamChatReadStatusRepository).deleteByUserId(1L);
+        verify(teamChatMessageRepository).clearSenderByUserId(1L);
         verify(userRepository).delete(user);
     }
 
@@ -189,8 +187,10 @@ class UserServiceTest {
         userService.deleteUser("user1");
 
         verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
-        verify(chatReadStatusRepository).deleteByTodoIdIn(List.of(100L));
+        verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L));
         verify(todoRepository).deleteByIdIn(List.of(100L));
+        verify(teamChatReadStatusRepository).deleteByUserId(1L);
+        verify(teamChatMessageRepository).clearSenderByUserId(1L);
         verify(userRepository).delete(user);
     }
 }
