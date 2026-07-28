@@ -1,5 +1,6 @@
 package com.todo.domain.auth.controller;
 
+import com.todo.domain.auth.dto.request.ConsentRequest;
 import com.todo.domain.auth.dto.request.EmailSendRequest;
 import com.todo.domain.auth.dto.request.EmailVerifyRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.multipart.MultipartFile;
 
 @Tag(name = "Auth", description = "인증 API")
@@ -71,4 +73,15 @@ public interface AuthControllerDocs {
     })
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<com.todo.global.response.ApiResponse<Void>> logout();
+
+    @Operation(summary = "약관 재동의", description = "약관 버전 업 시 새 버전에 동의합니다. 이미 동일 버전에 동의했다면 409를 반환합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "동의 저장 성공"),
+            @ApiResponse(responseCode = "400", description = "입력값 오류",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @ApiResponse(responseCode = "409", description = "이미 해당 버전에 동의함",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<com.todo.global.response.ApiResponse<Void>> saveConsent(ConsentRequest request, Authentication authentication);
 }
