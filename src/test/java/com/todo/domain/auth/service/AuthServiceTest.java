@@ -1,5 +1,6 @@
 package com.todo.domain.auth.service;
 
+import com.todo.domain.auth.dto.request.ConsentRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.LoginResponse;
@@ -32,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
@@ -190,6 +192,45 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.loadUserByUsername("unknown"))
                 .isInstanceOf(UsernameNotFoundException.class)
                 .hasMessage("사용자를 찾을 수 없습니다.");
+    }
+
+    @Test
+    void 약관_재동의_성공() {
+        User user = User.create("user1", "encoded", "닉네임", null);
+        ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v2.0");
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+                .willReturn(Optional.empty());
+
+        authService.saveConsent("user1", request);
+
+        then(userConsentRepository).should().save(any(UserConsent.class));
+    }
+
+    @Test
+    void 약관_재동의는_사용자가_없으면_404_예외() {
+        ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v2.0");
+        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.saveConsent("unknown", request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("사용자를 찾을 수 없습니다.");
+    }
+
+    @Test
+    void 약관_재동의는_이미_동의한_버전이면_409_예외() {
+        User user = User.create("user1", "encoded", "닉네임", null);
+        ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v1.0");
+        UserConsent existing = mock(UserConsent.class);
+        given(existing.getConsentVersion()).willReturn("v1.0");
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+                .willReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> authService.saveConsent("user1", request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 해당 버전에 동의하셨습니다.");
+        then(userConsentRepository).should(never()).save(any());
     }
 
     private SignupRequest signupRequest(
