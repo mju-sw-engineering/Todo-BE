@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface TeamChatMessageRepository extends JpaRepository<TeamChatMessage, Long> {
@@ -35,4 +36,8 @@ public interface TeamChatMessageRepository extends JpaRepository<TeamChatMessage
     @Modifying
     @Query("UPDATE TeamChatMessage m SET m.sender = null WHERE m.sender.id = :userId")
     void clearSenderByUserId(@Param("userId") Long userId);
+
+    @Modifying
+    @Query("DELETE FROM TeamChatMessage m WHERE m.createdAt < :cutoff")
+    void deleteByCreatedAtBefore(@Param("cutoff") LocalDateTime cutoff);
 }
