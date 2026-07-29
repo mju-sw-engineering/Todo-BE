@@ -18,6 +18,12 @@ spring:
       max-request-size: 5MB
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  task:
+    scheduling:
+      pool:
+        # 기본값 1이면 스케줄 작업이 스레드 하나를 공유해 서로를 지연시킨다.
+        # 현재 등록된 작업 수(투두 만료, 메일 재시도, 메일 정리, 채팅 정리)에 맞춘다.
+        size: 4
 server:
   port: 8080
   shutdown: graceful
@@ -44,6 +50,12 @@ ai:
     base-url: https://ai.swe.bluerack.org
     connect-timeout: 3s
     read-timeout: 15s
+
+chat:
+  cleanup:
+    # 보관 기간 정책은 팀 논의에 따라 재배포 없이 조정할 수 있도록 설정값으로 둔다.
+    cron: ${CHAT_CLEANUP_CRON:0 0 3 * * *}
+    retention-days: ${CHAT_CLEANUP_RETENTION_DAYS:7}
 
 mail:
   async:
