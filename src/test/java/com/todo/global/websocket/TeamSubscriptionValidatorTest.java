@@ -1,7 +1,6 @@
 package com.todo.global.websocket;
 
 import com.todo.domain.team.repository.TeamMemberRepository;
-import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -24,7 +23,6 @@ class TeamSubscriptionValidatorTest {
     @InjectMocks
     private TeamSubscriptionValidator validator;
 
-    @Mock private TeamRepository teamRepository;
     @Mock private TeamMemberRepository teamMemberRepository;
     @Mock private UserRepository userRepository;
 
@@ -43,7 +41,6 @@ class TeamSubscriptionValidatorTest {
     @Test
     void 팀_채팅_채널은_팀원이면_구독을_허용한다() {
         User user = userWithId(1L);
-        given(teamRepository.existsById(100L)).willReturn(true);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
 
@@ -54,7 +51,6 @@ class TeamSubscriptionValidatorTest {
     @Test
     void 타이핑_채널은_팀원이면_구독을_허용한다() {
         User user = userWithId(1L);
-        given(teamRepository.existsById(100L)).willReturn(true);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
 
@@ -65,7 +61,6 @@ class TeamSubscriptionValidatorTest {
     @Test
     void 팀원이_아니면_구독을_거부한다() {
         User user = userWithId(1L);
-        given(teamRepository.existsById(100L)).willReturn(true);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
@@ -75,12 +70,14 @@ class TeamSubscriptionValidatorTest {
     }
 
     @Test
-    void 존재하지_않는_팀_채널은_구독을_거부한다() {
-        given(teamRepository.existsById(999L)).willReturn(false);
+    void 존재하지_않는_팀_채널도_권한_없음으로_동일하게_거부한다() {
+        User user = userWithId(1L);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamMemberRepository.existsByTeamIdAndUserId(999L, 1L)).willReturn(false);
 
         assertThatThrownBy(() -> validator.validate("/topic/teams/999", "user1"))
                 .isInstanceOf(MessageDeliveryException.class)
-                .hasMessage("존재하지 않는 팀입니다.");
+                .hasMessage("해당 채널을 구독할 권한이 없습니다.");
     }
 
     @Test

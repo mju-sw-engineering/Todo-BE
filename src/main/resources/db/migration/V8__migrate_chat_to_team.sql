@@ -24,3 +24,7 @@ CREATE TABLE team_chat_read_statuses (
     CONSTRAINT fk_tcrs_team FOREIGN KEY (team_id) REFERENCES teams(id),
     CONSTRAINT fk_tcrs_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
+
+-- 기존 채팅 알림은 reference_id가 삭제된 chat_messages의 todo_id를 가리켜 더 이상 열 수 없다.
+-- 팀 채팅 알림은 저장하지 않고 WebSocket 푸시만 하므로 신규 행도 쌓이지 않는다.
+DELETE FROM notifications WHERE type = 'CHAT_MESSAGE';

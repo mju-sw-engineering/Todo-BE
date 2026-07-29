@@ -43,14 +43,14 @@ public class TeamChatService {
     @Transactional
     public TeamChatMessageResponse saveMessage(Long teamId, String loginId, ChatMessageRequest request) {
         User sender = findUser(loginId);
-        Team team = findTeam(teamId);
         checkTeamMember(teamId, sender.getId());
+        Team team = teamReference(teamId);
 
         TeamChatMessage message = teamChatMessageRepository.save(
                 TeamChatMessage.create(team, sender, request.content())
         );
 
-        sendChatNotifications(team, sender, request.content());
+        pushChatNotifications(teamId, sender, request.content());
 
         return TeamChatMessageResponse.from(message);
     }
@@ -81,8 +81,8 @@ public class TeamChatService {
     @Transactional
     public void markAsRead(Long teamId, String loginId, MarkAsReadRequest request) {
         User user = findUser(loginId);
-        Team team = findTeam(teamId);
         checkTeamMember(teamId, user.getId());
+        Team team = teamReference(teamId);
 
         TeamChatReadStatus readStatus = teamChatReadStatusRepository
                 .findByUserIdAndTeamId(user.getId(), teamId)
@@ -109,9 +109,12 @@ public class TeamChatService {
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
     }
 
-    private Team findTeam(Long teamId) {
-        return teamRepository.findById(teamId)
-                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND));
+    /**
+     * checkTeamMember()가 통과했다면 팀이 존재한다는 게 이미 보장되고, 엔티티는 team_id 저장에만 쓰인다.
+     * 따라서 SELECT 없이 프록시만 참조한다.
+     */
+    private Team teamReference(Long teamId) {
+        return teamRepository.getReferenceById(teamId);
     }
 
     private void checkTeamMember(Long teamId, Long userId) {
@@ -128,15 +131,21 @@ public class TeamChatService {
         return teamChatMessageRepository.findMessagesByCursor(teamId, cursorId, pageRequest);
     }
 
-    private void sendChatNotifications(Team team, User sender, String content) {
-        List<TeamMember> receivers = teamMemberRepository.findByTeamIdExcludingUser(team.getId(), sender.getId());
+    /**
+     * 채팅 알림은 저장하지 않고 WebSocket 푸시만 한다.
+     * 팀 단위 상시 채팅방은 메시지 건수가 많아 메시지마다 (팀원 수 - 1)개의 알림 행을 남기면
+     * 메시지가 보관 기간 후 삭제돼도 알림만 영구히 쌓인다. 미접속자용 미읽음 개수는
+     * team_chat_read_statuses로 계산하므로 알림 행이 필요하지 않다.
+     */
+    private void pushChatNotifications(Long teamId, User sender, String content) {
+        List<TeamMember> receivers = teamMemberRepository.findByTeamIdExcludingUser(teamId, sender.getId());
         String title = sender.getNickname() + "님이 메시지를 보냈습니다.";
-        notificationService.sendAll(
+        notificationService.pushAll(
                 receivers.stream().map(TeamMember::getUser).toList(),
                 NotificationType.CHAT_MESSAGE,
                 title,
                 content,
-                team.getId()
+                teamId
         );
     }
 }

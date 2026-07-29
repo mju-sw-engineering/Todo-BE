@@ -21,8 +21,8 @@ import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -74,7 +74,7 @@ public class TeamChatController implements TeamChatControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    @PostMapping("/{teamId}/chat/read")
+    @PatchMapping("/{teamId}/chat/read")
     public ResponseEntity<ApiResponse<Void>> markAsRead(
             @PathVariable Long teamId,
             @RequestBody @Valid MarkAsReadRequest request,

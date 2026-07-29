@@ -71,6 +71,29 @@ public class NotificationService {
     }
 
     /**
+     * 알림 행을 남기지 않고 WebSocket 푸시만 한다. 채팅처럼 건수가 많고 보관 가치가 낮은 알림에 쓴다.
+     * 미읽음 개수는 도메인 테이블(team_chat_read_statuses)로 계산하므로 알림 테이블에 쌓을 이유가 없다.
+     * 수신자는 notificationId가 null인 payload를 받고, 이 알림은 읽음 처리 대상이 아니다.
+     */
+    public void pushAll(List<User> receivers, NotificationType type, String title, String content, Long referenceId) {
+        if (receivers.isEmpty()) {
+            return;
+        }
+
+        NotificationResponse payload = NotificationResponse.pushOnly(type, title, content, referenceId);
+        List<NotificationDelivery> deliveries = receivers.stream()
+                .map(receiver -> new NotificationDelivery(receiver.getLoginId(), payload))
+                .toList();
+
+        // 저장 트랜잭션 안에서 호출되면 롤백된 메시지의 알림이 나가지 않도록 커밋 후로 미룬다.
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            eventPublisher.publishEvent(new NotificationDispatchEvent(deliveries));
+        } else {
+            dispatch(deliveries);
+        }
+    }
+
+    /**
      * WebSocket 발송만 담당한다. 실패해도 알림은 이미 저장돼 REST 목록 조회로 복구 가능하므로 로깅만 한다.
      */
     public void dispatch(List<NotificationDelivery> deliveries) {
