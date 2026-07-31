@@ -18,6 +18,12 @@ spring:
       max-request-size: 5MB
   lifecycle:
     timeout-per-shutdown-phase: 20s
+
+swagger:
+  auth:
+    username: ${SWAGGER_USERNAME}
+    password: ${SWAGGER_PASSWORD}
+
 server:
   port: 8080
   shutdown: graceful
