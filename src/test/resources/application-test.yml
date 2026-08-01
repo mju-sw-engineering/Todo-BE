@@ -35,3 +35,8 @@ app:
 todo:
   scheduling:
     enabled: false
+
+swagger:
+  auth:
+    username: test-user
+    password: test-password
