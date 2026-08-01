@@ -12,6 +12,7 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -45,7 +46,12 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
             }
 
             String loginId = jwtUtil.extractLoginId(token);
-            UserDetails userDetails = authService.loadUserByUsername(loginId);
+            UserDetails userDetails;
+            try {
+                userDetails = authService.loadUserByUsername(loginId);
+            } catch (UsernameNotFoundException e) {
+                throw new MessageDeliveryException("유효하지 않은 토큰입니다.");
+            }
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 

@@ -13,6 +13,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 import java.util.List;
 
@@ -80,6 +81,23 @@ class JwtAuthenticationFilterTest {
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         then(authService).should(never()).loadUserByUsername(org.mockito.ArgumentMatchers.any());
+        then(filterChain).should().doFilter(request, response);
+    }
+
+    @Test
+    void 토큰의_사용자가_삭제됐으면_미인증_상태로_다음_필터로_넘긴다() throws Exception {
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtil, authService);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        request.addHeader("Authorization", "Bearer deleted-user-token");
+        given(jwtUtil.isValid("deleted-user-token")).willReturn(true);
+        given(jwtUtil.extractLoginId("deleted-user-token")).willReturn("deleted-user");
+        given(authService.loadUserByUsername("deleted-user"))
+                .willThrow(new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         then(filterChain).should().doFilter(request, response);
     }
 }

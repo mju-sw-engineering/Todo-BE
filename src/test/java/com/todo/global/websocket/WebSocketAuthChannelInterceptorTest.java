@@ -14,6 +14,7 @@ import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 import java.security.Principal;
 import java.util.List;
@@ -69,6 +70,20 @@ class WebSocketAuthChannelInterceptorTest {
         WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
         Message<byte[]> message = stompMessage(StompCommand.CONNECT, "Bearer invalid-token");
         given(jwtUtil.isValid("invalid-token")).willReturn(false);
+
+        assertThatThrownBy(() -> interceptor.preSend(message, channel))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("유효하지 않은 토큰입니다.");
+    }
+
+    @Test
+    void connect_요청의_사용자가_삭제됐으면_연결을_거부한다() {
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
+        Message<byte[]> message = stompMessage(StompCommand.CONNECT, "Bearer deleted-user-token");
+        given(jwtUtil.isValid("deleted-user-token")).willReturn(true);
+        given(jwtUtil.extractLoginId("deleted-user-token")).willReturn("deleted-user");
+        given(authService.loadUserByUsername("deleted-user"))
+                .willThrow(new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
 
         assertThatThrownBy(() -> interceptor.preSend(message, channel))
                 .isInstanceOf(MessageDeliveryException.class)
