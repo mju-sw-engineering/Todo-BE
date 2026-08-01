@@ -23,6 +23,7 @@ import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.file.service.FileDeletionOutboxService;
 import com.todo.global.mail.repository.MailOutboxRepository;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -52,6 +54,7 @@ public class UserService {
     private final MailOutboxRepository mailOutboxRepository;
     private final ReauthTokenRepository reauthTokenRepository;
     private final ReauthService reauthService;
+    private final FileDeletionOutboxService fileDeletionOutboxService;
 
     public MyPageResponse getMyPage(String loginId) {
         User user = userRepository.findByLoginId(loginId)
@@ -87,6 +90,8 @@ public class UserService {
         Long userId = user.getId();
         String email = user.getEmail();
 
+        enqueueUserFilesForDeletion(user);
+
         // 1. 팀 정리 — 리더면 권한 이양, 잔여 멤버가 없는 팀만 팀 전체 삭제
         handleLeaderTeams(user);
 
@@ -113,6 +118,14 @@ public class UserService {
         // 5. 사용자 삭제 후 flush — 정리 누락은 여기서 FK 위반으로 검출된다.
         userRepository.delete(user);
         userRepository.flush();
+    }
+
+    private void enqueueUserFilesForDeletion(User user) {
+        List<String> objectKeys = new ArrayList<>();
+        objectKeys.add(user.getProfileImageUrl());
+        objectKeys.addAll(todoParticipantRepository.findProofImageKeysByUserId(user.getId()));
+        objectKeys.addAll(todoParticipantRepository.findProofThumbnailKeysByUserId(user.getId()));
+        fileDeletionOutboxService.enqueueAll(objectKeys);
     }
 
     private void handleLeaderTeams(User user) {

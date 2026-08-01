@@ -21,6 +21,7 @@ import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.file.service.FileDeletionOutboxService;
 import com.todo.global.service.FileService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -73,6 +74,8 @@ class TeamServiceTest {
     private TeamChatMessageRepository teamChatMessageRepository;
     @Mock
     private TeamChatReadStatusRepository teamChatReadStatusRepository;
+    @Mock
+    private FileDeletionOutboxService fileDeletionOutboxService;
 
     @Test
     void 팀_생성_성공_이미지없음() {
@@ -462,6 +465,7 @@ class TeamServiceTest {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of(100L));
         given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of(1000L));
 
@@ -489,6 +493,7 @@ class TeamServiceTest {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of());
 
         teamService.leaveTeam("user1", 10L);
@@ -515,6 +520,7 @@ class TeamServiceTest {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of(100L));
         given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of());
 
@@ -529,6 +535,40 @@ class TeamServiceTest {
         inOrder.verify(teamMemberRepository).deleteByTeamId(10L);
         inOrder.verify(teamRepository).deleteById(10L);
         verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
+    }
+
+    @Test
+    void 팀전체_삭제시_팀이미지와_모든_인증사진을_파일삭제_outbox에_적재한다() {
+        Team team = Team.create("스터디 팀", "teams/10/team.png", "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of(100L, 101L));
+        given(todoParticipantRepository.findProofImageKeysByTodoIdIn(List.of(100L, 101L)))
+                .willReturn(List.of("proofs/1/a.png", "proofs/2/b.png"));
+        given(todoParticipantRepository.findProofThumbnailKeysByTodoIdIn(List.of(100L, 101L)))
+                .willReturn(List.of("proofs/1/thumbs/a.jpg", "proofs/2/thumbs/b.jpg"));
+        given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L, 101L))).willReturn(List.of());
+
+        teamService.deleteTeamWithAllData(10L);
+
+        verify(fileDeletionOutboxService).enqueueAll(List.of(
+                "teams/10/team.png",
+                "proofs/1/a.png",
+                "proofs/2/b.png",
+                "proofs/1/thumbs/a.jpg",
+                "proofs/2/thumbs/b.jpg"
+        ));
+    }
+
+    @Test
+    void 팀전체_삭제시_팀이_없으면_거부한다() {
+        given(teamRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.deleteTeamWithAllData(99L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("존재하지 않는 팀입니다");
+
+        then(fileDeletionOutboxService).shouldHaveNoInteractions();
     }
 
     @Test

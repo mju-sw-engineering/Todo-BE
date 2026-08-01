@@ -24,6 +24,9 @@ public class S3Config {
                         AwsBasicCredentials.create(props.getAccessKey(), props.getSecretKey())
                 ))
                 .region(Region.of(props.getRegion()))
+                .overrideConfiguration(configuration -> configuration
+                        .apiCallTimeout(props.getApiCallTimeout())
+                        .apiCallAttemptTimeout(props.getApiCallAttemptTimeout()))
                 .serviceConfiguration(S3Configuration.builder()
                         .pathStyleAccessEnabled(true)
                         .build())
