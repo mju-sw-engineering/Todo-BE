@@ -21,9 +21,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 /**
  * 탈퇴 시 공동 기록을 익명화하는 쿼리와, 익명 행이 조회에서 누락되지 않는지 검증한다.
@@ -122,7 +124,10 @@ class UserWithdrawalRepositoryTest {
         assertThat(reloaded.getProofImageKey()).isNull();
         assertThat(reloaded.getProofThumbnailKey()).isNull();
         assertThat(reloaded.getStatus()).isEqualTo(ParticipantStatus.SUCCESS);
-        assertThat(reloaded.getSubmittedAt()).isEqualTo(submittedAt);
+        // DB의 DATETIME(6)은 마이크로초까지만 보관하고 반올림한다. 리눅스의 LocalDateTime.now()는
+        // 나노초까지 주므로 왕복 전후를 정확히 비교하면 플랫폼에 따라 어긋난다.
+        // 검증 의도는 "제출 시각이 익명화로 지워지지 않는다"이므로 오차 범위로 비교한다.
+        assertThat(reloaded.getSubmittedAt()).isCloseTo(submittedAt, within(1, ChronoUnit.MILLIS));
     }
 
     @Test
