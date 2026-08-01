@@ -1,12 +1,10 @@
 package com.todo.domain.auth.controller;
 
-import com.todo.domain.auth.dto.request.ConsentRequest;
 import com.todo.domain.auth.dto.request.EmailSendRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
-import com.todo.domain.auth.entity.ConsentType;
 import com.todo.domain.auth.service.AuthService;
 import com.todo.domain.auth.service.EmailVerificationService;
 import com.todo.global.response.ApiResponse;
@@ -15,12 +13,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
 class AuthControllerTest {
@@ -78,18 +74,5 @@ class AuthControllerTest {
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody().getMessage()).isEqualTo("로그아웃 되었습니다");
-    }
-
-    @Test
-    void 약관_재동의_성공() {
-        AuthController controller = new AuthController(authService, emailVerificationService);
-        ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v2.0");
-        Authentication authentication = mock(Authentication.class);
-        given(authentication.getName()).willReturn("user1");
-
-        ResponseEntity<ApiResponse<Void>> response = controller.saveConsent(request, authentication);
-
-        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-        then(authService).should().saveConsent("user1", request);
     }
 }

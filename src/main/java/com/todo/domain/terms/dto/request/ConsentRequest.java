@@ -1,4 +1,4 @@
-package com.todo.domain.auth.dto.request;
+package com.todo.domain.terms.dto.request;
 
 import com.todo.domain.auth.entity.ConsentType;
 import io.swagger.v3.oas.annotations.media.Schema;

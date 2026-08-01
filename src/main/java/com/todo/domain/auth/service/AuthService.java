@@ -1,6 +1,5 @@
 package com.todo.domain.auth.service;
 
-import com.todo.domain.auth.dto.request.ConsentRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.LoginResponse;
@@ -79,23 +78,6 @@ public class AuthService implements UserDetailsService {
         }
 
         return new LoginResponse(jwtUtil.generateToken(user.getLoginId()));
-    }
-
-    @Transactional
-    public void saveConsent(String loginId, ConsentRequest request) {
-        User user = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
-
-        boolean alreadyAgreed = userConsentRepository
-                .findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(loginId, request.consentType())
-                .map(c -> c.getConsentVersion().equals(request.version()))
-                .orElse(false);
-
-        if (alreadyAgreed) {
-            throw new BusinessException("이미 해당 버전에 동의하셨습니다.", HttpStatus.CONFLICT);
-        }
-
-        userConsentRepository.save(UserConsent.create(user, request.consentType(), request.version()));
     }
 
     @Override

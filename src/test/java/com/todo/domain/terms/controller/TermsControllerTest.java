@@ -1,7 +1,10 @@
 package com.todo.domain.terms.controller;
 
+import com.todo.domain.auth.entity.ConsentType;
+import com.todo.domain.terms.dto.request.ConsentRequest;
 import com.todo.domain.terms.dto.response.AllTermsResponse;
 import com.todo.domain.terms.dto.response.TermsResponse;
+import com.todo.domain.terms.dto.response.VersionCheckItem;
 import com.todo.domain.terms.service.TermsService;
 import com.todo.global.response.ApiResponse;
 import org.junit.jupiter.api.Test;
@@ -11,8 +14,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,6 +55,37 @@ class TermsControllerTest {
         given(termsService.getAllAgreedTerms("user1")).willReturn(expected);
 
         ResponseEntity<ApiResponse<AllTermsResponse>> response = controller.getAllAgreedTerms(authentication);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().getData()).isEqualTo(expected);
+    }
+
+    @Test
+    void 약관_재동의_성공() {
+        TermsController controller = new TermsController(termsService);
+        ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v2.0");
+        Authentication authentication = mock(Authentication.class);
+        given(authentication.getName()).willReturn("user1");
+
+        ResponseEntity<ApiResponse<Void>> response = controller.saveConsent(request, authentication);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        then(termsService).should().saveConsent("user1", request);
+    }
+
+    @Test
+    void 버전_비교_API_성공() {
+        TermsController controller = new TermsController(termsService);
+        Authentication authentication = mock(Authentication.class);
+        given(authentication.getName()).willReturn("user1");
+        Map<ConsentType, VersionCheckItem> expected = Map.of(
+                ConsentType.TERMS, new VersionCheckItem("v1.0", "v1.0", false),
+                ConsentType.PRIVACY, new VersionCheckItem("v1.0", "v1.0", false),
+                ConsentType.MARKETING, new VersionCheckItem(null, "v1.0", false)
+        );
+        given(termsService.getVersionCheck("user1")).willReturn(expected);
+
+        ResponseEntity<ApiResponse<Map<ConsentType, VersionCheckItem>>> response = controller.getVersionCheck(authentication);
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody().getData()).isEqualTo(expected);
