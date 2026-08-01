@@ -1,0 +1,134 @@
+package com.todo.domain.auth.service;
+
+import com.todo.domain.auth.dto.request.ReauthRequest;
+import com.todo.domain.auth.dto.response.ReauthResponse;
+import com.todo.domain.auth.entity.ReauthPurpose;
+import com.todo.domain.auth.entity.ReauthToken;
+import com.todo.domain.auth.repository.ReauthTokenRepository;
+import com.todo.domain.user.entity.User;
+import com.todo.domain.user.repository.UserRepository;
+import com.todo.global.exception.BusinessException;
+import com.todo.global.ratelimit.SimpleRateLimiter;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.Base64;
+import java.util.HexFormat;
+
+/**
+ * 민감한 작업 직전에 비밀번호를 다시 확인하고, 그 증명으로 1회용 토큰을 발급한다.
+ *
+ * <p>계정 탈취 상황에서 JWT만으로 되돌릴 수 없는 작업(탈퇴 등)이 실행되는 것을 막는다.
+ */
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class ReauthService {
+
+    static final Duration TOKEN_TTL = Duration.ofMinutes(5);
+
+    private static final String RATE_LIMIT_PREFIX = "reauth:password:";
+    private static final int PASSWORD_ATTEMPT_LIMIT = 5;
+    private static final Duration PASSWORD_ATTEMPT_WINDOW = Duration.ofMinutes(1);
+    private static final int TOKEN_BYTE_LENGTH = 32;
+
+    private final UserRepository userRepository;
+    private final ReauthTokenRepository reauthTokenRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final SimpleRateLimiter rateLimiter;
+    private final SecureRandom secureRandom = new SecureRandom();
+    private final Clock clock;
+
+    @Transactional
+    public ReauthResponse reauthenticate(String loginId, ReauthRequest request) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+
+        if (!rateLimiter.tryAcquire(RATE_LIMIT_PREFIX + user.getId(), PASSWORD_ATTEMPT_LIMIT, PASSWORD_ATTEMPT_WINDOW)) {
+            throw new BusinessException("잠시 후 다시 시도해 주세요", HttpStatus.TOO_MANY_REQUESTS);
+        }
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            throw new BusinessException("비밀번호가 일치하지 않습니다", HttpStatus.UNAUTHORIZED);
+        }
+
+        // 재발급하면 같은 용도의 이전 토큰은 무효가 된다.
+        reauthTokenRepository.deleteByUserIdAndPurpose(user.getId(), request.purpose());
+
+        String rawToken = generateToken();
+        LocalDateTime expiresAt = LocalDateTime.now(clock).plus(TOKEN_TTL);
+        reauthTokenRepository.save(ReauthToken.create(user, hash(rawToken), request.purpose(), expiresAt));
+
+        return ReauthResponse.of(rawToken, expiresAt);
+    }
+
+    /**
+     * 토큰을 검증하고 즉시 소비한다. 같은 토큰으로 두 번 통과할 수 없다.
+     *
+     * @return 재인증을 통과한 사용자 ID
+     */
+    @Transactional
+    public Long consume(String loginId, String rawToken, ReauthPurpose purpose) {
+        if (rawToken == null || rawToken.isBlank()) {
+            throw new BusinessException("재인증이 필요합니다", HttpStatus.UNAUTHORIZED);
+        }
+
+        ReauthToken token = reauthTokenRepository.findByTokenHash(hash(rawToken))
+                .orElseThrow(() -> new BusinessException("재인증이 필요합니다", HttpStatus.UNAUTHORIZED));
+
+        // 남의 토큰을 자기 요청에 쓰지 못하게 소유자를 확인한다.
+        if (!token.getUser().getLoginId().equals(loginId)) {
+            throw new BusinessException("재인증이 필요합니다", HttpStatus.UNAUTHORIZED);
+        }
+        if (!token.matchesPurpose(purpose)) {
+            throw new BusinessException("이 작업에 사용할 수 없는 재인증입니다", HttpStatus.UNAUTHORIZED);
+        }
+        if (token.isUsed()) {
+            throw new BusinessException("이미 사용된 재인증입니다", HttpStatus.UNAUTHORIZED);
+        }
+
+        LocalDateTime now = LocalDateTime.now(clock);
+        if (token.isExpired(now)) {
+            throw new BusinessException("재인증이 만료되었습니다", HttpStatus.UNAUTHORIZED);
+        }
+
+        // markAsUsed가 영속성 컨텍스트를 비우므로 그 전에 읽어 둔다.
+        Long userId = token.getUser().getId();
+
+        // 실제 1회용 보장은 여기서 이뤄진다. 위 검증과 이 UPDATE 사이에 다른 요청이 먼저
+        // 소비했다면 갱신 행이 0이 되고, 그 요청만 통과한다.
+        if (reauthTokenRepository.markAsUsed(token.getId(), now) != 1) {
+            throw new BusinessException("이미 사용된 재인증입니다", HttpStatus.UNAUTHORIZED);
+        }
+
+        return userId;
+    }
+
+    private String generateToken() {
+        byte[] bytes = new byte[TOKEN_BYTE_LENGTH];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    /**
+     * 조회 키이자 저장 형태. 토큰이 이미 고엔트로피 난수라 느린 해시가 필요 없고,
+     * 조회에 쓰이므로 salt 없이 결정적이어야 한다.
+     */
+    private String hash(String rawToken) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(rawToken.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256을 사용할 수 없습니다", e);
+        }
+    }
+}

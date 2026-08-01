@@ -6,6 +6,7 @@ import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import com.todo.domain.auth.service.AuthService;
+import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.service.EmailVerificationService;
 import com.todo.global.response.ApiResponse;
 import org.junit.jupiter.api.Test;
@@ -23,13 +24,15 @@ class AuthControllerTest {
 
     @Mock
     private AuthService authService;
+    @Mock
+    private ReauthService reauthService;
 
     @Mock
     private EmailVerificationService emailVerificationService;
 
     @Test
     void 이메일_인증코드_발송_요청은_202를_반환한다() {
-        AuthController controller = new AuthController(authService, emailVerificationService);
+        AuthController controller = new AuthController(authService, emailVerificationService, reauthService);
         EmailSendRequest request = new EmailSendRequest("user@example.com");
 
         ResponseEntity<ApiResponse<Void>> response = controller.sendEmailCode(request);
@@ -41,7 +44,7 @@ class AuthControllerTest {
 
     @Test
     void 회원가입_응답을_반환한다() {
-        AuthController controller = new AuthController(authService, emailVerificationService);
+        AuthController controller = new AuthController(authService, emailVerificationService, reauthService);
         SignupRequest request = new SignupRequest(
                 "user@example.com", "token", "user1", "password123!", "password123!", "닉네임", null, true, true, false);
         SignupResponse signupResponse = new SignupResponse(1L, "user1", "닉네임", null);
@@ -55,7 +58,7 @@ class AuthControllerTest {
 
     @Test
     void 로그인_응답을_반환한다() {
-        AuthController controller = new AuthController(authService, emailVerificationService);
+        AuthController controller = new AuthController(authService, emailVerificationService, reauthService);
         LoginRequest request = new LoginRequest("user1", "password");
         LoginResponse loginResponse = new LoginResponse("token");
         given(authService.login(request)).willReturn(loginResponse);
@@ -68,7 +71,7 @@ class AuthControllerTest {
 
     @Test
     void 로그아웃_응답을_반환한다() {
-        AuthController controller = new AuthController(authService, emailVerificationService);
+        AuthController controller = new AuthController(authService, emailVerificationService, reauthService);
 
         ResponseEntity<ApiResponse<Void>> response = controller.logout();
 

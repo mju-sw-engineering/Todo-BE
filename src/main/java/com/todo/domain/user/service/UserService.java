@@ -1,6 +1,8 @@
 package com.todo.domain.user.service;
 
+import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
+import com.todo.domain.auth.repository.ReauthTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
@@ -14,6 +16,8 @@ import com.todo.domain.team.service.TeamService;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.auth.service.ReauthService;
+import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.entity.User;
@@ -46,6 +50,8 @@ public class UserService {
     private final UserConsentRepository userConsentRepository;
     private final EmailVerificationRepository emailVerificationRepository;
     private final MailOutboxRepository mailOutboxRepository;
+    private final ReauthTokenRepository reauthTokenRepository;
+    private final ReauthService reauthService;
 
     public MyPageResponse getMyPage(String loginId) {
         User user = userRepository.findByLoginId(loginId)
@@ -70,9 +76,13 @@ public class UserService {
      * 정리하고, 마지막 users 삭제를 flush해 정리를 빠뜨린 참조가 있으면 FK 위반으로 즉시 드러나게 한다.
      */
     @Transactional
-    public void deleteUser(String loginId) {
+    public void deleteUser(String loginId, DeleteUserRequest request) {
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+
+        // 복구 유예기간이 없어 오조작과 토큰 탈취를 되돌릴 수 없으므로 재인증을 요구한다.
+        // 토큰은 여기서 소비되며 같은 토큰으로 다시 탈퇴를 시도할 수 없다.
+        reauthService.consume(loginId, request.reauthToken(), ReauthPurpose.WITHDRAWAL);
 
         Long userId = user.getId();
         String email = user.getEmail();
@@ -85,6 +95,7 @@ public class UserService {
         teamChatReadStatusRepository.deleteByUserId(userId);
         todoReactionRepository.deleteByUserId(userId);
         userConsentRepository.deleteByUserId(userId);
+        reauthTokenRepository.deleteByUserId(userId);
         if (email != null) {
             emailVerificationRepository.deleteByEmail(email);
             mailOutboxRepository.deleteByRecipient(email);
