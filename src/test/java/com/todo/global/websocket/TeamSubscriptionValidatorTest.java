@@ -70,6 +70,15 @@ class TeamSubscriptionValidatorTest {
     }
 
     @Test
+    void 삭제된_사용자는_팀_채널_구독을_거부한다() {
+        given(userRepository.findByLoginId("deleted-user")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> validator.validate("/topic/teams/100", "deleted-user"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("사용자를 찾을 수 없습니다.");
+    }
+
+    @Test
     void 존재하지_않는_팀_채널도_권한_없음으로_동일하게_거부한다() {
         User user = userWithId(1L);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));

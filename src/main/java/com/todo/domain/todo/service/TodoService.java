@@ -34,6 +34,7 @@ import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
+import com.todo.domain.user.support.WithdrawnUserDisplay;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
@@ -204,7 +205,7 @@ public class TodoService {
                 .map(p -> new ParticipantDetailResponse(
                         p.getTodoParticipantId(),
                         p.getUserId(),
-                        p.getNickname(),
+                        WithdrawnUserDisplay.nicknameOrWithdrawn(p.getNickname()),
                         fileService.resolveImageUrl(p.getProfileImageUrl()),
                         fileService.resolveImageUrl(p.getProofImageKey()),
                         fileService.resolveImageUrl(p.getProofThumbnailKey()),
@@ -221,7 +222,7 @@ public class TodoService {
                 todo.getId(),
                 todo.getTitle(),
                 toKstOffset(todo.getDeadline()),
-                todo.getCreator().getNickname(),
+                resolveCreatorNickname(todo),
                 resolveDisplayStatus(todo.getStatus(), todo.getDeadline(), LocalDateTime.now(KST)),
                 success + " / " + total,
                 participantResponses
@@ -490,15 +491,16 @@ public class TodoService {
         long success = participants.stream()
                 .filter(p -> p.getStatus() == ParticipantStatus.SUCCESS)
                 .count();
+        // 익명 참가 기록은 userId가 null이므로 현재 사용자 기준으로 비교해 NPE를 피한다.
         String myStatus = participants.stream()
-                .filter(p -> p.getUserId().equals(userId))
+                .filter(p -> userId.equals(p.getUserId()))
                 .findFirst()
                 .map(p -> mapStatus(p.getStatus()))
                 .orElse(null);
         List<TodoParticipantStatusResponse> participantResponses = participants.stream()
                 .map(p -> new TodoParticipantStatusResponse(
                         p.getUserId(),
-                        p.getNickname(),
+                        WithdrawnUserDisplay.nicknameOrWithdrawn(p.getNickname()),
                         mapStatus(p.getStatus())
                 ))
                 .toList();
@@ -507,7 +509,7 @@ public class TodoService {
                 todo.getId(),
                 todo.getTitle(),
                 toKstOffset(todo.getDeadline()),
-                todo.getCreator().getNickname(),
+                resolveCreatorNickname(todo),
                 resolveDisplayStatus(todo.getStatus(), todo.getDeadline(), now),
                 success + " / " + total,
                 myStatus,
@@ -668,6 +670,17 @@ public class TodoService {
         } catch (NumberFormatException e) {
             return 0;
         }
+    }
+
+    /**
+     * 생성자가 탈퇴하면 creator가 null이다. Todo는 유지되므로 표시명만 익명으로 바꾼다.
+     */
+    private String resolveCreatorNickname(Todo todo) {
+        if (todo.getCreator() == null) {
+            return WithdrawnUserDisplay.NICKNAME;
+        }
+
+        return todo.getCreator().getNickname();
     }
 
     private String mapStatus(ParticipantStatus status) {

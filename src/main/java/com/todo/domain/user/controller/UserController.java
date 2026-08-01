@@ -1,5 +1,6 @@
 package com.todo.domain.user.controller;
 
+import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.service.UserService;
@@ -40,9 +41,12 @@ public class UserController implements UserControllerDocs {
     }
 
     @DeleteMapping("/me")
-    public ResponseEntity<ApiResponse<Void>> deleteUser(Authentication authentication) {
+    public ResponseEntity<ApiResponse<Void>> deleteUser(
+            @Valid @RequestBody DeleteUserRequest request,
+            Authentication authentication
+    ) {
         String loginId = authentication.getName();
-        userService.deleteUser(loginId);
+        userService.deleteUser(loginId, request);
         return ResponseEntity.ok(ApiResponse.success(null, "회원 탈퇴가 완료되었습니다"));
     }
 }

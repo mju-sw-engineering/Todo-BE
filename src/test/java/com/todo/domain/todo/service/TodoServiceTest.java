@@ -776,4 +776,42 @@ class TodoServiceTest {
             }
         };
     }
+
+    @Test
+    void 생성자가_탈퇴한_투두는_생성자를_탈퇴한_사용자로_표시한다() {
+        User user = userWithId(1L);
+        Todo todo = todoWithId(10L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 5, 20, 10, 0));
+        ReflectionTestUtils.setField(todo, "creator", null);
+        givenValidTeamMember(user);
+        given(todoRepository.findByTeamIdWithCreator(100L)).willReturn(List.of(todo));
+        given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L))).willReturn(List.of(
+                participant(10L, 1L, "닉네임1", ParticipantStatus.IN_PROGRESS)
+        ));
+
+        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null, null);
+
+        assertThat(response.get(0).creatorNickname()).isEqualTo("탈퇴한 사용자");
+    }
+
+    @Test
+    void 참가자가_탈퇴해도_익명_기록으로_목록에_남는다() {
+        User user = userWithId(1L);
+        Todo todo = todoWithId(10L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 5, 20, 10, 0));
+        givenValidTeamMember(user);
+        given(todoRepository.findByTeamIdWithCreator(100L)).willReturn(List.of(todo));
+        given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L))).willReturn(List.of(
+                participant(10L, 1L, "닉네임1", ParticipantStatus.SUCCESS),
+                // 탈퇴자의 익명 참가 기록: userId와 nickname이 모두 null이다.
+                participant(10L, null, null, ParticipantStatus.SUCCESS)
+        ));
+
+        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null, null);
+
+        assertThat(response.get(0).achievementCount()).isEqualTo("2 / 2");
+        assertThat(response.get(0).participants()).hasSize(2);
+        assertThat(response.get(0).participants().get(1).memberId()).isNull();
+        assertThat(response.get(0).participants().get(1).nickname()).isEqualTo("탈퇴한 사용자");
+        // 익명 기록의 userId가 null이어도 내 상태 판별이 NPE 없이 동작해야 한다.
+        assertThat(response.get(0).myStatus()).isEqualTo("완료");
+    }
 }
