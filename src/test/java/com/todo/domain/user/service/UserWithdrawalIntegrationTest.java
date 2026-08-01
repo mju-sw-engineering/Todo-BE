@@ -3,10 +3,10 @@ package com.todo.domain.user.service;
 import com.todo.domain.auth.entity.ConsentType;
 import com.todo.domain.auth.entity.UserConsent;
 import com.todo.domain.auth.repository.UserConsentRepository;
-import com.todo.domain.chat.entity.ChatMessage;
-import com.todo.domain.chat.entity.ChatReadStatus;
-import com.todo.domain.chat.repository.ChatMessageRepository;
-import com.todo.domain.chat.repository.ChatReadStatusRepository;
+import com.todo.domain.chat.entity.TeamChatMessage;
+import com.todo.domain.chat.entity.TeamChatReadStatus;
+import com.todo.domain.chat.repository.TeamChatMessageRepository;
+import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.notification.entity.Notification;
 import com.todo.domain.notification.entity.NotificationType;
 import com.todo.domain.notification.repository.NotificationRepository;
@@ -23,7 +23,6 @@ import com.todo.domain.todo.entity.TodoReactionType;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
-import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -76,9 +75,9 @@ class UserWithdrawalIntegrationTest {
     @Autowired
     private TodoReactionRepository todoReactionRepository;
     @Autowired
-    private ChatMessageRepository chatMessageRepository;
+    private TeamChatMessageRepository teamChatMessageRepository;
     @Autowired
-    private ChatReadStatusRepository chatReadStatusRepository;
+    private TeamChatReadStatusRepository teamChatReadStatusRepository;
     @Autowired
     private NotificationRepository notificationRepository;
     @Autowired
@@ -102,7 +101,7 @@ class UserWithdrawalIntegrationTest {
     }
 
     private void withdraw() {
-        userService.deleteUser("leaving", new DeleteUserRequest(RAW_PASSWORD));
+        userService.deleteUser("leaving");
         entityManager.flush();
         entityManager.clear();
     }
@@ -145,14 +144,13 @@ class UserWithdrawalIntegrationTest {
 
     @Test
     void 탈퇴자가_보낸_채팅은_남고_발신자만_익명화된다() {
-        Todo todo = todoRepository.save(
-                Todo.create(team, staying, "투두", null, LocalDateTime.now().plusDays(1)));
-        ChatMessage message = chatMessageRepository.save(ChatMessage.create(todo, withdrawing, "안녕하세요"));
+        TeamChatMessage message = teamChatMessageRepository.save(
+                TeamChatMessage.create(team, withdrawing, "안녕하세요"));
         entityManager.flush();
 
         withdraw();
 
-        ChatMessage reloaded = chatMessageRepository.findById(message.getId()).orElseThrow();
+        TeamChatMessage reloaded = teamChatMessageRepository.findById(message.getId()).orElseThrow();
         assertThat(reloaded.getContent()).isEqualTo("안녕하세요");
         assertThat(reloaded.getSender()).isNull();
     }
@@ -200,13 +198,13 @@ class UserWithdrawalIntegrationTest {
         todoParticipantRepository.save(others);
         TodoReaction myReaction = todoReactionRepository.save(
                 TodoReaction.create(others, withdrawing, TodoReactionType.HEART));
-        chatReadStatusRepository.save(ChatReadStatus.create(withdrawing, todo));
+        teamChatReadStatusRepository.save(TeamChatReadStatus.create(team, withdrawing));
         entityManager.flush();
 
         withdraw();
 
         assertThat(todoReactionRepository.findById(myReaction.getId())).isEmpty();
-        assertThat(chatReadStatusRepository.findByUserIdAndTodoId(withdrawing.getId(), todo.getId())).isEmpty();
+        assertThat(teamChatReadStatusRepository.findByUserIdAndTeamId(withdrawing.getId(), team.getId())).isEmpty();
         // 익명화 대상이 아닌 타인의 참가 기록은 그대로 남는다.
         assertThat(todoParticipantRepository.findById(others.getId()).orElseThrow().getUser()).isNotNull();
     }
@@ -225,22 +223,6 @@ class UserWithdrawalIntegrationTest {
         List<TeamMember> remaining = teamMemberRepository.findByTeamIdExcludingUser(team.getId(), withdrawing.getId());
         assertThat(remaining).hasSize(1);
         assertThat(remaining.get(0).getRole()).isEqualTo(TeamMemberRole.LEADER);
-    }
-
-    @Test
-    void 비밀번호가_틀리면_아무것도_바뀌지_않는다() {
-        Todo todo = todoRepository.save(
-                Todo.create(team, withdrawing, "공동 투두", null, LocalDateTime.now().plusDays(1)));
-        entityManager.flush();
-
-        assertThatThrownBy(() -> userService.deleteUser("leaving", new DeleteUserRequest("틀린비밀번호")))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
-
-        entityManager.clear();
-        assertThat(userRepository.findByLoginId("leaving")).isPresent();
-        assertThat(todoRepository.findById(todo.getId()).orElseThrow().getCreator()).isNotNull();
-        assertThat(teamMemberRepository.findByTeamIdExcludingUser(team.getId(), staying.getId())).hasSize(1);
     }
 
     @Test

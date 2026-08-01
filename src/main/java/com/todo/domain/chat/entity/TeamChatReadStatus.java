@@ -1,37 +1,38 @@
 package com.todo.domain.chat.entity;
 
-import com.todo.domain.todo.entity.Todo;
+import com.todo.domain.team.entity.Team;
 import com.todo.domain.user.entity.User;
+import com.todo.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "chat_read_statuses",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "todo_id"}))
+@Table(name = "team_chat_read_statuses",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"team_id", "user_id"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class ChatReadStatus {
+public class TeamChatReadStatus extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "team_id", nullable = false)
+    private Team team;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "todo_id", nullable = false)
-    private Todo todo;
-
     private Long lastReadMessageId;
 
-    public static ChatReadStatus create(User user, Todo todo) {
-        ChatReadStatus status = new ChatReadStatus();
+    public static TeamChatReadStatus create(Team team, User user) {
+        TeamChatReadStatus status = new TeamChatReadStatus();
+        status.team = team;
         status.user = user;
-        status.todo = todo;
         return status;
     }
 

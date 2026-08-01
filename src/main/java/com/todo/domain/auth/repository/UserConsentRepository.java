@@ -1,12 +1,18 @@
 package com.todo.domain.auth.repository;
 
+import com.todo.domain.auth.entity.ConsentType;
 import com.todo.domain.auth.entity.UserConsent;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
+
 public interface UserConsentRepository extends JpaRepository<UserConsent, Long> {
+
+    Optional<UserConsent> findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(
+            String loginId, ConsentType consentType);
 
     /**
      * 동의 이력은 개인정보이므로 탈퇴 시 보존하지 않고 삭제한다.

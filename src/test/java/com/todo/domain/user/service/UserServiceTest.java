@@ -2,8 +2,8 @@ package com.todo.domain.user.service;
 
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
-import com.todo.domain.chat.repository.ChatMessageRepository;
-import com.todo.domain.chat.repository.ChatReadStatusRepository;
+import com.todo.domain.chat.repository.TeamChatMessageRepository;
+import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.notification.repository.NotificationRepository;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -13,14 +13,12 @@ import com.todo.domain.team.service.TeamService;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
-import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.mail.repository.MailOutboxRepository;
-import com.todo.global.ratelimit.SimpleRateLimiter;
 import com.todo.global.service.FileService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,10 +26,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,10 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -67,9 +60,9 @@ class UserServiceTest {
     @Mock
     private TodoReactionRepository todoReactionRepository;
     @Mock
-    private ChatMessageRepository chatMessageRepository;
+    private TeamChatMessageRepository teamChatMessageRepository;
     @Mock
-    private ChatReadStatusRepository chatReadStatusRepository;
+    private TeamChatReadStatusRepository teamChatReadStatusRepository;
     @Mock
     private TodoRepository todoRepository;
     @Mock
@@ -80,10 +73,6 @@ class UserServiceTest {
     private EmailVerificationRepository emailVerificationRepository;
     @Mock
     private MailOutboxRepository mailOutboxRepository;
-    @Mock
-    private PasswordEncoder passwordEncoder;
-    @Mock
-    private SimpleRateLimiter rateLimiter;
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {
@@ -163,68 +152,34 @@ class UserServiceTest {
         return user;
     }
 
-    private void givenPasswordMatches(User user) {
+    private void givenWithdrawingUserFound(User user) {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(rateLimiter.tryAcquire(anyString(), anyInt(), any(Duration.class))).willReturn(true);
-        given(passwordEncoder.matches("rawPwd", "encodedPwd")).willReturn(true);
-    }
-
-    @Test
-    void 회원탈퇴_실패_비밀번호가_일치하지_않으면_아무것도_삭제하지_않는다() {
-        User user = withdrawingUser();
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(rateLimiter.tryAcquire(anyString(), anyInt(), any(Duration.class))).willReturn(true);
-        given(passwordEncoder.matches("wrongPwd", "encodedPwd")).willReturn(false);
-
-        assertThatThrownBy(() -> userService.deleteUser("user1", new DeleteUserRequest("wrongPwd")))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("비밀번호가 일치하지 않습니다")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
-
-        verify(userRepository, never()).delete(user);
-        verifyNoInteractions(notificationRepository, userConsentRepository, chatMessageRepository,
-                todoRepository, todoParticipantRepository, todoReactionRepository, teamService);
-    }
-
-    @Test
-    void 회원탈퇴_실패_비밀번호_시도가_한도를_넘으면_대조하지_않는다() {
-        User user = withdrawingUser();
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(rateLimiter.tryAcquire(anyString(), anyInt(), any(Duration.class))).willReturn(false);
-
-        assertThatThrownBy(() -> userService.deleteUser("user1", new DeleteUserRequest("rawPwd")))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
-
-        verifyNoInteractions(passwordEncoder);
-        verify(userRepository, never()).delete(user);
     }
 
     @Test
     void 회원탈퇴_성공_생성한_투두와_채팅은_삭제하지_않고_작성자만_익명화한다() {
         User user = withdrawingUser();
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1", new DeleteUserRequest("rawPwd"));
+        userService.deleteUser("user1");
 
         verify(todoRepository).clearCreatorByUserId(1L);
-        verify(chatMessageRepository).clearSenderByUserId(1L);
+        verify(teamChatMessageRepository).clearSenderByUserId(1L);
         verify(todoRepository, never()).deleteByIdIn(anyList());
-        verify(chatMessageRepository, never()).deleteByTodoIdIn(anyList());
     }
 
     @Test
     void 회원탈퇴_성공_완료_참가기록은_익명화하고_진행중_배정만_삭제한다() {
         User user = withdrawingUser();
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of(100L));
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of(1000L));
 
-        userService.deleteUser("user1", new DeleteUserRequest("rawPwd"));
+        userService.deleteUser("user1");
 
         // 삭제 대상 참가 기록의 반응을 먼저 지워야 todo_reactions FK(RESTRICT)에 걸리지 않는다.
         var inOrder = inOrder(todoReactionRepository, todoParticipantRepository);
@@ -236,12 +191,12 @@ class UserServiceTest {
     @Test
     void 회원탈퇴_성공_진행중_배정이_없으면_반응_삭제와_재평가를_건너뛴다() {
         User user = withdrawingUser();
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1", new DeleteUserRequest("rawPwd"));
+        userService.deleteUser("user1");
 
         verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
         verify(todoRepository, never()).markAsFailWhenNoParticipantsRemain(anyList());
@@ -251,12 +206,12 @@ class UserServiceTest {
     @Test
     void 회원탈퇴_성공_참가자가_빠진_투두의_상태를_재평가한다() {
         User user = withdrawingUser();
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of(100L, 101L));
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of(1000L));
 
-        userService.deleteUser("user1", new DeleteUserRequest("rawPwd"));
+        userService.deleteUser("user1");
 
         // 잔여 0명 → FAIL, 잔여 전원 성공 → SUCCESS. 참가자 제거가 끝난 뒤에 평가해야 한다.
         var inOrder = inOrder(todoParticipantRepository, todoRepository);
@@ -269,15 +224,15 @@ class UserServiceTest {
     void 회원탈퇴_성공_개인정보와_FK_참조를_모두_정리한다() {
         User user = withdrawingUser();
         user.assignEmail("user1@example.com");
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1", new DeleteUserRequest("rawPwd"));
+        userService.deleteUser("user1");
 
         verify(notificationRepository).deleteByReceiverId(1L);
-        verify(chatReadStatusRepository).deleteByUserId(1L);
+        verify(teamChatReadStatusRepository).deleteByUserId(1L);
         verify(todoReactionRepository).deleteByUserId(1L);
         verify(userConsentRepository).deleteByUserId(1L);
         verify(emailVerificationRepository).deleteByEmail("user1@example.com");
@@ -288,12 +243,12 @@ class UserServiceTest {
     @Test
     void 회원탈퇴_성공_이메일이_없으면_이메일_기준_정리를_건너뛴다() {
         User user = withdrawingUser();
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1", new DeleteUserRequest("rawPwd"));
+        userService.deleteUser("user1");
 
         verifyNoInteractions(emailVerificationRepository, mailOutboxRepository);
         verify(userRepository).delete(user);
@@ -302,19 +257,19 @@ class UserServiceTest {
     @Test
     void 회원탈퇴_성공_사용자_삭제는_모든_참조_정리_이후에_flush한다() {
         User user = withdrawingUser();
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1", new DeleteUserRequest("rawPwd"));
+        userService.deleteUser("user1");
 
         // flush까지 해야 정리를 빠뜨린 참조가 FK 위반으로 이 트랜잭션 안에서 드러난다.
-        var inOrder = inOrder(notificationRepository, userConsentRepository, chatMessageRepository,
+        var inOrder = inOrder(notificationRepository, userConsentRepository, teamChatMessageRepository,
                 todoRepository, todoParticipantRepository, teamMemberRepository, userRepository);
         inOrder.verify(notificationRepository).deleteByReceiverId(1L);
         inOrder.verify(userConsentRepository).deleteByUserId(1L);
-        inOrder.verify(chatMessageRepository).clearSenderByUserId(1L);
+        inOrder.verify(teamChatMessageRepository).clearSenderByUserId(1L);
         inOrder.verify(todoRepository).clearCreatorByUserId(1L);
         inOrder.verify(todoParticipantRepository).anonymizeFinishedByUserId(1L);
         inOrder.verify(teamMemberRepository).deleteByUserId(1L);
@@ -325,13 +280,13 @@ class UserServiceTest {
     @Test
     void 회원탈퇴_성공_혼자_있는_리더팀은_팀데이터까지_삭제한다() {
         User user = withdrawingUser();
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of(10L));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1", new DeleteUserRequest("rawPwd"));
+        userService.deleteUser("user1");
 
         verify(teamService).deleteTeamWithAllData(10L);
         verify(userRepository).delete(user);
@@ -346,13 +301,13 @@ class UserServiceTest {
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember remainingMember = TeamMember.create(team, remaining, TeamMemberRole.MEMBER);
 
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of(10L));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of(remainingMember));
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1", new DeleteUserRequest("rawPwd"));
+        userService.deleteUser("user1");
 
         assertThat(remainingMember.getRole()).isEqualTo(TeamMemberRole.LEADER);
         verify(teamService, never()).deleteTeamWithAllData(10L);
@@ -362,11 +317,11 @@ class UserServiceTest {
     @Test
     void 회원탈퇴_실패_중간_정리에서_예외가_나면_사용자를_삭제하지_않는다() {
         User user = withdrawingUser();
-        givenPasswordMatches(user);
+        givenWithdrawingUserFound(user);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         willThrow(new RuntimeException("DB 오류")).given(userConsentRepository).deleteByUserId(1L);
 
-        assertThatThrownBy(() -> userService.deleteUser("user1", new DeleteUserRequest("rawPwd")))
+        assertThatThrownBy(() -> userService.deleteUser("user1"))
                 .isInstanceOf(RuntimeException.class);
 
         verify(userRepository, never()).delete(user);

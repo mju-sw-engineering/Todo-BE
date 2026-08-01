@@ -15,7 +15,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.core.Authentication;
 
 @Tag(name = "Auth", description = "인증 API")
 public interface AuthControllerDocs {
@@ -71,4 +71,5 @@ public interface AuthControllerDocs {
     })
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<com.todo.global.response.ApiResponse<Void>> logout();
+
 }

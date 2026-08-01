@@ -1,7 +1,7 @@
 package com.todo.domain.user.repository;
 
-import com.todo.domain.chat.entity.ChatMessage;
-import com.todo.domain.chat.repository.ChatMessageRepository;
+import com.todo.domain.chat.entity.TeamChatMessage;
+import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
@@ -43,7 +43,7 @@ class UserWithdrawalRepositoryTest {
     private TodoParticipantRepository todoParticipantRepository;
 
     @Autowired
-    private ChatMessageRepository chatMessageRepository;
+    private TeamChatMessageRepository teamChatMessageRepository;
 
     private Team team;
     private User withdrawing;
@@ -89,16 +89,15 @@ class UserWithdrawalRepositoryTest {
     @Test
     void 발신자가_익명인_채팅도_목록_조회에서_누락되지_않는다() {
         setUpTeam();
-        Todo todo = entityManager.persist(Todo.create(team, staying, "투두", null, LocalDateTime.now().plusDays(1)));
-        entityManager.persist(ChatMessage.create(todo, withdrawing, "떠나는 사람 메시지"));
-        entityManager.persist(ChatMessage.create(todo, staying, "남는 사람 메시지"));
+        entityManager.persist(TeamChatMessage.create(team, withdrawing, "떠나는 사람 메시지"));
+        entityManager.persist(TeamChatMessage.create(team, staying, "남는 사람 메시지"));
         entityManager.flush();
 
-        chatMessageRepository.clearSenderByUserId(withdrawing.getId());
+        teamChatMessageRepository.clearSenderByUserId(withdrawing.getId());
         entityManager.flush();
         entityManager.clear();
 
-        List<ChatMessage> messages = chatMessageRepository.findLatestMessages(todo.getId(), PageRequest.of(0, 10));
+        List<TeamChatMessage> messages = teamChatMessageRepository.findLatestMessages(team.getId(), PageRequest.of(0, 10));
 
         assertThat(messages).hasSize(2);
         assertThat(messages).anyMatch(message -> message.getSender() == null);
