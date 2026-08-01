@@ -5,19 +5,20 @@ import com.todo.global.dto.UploadType;
 import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.exception.FileStorageException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.coobird.thumbnailator.Thumbnails;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
@@ -118,6 +119,14 @@ public class FileService {
     }
 
     public void deleteObject(String objectKey) {
+        try {
+            deleteObjectOrThrow(objectKey);
+        } catch (FileStorageException e) {
+            log.warn("MinIO object 삭제 실패 — key: {}, message: {}", objectKey, e.getMessage());
+        }
+    }
+
+    public void deleteObjectOrThrow(String objectKey) {
         if (objectKey == null || objectKey.isBlank()) {
             return;
         }
@@ -126,8 +135,8 @@ public class FileService {
                     .bucket(props.getBucket())
                     .key(objectKey)
                     .build());
-        } catch (S3Exception e) {
-            log.warn("MinIO object 삭제 실패 — key: {}, message: {}", objectKey, e.getMessage());
+        } catch (SdkException e) {
+            throw new FileStorageException("파일 삭제에 실패했습니다.", e);
         }
     }
 

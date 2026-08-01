@@ -31,6 +31,7 @@ import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.file.repository.FileDeletionOutboxRepository;
 import jakarta.persistence.EntityManager;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,6 +92,8 @@ class UserWithdrawalIntegrationTest {
     private ReauthService reauthService;
     @Autowired
     private ReauthTokenRepository reauthTokenRepository;
+    @Autowired
+    private FileDeletionOutboxRepository fileDeletionOutboxRepository;
 
     private User withdrawing;
     private User staying;
@@ -127,6 +130,30 @@ class UserWithdrawalIntegrationTest {
 
         assertThat(userRepository.findByLoginId("leaving")).isEmpty();
         assertThat(userRepository.findById(withdrawing.getId())).isEmpty();
+    }
+
+    @Test
+    void 탈퇴하면_프로필과_인증사진과_단독팀_이미지를_파일삭제_outbox에_적재한다() {
+        Team soloTeam = teamRepository.save(Team.create("단독 팀", "teams/solo.png", "SOLO0001"));
+        teamMemberRepository.save(TeamMember.create(soloTeam, withdrawing, TeamMemberRole.LEADER));
+        Todo todo = todoRepository.save(
+                Todo.create(soloTeam, withdrawing, "인증 투두", null, LocalDateTime.now().plusDays(1)));
+        TodoParticipant participant = TodoParticipant.create(todo, withdrawing);
+        participant.submit("proofs/original.png", "proofs/thumb.jpg");
+        todoParticipantRepository.save(participant);
+        entityManager.flush();
+
+        withdraw();
+
+        assertThat(teamRepository.findById(soloTeam.getId())).isEmpty();
+        assertThat(fileDeletionOutboxRepository.findAll())
+                .extracting(outbox -> outbox.getObjectKey())
+                .contains(
+                        "profiles/leaving.png",
+                        "proofs/original.png",
+                        "proofs/thumb.jpg",
+                        "teams/solo.png"
+                );
     }
 
     @Test

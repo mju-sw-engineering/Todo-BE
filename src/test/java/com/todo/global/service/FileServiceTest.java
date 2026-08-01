@@ -5,6 +5,7 @@ import com.todo.global.dto.UploadType;
 import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.exception.FileStorageException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -204,6 +205,17 @@ class FileServiceTest {
         fileService.deleteObject("profiles/1/a.png");
 
         then(s3Client).should().deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    void outbox용_삭제는_s3_예외를_FileStorageException으로_전달한다() {
+        var s3Exception = S3Exception.builder().message("failed").build();
+        doThrow(s3Exception).when(s3Client).deleteObject(any(DeleteObjectRequest.class));
+
+        assertThatThrownBy(() -> fileService.deleteObjectOrThrow("profiles/1/a.png"))
+                .isInstanceOf(FileStorageException.class)
+                .hasMessage("파일 삭제에 실패했습니다.")
+                .hasCause(s3Exception);
     }
 
     @Test

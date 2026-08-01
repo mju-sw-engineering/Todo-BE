@@ -13,6 +13,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -53,5 +54,39 @@ class TodoParticipantRepositoryTest {
                 .isEqualTo(ParticipantStatus.SUCCESS);
         assertThat(entityManager.find(TodoParticipant.class, activeInProgress.getId()).getStatus())
                 .isEqualTo(ParticipantStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void 팀삭제용_인증사진_키는_대상_투두의_null이_아닌_키만_조회한다() {
+        Team team = entityManager.persist(Team.create("팀", null, "INVITE2"));
+        User member = entityManager.persist(User.create("member", "pw", "닉", null));
+        User memberWithoutFiles = entityManager.persist(User.create("member2", "pw", "닉2", null));
+        Todo target = entityManager.persist(Todo.create(
+                team,
+                member,
+                "대상",
+                null,
+                LocalDateTime.now().plusHours(1)
+        ));
+        Todo other = entityManager.persist(Todo.create(
+                team,
+                member,
+                "다른 투두",
+                null,
+                LocalDateTime.now().plusHours(1)
+        ));
+        TodoParticipant withFiles = TodoParticipant.create(target, member);
+        withFiles.submit("proofs/original.png", "proofs/thumb.jpg");
+        entityManager.persist(withFiles);
+        entityManager.persist(TodoParticipant.create(target, memberWithoutFiles));
+        TodoParticipant otherFiles = TodoParticipant.create(other, member);
+        otherFiles.submit("proofs/other.png", "proofs/other-thumb.jpg");
+        entityManager.persist(otherFiles);
+        entityManager.flush();
+
+        assertThat(todoParticipantRepository.findProofImageKeysByTodoIdIn(List.of(target.getId())))
+                .containsExactly("proofs/original.png");
+        assertThat(todoParticipantRepository.findProofThumbnailKeysByTodoIdIn(List.of(target.getId())))
+                .containsExactly("proofs/thumb.jpg");
     }
 }

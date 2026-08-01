@@ -24,6 +24,7 @@ import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.file.service.FileDeletionOutboxService;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +33,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -55,6 +57,7 @@ public class TeamService {
     private final TodoReactionRepository todoReactionRepository;
     private final TeamChatMessageRepository teamChatMessageRepository;
     private final TeamChatReadStatusRepository teamChatReadStatusRepository;
+    private final FileDeletionOutboxService fileDeletionOutboxService;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -204,12 +207,25 @@ public class TeamService {
 
     @Transactional
     public void deleteTeamWithAllData(Long teamId) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));
         List<Long> todoIds = todoRepository.findIdsByTeamId(teamId);
+        enqueueTeamFilesForDeletion(team, todoIds);
         deleteTodosWithAllData(todoIds);
         teamChatReadStatusRepository.deleteByTeamId(teamId);
         teamChatMessageRepository.deleteByTeamId(teamId);
         teamMemberRepository.deleteByTeamId(teamId);
         teamRepository.deleteById(teamId);
+    }
+
+    private void enqueueTeamFilesForDeletion(Team team, List<Long> todoIds) {
+        List<String> objectKeys = new ArrayList<>();
+        objectKeys.add(team.getTeamImage());
+        if (!todoIds.isEmpty()) {
+            objectKeys.addAll(todoParticipantRepository.findProofImageKeysByTodoIdIn(todoIds));
+            objectKeys.addAll(todoParticipantRepository.findProofThumbnailKeysByTodoIdIn(todoIds));
+        }
+        fileDeletionOutboxService.enqueueAll(objectKeys);
     }
 
     private void deleteTodosWithAllData(List<Long> todoIds) {
