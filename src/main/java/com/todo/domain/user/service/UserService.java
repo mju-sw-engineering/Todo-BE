@@ -1,7 +1,7 @@
 package com.todo.domain.user.service;
 
-import com.todo.domain.chat.repository.ChatMessageRepository;
-import com.todo.domain.chat.repository.ChatReadStatusRepository;
+import com.todo.domain.chat.repository.TeamChatMessageRepository;
+import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.team.dto.response.TeamSummaryResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -35,8 +35,8 @@ public class UserService {
     private final TeamService teamService;
     private final TodoParticipantRepository todoParticipantRepository;
     private final TodoReactionRepository todoReactionRepository;
-    private final ChatMessageRepository chatMessageRepository;
-    private final ChatReadStatusRepository chatReadStatusRepository;
+    private final TeamChatMessageRepository teamChatMessageRepository;
+    private final TeamChatReadStatusRepository teamChatReadStatusRepository;
     private final TodoRepository todoRepository;
 
     public MyPageResponse getMyPage(String loginId) {
@@ -79,8 +79,8 @@ public class UserService {
         deleteTodosCreatedByUser(user.getId());
 
         // 2. 채팅 참조 데이터 정리 (메시지는 유지)
-        chatReadStatusRepository.deleteByUserId(user.getId());
-        chatMessageRepository.clearSenderByUserId(user.getId());
+        teamChatReadStatusRepository.deleteByUserId(user.getId());
+        teamChatMessageRepository.clearSenderByUserId(user.getId());
 
         // 3. 유저 데이터 삭제
         todoReactionRepository.deleteByUserId(user.getId());
@@ -105,8 +105,6 @@ public class UserService {
         if (!participantIds.isEmpty()) {
             todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
         }
-        chatReadStatusRepository.deleteByTodoIdIn(todoIds);
-        chatMessageRepository.deleteByTodoIdIn(todoIds);
         todoParticipantRepository.deleteByTodoIdIn(todoIds);
         todoRepository.deleteByIdIn(todoIds);
     }

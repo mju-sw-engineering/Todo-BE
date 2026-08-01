@@ -21,7 +21,7 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
     private final JwtUtil jwtUtil;
     private final AuthService authService;
-    private final TodoSubscriptionValidator subscriptionValidator;
+    private final TeamSubscriptionValidator subscriptionValidator;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {

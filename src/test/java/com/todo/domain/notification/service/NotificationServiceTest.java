@@ -122,6 +122,47 @@ class NotificationServiceTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    void pushAll은_저장하지_않고_WebSocket으로만_발송한다() {
+        List<User> receivers = List.of(userWithId(2L, "user2"), userWithId(3L, "user3"));
+
+        notificationService.pushAll(receivers, NotificationType.CHAT_MESSAGE, "제목", "내용", 100L);
+
+        then(notificationRepository).should(never()).saveAll(any());
+        ArgumentCaptor<NotificationResponse> captor = ArgumentCaptor.forClass(NotificationResponse.class);
+        then(messagingTemplate).should(times(2))
+                .convertAndSendToUser(anyString(), eq("/queue/notifications"), captor.capture());
+        assertThat(captor.getAllValues()).allSatisfy(payload -> {
+            assertThat(payload.notificationId()).isNull();
+            assertThat(payload.type()).isEqualTo(NotificationType.CHAT_MESSAGE);
+            assertThat(payload.referenceId()).isEqualTo(100L);
+            assertThat(payload.isRead()).isFalse();
+        });
+    }
+
+    @Test
+    void pushAll도_트랜잭션_안에서는_발송을_커밋_후로_미룬다() {
+        TransactionSynchronizationManager.initSynchronization();
+        User receiver = userWithId(2L, "user2");
+
+        notificationService.pushAll(List.of(receiver), NotificationType.CHAT_MESSAGE, "제목", "내용", 100L);
+
+        then(messagingTemplate).should(never()).convertAndSendToUser(anyString(), anyString(), any());
+        ArgumentCaptor<NotificationDispatchEvent> captor = ArgumentCaptor.forClass(NotificationDispatchEvent.class);
+        then(eventPublisher).should().publishEvent(captor.capture());
+        assertThat(captor.getValue().deliveries())
+                .extracting(NotificationDelivery::receiverLoginId)
+                .containsExactly("user2");
+    }
+
+    @Test
+    void pushAll은_수신자가_없으면_발송하지_않는다() {
+        notificationService.pushAll(List.of(), NotificationType.CHAT_MESSAGE, "제목", "내용", 100L);
+
+        then(messagingTemplate).should(never()).convertAndSendToUser(anyString(), anyString(), any());
+        then(eventPublisher).should(never()).publishEvent(any(NotificationDispatchEvent.class));
+    }
+
     private void givenSavedNotifications() {
         AtomicLong sequence = new AtomicLong(1L);
         given(notificationRepository.saveAll(any())).willAnswer(invocation -> {

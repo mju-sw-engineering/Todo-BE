@@ -1,7 +1,7 @@
 package com.todo.domain.team.service;
 
-import com.todo.domain.chat.repository.ChatMessageRepository;
-import com.todo.domain.chat.repository.ChatReadStatusRepository;
+import com.todo.domain.chat.repository.TeamChatMessageRepository;
+import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
@@ -70,9 +70,9 @@ class TeamServiceTest {
     @Mock
     private TodoReactionRepository todoReactionRepository;
     @Mock
-    private ChatMessageRepository chatMessageRepository;
+    private TeamChatMessageRepository teamChatMessageRepository;
     @Mock
-    private ChatReadStatusRepository chatReadStatusRepository;
+    private TeamChatReadStatusRepository teamChatReadStatusRepository;
 
     @Test
     void 팀_생성_성공_이미지없음() {
@@ -467,13 +467,13 @@ class TeamServiceTest {
 
         teamService.leaveTeam("user1", 10L);
 
-        var inOrder = inOrder(todoReactionRepository, chatReadStatusRepository, chatMessageRepository, todoParticipantRepository,
-                todoRepository, teamMemberRepository, teamRepository);
+        var inOrder = inOrder(todoReactionRepository, todoParticipantRepository, todoRepository,
+                teamChatReadStatusRepository, teamChatMessageRepository, teamMemberRepository, teamRepository);
         inOrder.verify(todoReactionRepository).deleteByTodoParticipantIdIn(List.of(1000L));
-        inOrder.verify(chatReadStatusRepository).deleteByTodoIdIn(List.of(100L));
-        inOrder.verify(chatMessageRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoRepository).deleteByIdIn(List.of(100L));
+        inOrder.verify(teamChatReadStatusRepository).deleteByTeamId(10L);
+        inOrder.verify(teamChatMessageRepository).deleteByTeamId(10L);
         inOrder.verify(teamMemberRepository).deleteByTeamId(10L);
         inOrder.verify(teamRepository).deleteById(10L);
     }
@@ -493,13 +493,13 @@ class TeamServiceTest {
 
         teamService.leaveTeam("user1", 10L);
 
-        var inOrder = inOrder(teamMemberRepository, teamRepository);
+        var inOrder = inOrder(teamChatReadStatusRepository, teamChatMessageRepository, teamMemberRepository, teamRepository);
+        inOrder.verify(teamChatReadStatusRepository).deleteByTeamId(10L);
+        inOrder.verify(teamChatMessageRepository).deleteByTeamId(10L);
         inOrder.verify(teamMemberRepository).deleteByTeamId(10L);
         inOrder.verify(teamRepository).deleteById(10L);
         verify(todoParticipantRepository, never()).findIdsByTodoIdIn(anyList());
         verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
-        verify(chatReadStatusRepository, never()).deleteByTodoIdIn(anyList());
-        verify(chatMessageRepository, never()).deleteByTodoIdIn(anyList());
         verify(todoParticipantRepository, never()).deleteByTodoIdIn(anyList());
         verify(todoRepository, never()).deleteByIdIn(anyList());
     }
@@ -520,12 +520,12 @@ class TeamServiceTest {
 
         teamService.leaveTeam("user1", 10L);
 
-        var inOrder = inOrder(chatReadStatusRepository, chatMessageRepository, todoParticipantRepository, todoRepository,
-                teamMemberRepository, teamRepository);
-        inOrder.verify(chatReadStatusRepository).deleteByTodoIdIn(List.of(100L));
-        inOrder.verify(chatMessageRepository).deleteByTodoIdIn(List.of(100L));
+        var inOrder = inOrder(todoParticipantRepository, todoRepository,
+                teamChatReadStatusRepository, teamChatMessageRepository, teamMemberRepository, teamRepository);
         inOrder.verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoRepository).deleteByIdIn(List.of(100L));
+        inOrder.verify(teamChatReadStatusRepository).deleteByTeamId(10L);
+        inOrder.verify(teamChatMessageRepository).deleteByTeamId(10L);
         inOrder.verify(teamMemberRepository).deleteByTeamId(10L);
         inOrder.verify(teamRepository).deleteById(10L);
         verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());

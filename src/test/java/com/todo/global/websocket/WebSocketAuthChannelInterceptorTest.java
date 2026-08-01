@@ -33,7 +33,7 @@ class WebSocketAuthChannelInterceptorTest {
     @Mock
     private AuthService authService;
     @Mock
-    private TodoSubscriptionValidator subscriptionValidator;
+    private TeamSubscriptionValidator subscriptionValidator;
     @Mock
     private MessageChannel channel;
 
@@ -89,19 +89,19 @@ class WebSocketAuthChannelInterceptorTest {
     @Test
     void subscribe_요청은_팀원_검증을_위임한다() {
         WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
-        Message<byte[]> message = stompMessageWithUser(StompCommand.SUBSCRIBE, "/topic/todos/10", "user1");
+        Message<byte[]> message = stompMessageWithUser(StompCommand.SUBSCRIBE, "/topic/teams/10", "user1");
 
         interceptor.preSend(message, channel);
 
-        then(subscriptionValidator).should().validate("/topic/todos/10", "user1");
+        then(subscriptionValidator).should().validate("/topic/teams/10", "user1");
     }
 
     @Test
     void subscribe_요청의_팀원_검증_실패시_예외를_던진다() {
         WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
-        Message<byte[]> message = stompMessageWithUser(StompCommand.SUBSCRIBE, "/topic/todos/10", "user1");
+        Message<byte[]> message = stompMessageWithUser(StompCommand.SUBSCRIBE, "/topic/teams/10", "user1");
         willThrow(new MessageDeliveryException("해당 채널을 구독할 권한이 없습니다."))
-                .given(subscriptionValidator).validate("/topic/todos/10", "user1");
+                .given(subscriptionValidator).validate("/topic/teams/10", "user1");
 
         assertThatThrownBy(() -> interceptor.preSend(message, channel))
                 .isInstanceOf(MessageDeliveryException.class)

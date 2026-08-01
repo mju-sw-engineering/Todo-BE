@@ -1,7 +1,7 @@
 package com.todo.domain.team.service;
 
-import com.todo.domain.chat.repository.ChatMessageRepository;
-import com.todo.domain.chat.repository.ChatReadStatusRepository;
+import com.todo.domain.chat.repository.TeamChatMessageRepository;
+import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
@@ -53,8 +53,8 @@ public class TeamService {
     private final TodoRepository todoRepository;
     private final TodoParticipantRepository todoParticipantRepository;
     private final TodoReactionRepository todoReactionRepository;
-    private final ChatMessageRepository chatMessageRepository;
-    private final ChatReadStatusRepository chatReadStatusRepository;
+    private final TeamChatMessageRepository teamChatMessageRepository;
+    private final TeamChatReadStatusRepository teamChatReadStatusRepository;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -206,6 +206,8 @@ public class TeamService {
     public void deleteTeamWithAllData(Long teamId) {
         List<Long> todoIds = todoRepository.findIdsByTeamId(teamId);
         deleteTodosWithAllData(todoIds);
+        teamChatReadStatusRepository.deleteByTeamId(teamId);
+        teamChatMessageRepository.deleteByTeamId(teamId);
         teamMemberRepository.deleteByTeamId(teamId);
         teamRepository.deleteById(teamId);
     }
@@ -219,8 +221,6 @@ public class TeamService {
         if (!participantIds.isEmpty()) {
             todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
         }
-        chatReadStatusRepository.deleteByTodoIdIn(todoIds);
-        chatMessageRepository.deleteByTodoIdIn(todoIds);
         todoParticipantRepository.deleteByTodoIdIn(todoIds);
         todoRepository.deleteByIdIn(todoIds);
     }
