@@ -26,6 +26,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -82,8 +83,10 @@ class AvailabilityServiceTest {
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
         given(teamMemberRepository.countByTeamId(10L)).willReturn(3L);
         given(pollRepository.findByTeamIdWithDates(10L)).willReturn(List.of(poll));
-        given(slotRepository.countRespondedUsers(100L)).willReturn(1L);
-        given(slotRepository.existsByPollIdAndUserId(100L, 1L)).willReturn(true);
+        List<Object[]> respondedCounts = new ArrayList<>();
+        respondedCounts.add(new Object[]{100L, 1L});
+        given(slotRepository.countRespondedUsersByPollIds(List.of(100L))).willReturn(respondedCounts);
+        given(slotRepository.findPollIdsRespondedByUser(List.of(100L), 1L)).willReturn(List.of(100L));
 
         List<AvailabilityPollListResponse> result = availabilityService.getPolls(10L, "user1");
 

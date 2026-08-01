@@ -43,7 +43,7 @@ class AvailabilityControllerTest {
         Authentication auth = auth("user1");
         AvailabilityPollListResponse item = new AvailabilityPollListResponse(
                 1L, "일정 조율",
-                LocalDate.of(2026, 8, 4), LocalDate.of(2026, 8, 5),
+                List.of(LocalDate.of(2026, 8, 4), LocalDate.of(2026, 8, 5)),
                 3L, 1L, true, false
         );
         given(availabilityService.getPolls(10L, "user1")).willReturn(List.of(item));

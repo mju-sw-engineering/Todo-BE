@@ -38,7 +38,17 @@ public interface AvailabilityControllerDocs {
     })
     ResponseEntity<ApiResponse<Void>> createPoll(Long teamId, CreateAvailabilityPollRequest request, Authentication authentication);
 
-    @Operation(summary = "가능 시간 제출·수정", description = "내 가능 시간을 제출합니다. 기존 응답이 있으면 전체 교체됩니다. 빈 배열이면 응답 취소.")
+    @Operation(
+            summary = "가능 시간 제출·수정",
+            description = """
+                    내 가능 시간을 1시간 단위 슬롯 배열로 제출합니다.
+                    - 각 슬롯은 { date, hour } 형태이며, hour=9 이면 9:00~10:00 블록을 의미합니다.
+                    - date 는 투표 생성 시 지정한 dateOptions 중 하나여야 합니다.
+                    - hour 는 poll 의 startHour 이상, endHour 미만이어야 합니다.
+                    - 기존 응답이 있으면 전체 교체됩니다.
+                    - 빈 배열([])을 보내면 기존 응답이 전체 취소됩니다.
+                    """
+    )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "제출 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "유효하지 않은 날짜 또는 시간",

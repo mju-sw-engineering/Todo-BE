@@ -9,6 +9,9 @@ import java.util.List;
 public record SubmitAvailabilityRequest(
         @NotNull
         @Valid
-        @Schema(description = "가능한 시간 슬롯 목록. 빈 배열이면 기존 응답 전체 취소.")
+        @Schema(
+                description = "가능한 1시간 단위 슬롯 목록. 빈 배열([])이면 기존 응답 전체 취소.",
+                example = "[{\"date\":\"2026-08-04\",\"hour\":9},{\"date\":\"2026-08-04\",\"hour\":10},{\"date\":\"2026-08-05\",\"hour\":14}]"
+        )
         List<SlotItem> slots
 ) {}

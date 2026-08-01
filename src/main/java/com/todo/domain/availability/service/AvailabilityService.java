@@ -27,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,10 +53,23 @@ public class AvailabilityService {
         long totalMemberCount = teamMemberRepository.countByTeamId(teamId);
         List<AvailabilityPoll> polls = pollRepository.findByTeamIdWithDates(teamId);
 
+        if (polls.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> pollIds = polls.stream().map(AvailabilityPoll::getId).toList();
+
+        Map<Long, Long> respondedCountMap = new HashMap<>();
+        slotRepository.countRespondedUsersByPollIds(pollIds)
+                .forEach(row -> respondedCountMap.put((Long) row[0], (Long) row[1]));
+
+        Set<Long> myRespondedPollIds = new HashSet<>(
+                slotRepository.findPollIdsRespondedByUser(pollIds, user.getId()));
+
         return polls.stream()
                 .map(poll -> {
-                    long respondedCount = slotRepository.countRespondedUsers(poll.getId());
-                    boolean myResponded = slotRepository.existsByPollIdAndUserId(poll.getId(), user.getId());
+                    long respondedCount = respondedCountMap.getOrDefault(poll.getId(), 0L);
+                    boolean myResponded = myRespondedPollIds.contains(poll.getId());
                     return AvailabilityPollListResponse.of(poll, totalMemberCount, respondedCount, myResponded);
                 })
                 .toList();
