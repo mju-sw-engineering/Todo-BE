@@ -5,8 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.todo.domain.auth.entity.ConsentType;
 import com.todo.domain.auth.entity.UserConsent;
 import com.todo.domain.auth.repository.UserConsentRepository;
+import com.todo.domain.terms.dto.request.ConsentRequest;
 import com.todo.domain.terms.dto.response.AllTermsResponse;
 import com.todo.domain.terms.dto.response.TermsResponse;
+import com.todo.domain.terms.dto.response.VersionCheckItem;
+import com.todo.domain.user.entity.User;
+import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ClassPathResource;
@@ -15,7 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @Transactional(readOnly = true)
@@ -29,6 +35,7 @@ public class TermsService {
     );
 
     private final UserConsentRepository userConsentRepository;
+    private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
     public AllTermsResponse getAllTerms() {
@@ -45,6 +52,36 @@ public class TermsService {
                 getAgreedTerms(loginId, ConsentType.PRIVACY),
                 getAgreedTerms(loginId, ConsentType.MARKETING)
         );
+    }
+
+    @Transactional
+    public void saveConsent(String loginId, ConsentRequest request) {
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
+
+        boolean alreadyAgreed = userConsentRepository
+                .findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(loginId, request.consentType())
+                .map(c -> c.getConsentVersion().equals(request.version()))
+                .orElse(false);
+
+        if (alreadyAgreed) {
+            throw new BusinessException("이미 해당 버전에 동의하셨습니다.", HttpStatus.CONFLICT);
+        }
+
+        userConsentRepository.save(UserConsent.create(user, request.consentType(), request.version()));
+    }
+
+    public Map<ConsentType, VersionCheckItem> getVersionCheck(String loginId) {
+        Map<ConsentType, VersionCheckItem> result = new LinkedHashMap<>();
+        for (ConsentType type : ConsentType.values()) {
+            String latestVersion = getCurrentVersion(type);
+            Optional<UserConsent> consent = userConsentRepository
+                    .findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(loginId, type);
+            String agreedVersion = consent.map(UserConsent::getConsentVersion).orElse(null);
+            boolean needsConsent = agreedVersion != null && !agreedVersion.equals(latestVersion);
+            result.put(type, new VersionCheckItem(agreedVersion, latestVersion, needsConsent));
+        }
+        return result;
     }
 
     public String getCurrentVersion(ConsentType consentType) {

@@ -4,7 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.todo.domain.auth.entity.ConsentType;
 import com.todo.domain.auth.entity.UserConsent;
 import com.todo.domain.auth.repository.UserConsentRepository;
+import com.todo.domain.terms.dto.request.ConsentRequest;
 import com.todo.domain.terms.dto.response.AllTermsResponse;
+import com.todo.domain.terms.dto.response.VersionCheckItem;
+import com.todo.domain.user.entity.User;
+import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,18 +18,25 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class TermsServiceTest {
 
     @Mock
     private UserConsentRepository userConsentRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private TermsService termsService;
@@ -110,6 +121,89 @@ class TermsServiceTest {
     void 현재_버전_조회_성공() {
         String version = termsService.getCurrentVersion(ConsentType.TERMS);
         assertThat(version).isEqualTo("v1.0");
+    }
+
+    @Test
+    void 약관_재동의_성공() {
+        User user = User.create("user1", "encoded", "닉네임", null);
+        ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v2.0");
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+                .willReturn(Optional.empty());
+
+        termsService.saveConsent("user1", request);
+
+        then(userConsentRepository).should().save(any(UserConsent.class));
+    }
+
+    @Test
+    void 약관_재동의는_사용자가_없으면_404_예외() {
+        ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v2.0");
+        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> termsService.saveConsent("unknown", request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("사용자를 찾을 수 없습니다.");
+    }
+
+    @Test
+    void 약관_재동의는_이미_동의한_버전이면_409_예외() {
+        User user = User.create("user1", "encoded", "닉네임", null);
+        ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v1.0");
+        UserConsent existing = mock(UserConsent.class);
+        given(existing.getConsentVersion()).willReturn("v1.0");
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+                .willReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> termsService.saveConsent("user1", request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 해당 버전에 동의하셨습니다.");
+        then(userConsentRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 버전_비교_전체_최신_동의() {
+        UserConsent termsConsent = mock(UserConsent.class);
+        UserConsent privacyConsent = mock(UserConsent.class);
+        UserConsent marketingConsent = mock(UserConsent.class);
+        given(termsConsent.getConsentVersion()).willReturn("v1.0");
+        given(privacyConsent.getConsentVersion()).willReturn("v1.0");
+        given(marketingConsent.getConsentVersion()).willReturn("v1.0");
+
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+                .willReturn(Optional.of(termsConsent));
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.PRIVACY))
+                .willReturn(Optional.of(privacyConsent));
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.MARKETING))
+                .willReturn(Optional.of(marketingConsent));
+
+        Map<ConsentType, VersionCheckItem> result = termsService.getVersionCheck("user1");
+
+        assertThat(result.get(ConsentType.TERMS).agreedVersion()).isEqualTo("v1.0");
+        assertThat(result.get(ConsentType.TERMS).needsConsent()).isFalse();
+        assertThat(result.get(ConsentType.PRIVACY).needsConsent()).isFalse();
+        assertThat(result.get(ConsentType.MARKETING).needsConsent()).isFalse();
+    }
+
+    @Test
+    void 버전_비교_마케팅_미동의시_needsConsent_false() {
+        UserConsent termsConsent = mock(UserConsent.class);
+        UserConsent privacyConsent = mock(UserConsent.class);
+        given(termsConsent.getConsentVersion()).willReturn("v1.0");
+        given(privacyConsent.getConsentVersion()).willReturn("v1.0");
+
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+                .willReturn(Optional.of(termsConsent));
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.PRIVACY))
+                .willReturn(Optional.of(privacyConsent));
+        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.MARKETING))
+                .willReturn(Optional.empty());
+
+        Map<ConsentType, VersionCheckItem> result = termsService.getVersionCheck("user1");
+
+        assertThat(result.get(ConsentType.MARKETING).agreedVersion()).isNull();
+        assertThat(result.get(ConsentType.MARKETING).needsConsent()).isFalse();
     }
 
     @Test
