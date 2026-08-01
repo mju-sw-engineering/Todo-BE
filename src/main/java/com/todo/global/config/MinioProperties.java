@@ -4,6 +4,8 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.time.Duration;
+
 @ConfigurationProperties(prefix = "minio")
 @Getter
 @Setter
@@ -16,4 +18,6 @@ public class MinioProperties {
     private String bucket;
     private long presignedUrlExpiration = 3600;
     private long putPresignedUrlExpiration = 600;
+    private Duration apiCallTimeout = Duration.ofSeconds(30);
+    private Duration apiCallAttemptTimeout = Duration.ofSeconds(10);
 }

@@ -22,8 +22,8 @@ spring:
     scheduling:
       pool:
         # 기본값 1이면 스케줄 작업이 스레드 하나를 공유해 서로를 지연시킨다.
-        # 현재 등록된 작업 수(투두 만료, 메일 재시도, 메일 정리, 채팅 정리)에 맞춘다.
-        size: 4
+        # 현재 등록된 작업 수(투두 만료, 메일/파일 outbox, 채팅 정리)에 맞춘다.
+        size: 5
 
 swagger:
   auth:
@@ -69,3 +69,10 @@ mail:
     max-pool-size: ${MAIL_ASYNC_MAX_POOL_SIZE:4}
     queue-capacity: ${MAIL_ASYNC_QUEUE_CAPACITY:100}
     await-termination-seconds: ${MAIL_ASYNC_AWAIT_TERMINATION_SECONDS:15}
+
+file-deletion:
+  async:
+    core-pool-size: ${FILE_DELETION_ASYNC_CORE_POOL_SIZE:1}
+    max-pool-size: ${FILE_DELETION_ASYNC_MAX_POOL_SIZE:2}
+    queue-capacity: ${FILE_DELETION_ASYNC_QUEUE_CAPACITY:100}
+    await-termination-seconds: ${FILE_DELETION_ASYNC_AWAIT_TERMINATION_SECONDS:15}

@@ -110,6 +110,18 @@ public interface TodoParticipantRepository extends JpaRepository<TodoParticipant
             """)
     List<String> findProofThumbnailKeysByUserId(@Param("userId") Long userId);
 
+    @Query("""
+            SELECT tp.proofImageKey FROM TodoParticipant tp
+            WHERE tp.todo.id IN :todoIds AND tp.proofImageKey IS NOT NULL
+            """)
+    List<String> findProofImageKeysByTodoIdIn(@Param("todoIds") List<Long> todoIds);
+
+    @Query("""
+            SELECT tp.proofThumbnailKey FROM TodoParticipant tp
+            WHERE tp.todo.id IN :todoIds AND tp.proofThumbnailKey IS NOT NULL
+            """)
+    List<String> findProofThumbnailKeysByTodoIdIn(@Param("todoIds") List<Long> todoIds);
+
     /**
      * 완료·실패 참가 기록을 익명화한다. 달성 이력이므로 status와 submittedAt은 유지하고,
      * 사용자 관계와 인증 사진 key만 제거한다.

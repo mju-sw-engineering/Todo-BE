@@ -22,6 +22,7 @@ import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.file.service.FileDeletionOutboxService;
 import com.todo.global.mail.repository.MailOutboxRepository;
 import com.todo.global.service.FileService;
 import org.junit.jupiter.api.Test;
@@ -83,6 +84,8 @@ class UserServiceTest {
     private ReauthTokenRepository reauthTokenRepository;
     @Mock
     private ReauthService reauthService;
+    @Mock
+    private FileDeletionOutboxService fileDeletionOutboxService;
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {
@@ -248,6 +251,28 @@ class UserServiceTest {
         verify(emailVerificationRepository).deleteByEmail("user1@example.com");
         verify(mailOutboxRepository).deleteByRecipient("user1@example.com");
         verify(teamMemberRepository).deleteByUserId(1L);
+    }
+
+    @Test
+    void 회원탈퇴시_프로필과_인증사진을_파일삭제_outbox에_적재한다() {
+        User user = User.create("user1", "encodedPwd", "닉네임", "profiles/1/profile.png");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        givenWithdrawingUserFound(user);
+        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
+        given(todoParticipantRepository.findProofImageKeysByUserId(1L))
+                .willReturn(List.of("proofs/1/original.png"));
+        given(todoParticipantRepository.findProofThumbnailKeysByUserId(1L))
+                .willReturn(List.of("proofs/1/thumbs/original.jpg"));
+        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
+        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
+
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+
+        verify(fileDeletionOutboxService).enqueueAll(List.of(
+                "profiles/1/profile.png",
+                "proofs/1/original.png",
+                "proofs/1/thumbs/original.jpg"
+        ));
     }
 
     @Test

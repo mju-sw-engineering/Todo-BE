@@ -39,6 +39,8 @@ minio:
   bucket: ${MINIO_BUCKET:uploads}
   presigned-url-expiration: ${MINIO_PRESIGNED_URL_EXPIRATION:3600}
   put-presigned-url-expiration: ${MINIO_PUT_PRESIGNED_URL_EXPIRATION:600}
+  api-call-timeout: ${MINIO_API_CALL_TIMEOUT:30s}
+  api-call-attempt-timeout: ${MINIO_API_CALL_ATTEMPT_TIMEOUT:10s}
 
 app:
   api-server-url: ${API_SERVER_URL:https://api.swe.bluerack.org}
