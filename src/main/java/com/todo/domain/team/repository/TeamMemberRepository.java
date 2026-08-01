@@ -23,6 +23,8 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
 
     boolean existsByTeamIdAndUserId(Long teamId, Long userId);
 
+    long countByTeamId(Long teamId);
+
     @Query("SELECT tm FROM TeamMember tm JOIN FETCH tm.user WHERE tm.team.id = :teamId AND tm.user.id != :userId ORDER BY tm.joinedAt ASC")
     List<TeamMember> findByTeamIdExcludingUser(@Param("teamId") Long teamId, @Param("userId") Long userId);
 
