@@ -3,9 +3,11 @@ package com.todo.domain.auth.controller;
 import com.todo.domain.auth.dto.request.EmailSendRequest;
 import com.todo.domain.auth.dto.request.EmailVerifyRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
+import com.todo.domain.auth.dto.request.ReauthRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.EmailVerifyResponse;
 import com.todo.domain.auth.dto.response.LoginResponse;
+import com.todo.domain.auth.dto.response.ReauthResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -72,4 +74,30 @@ public interface AuthControllerDocs {
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<com.todo.global.response.ApiResponse<Void>> logout();
 
+
+    @Operation(
+            summary = "재인증",
+            description = """
+                    민감한 작업 직전에 비밀번호를 다시 확인하고 1회용 재인증 토큰을 발급합니다.
+
+                    발급된 토큰은 5분간 유효하며 한 번만 사용할 수 있습니다.
+                    purpose에 지정한 작업에만 쓸 수 있고, 같은 용도로 재발급하면 이전 토큰은 무효가 됩니다.
+                    토큰 원문은 이 응답에서만 확인할 수 있습니다.
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "재인증 성공",
+                    content = @Content(schema = @Schema(implementation = ReauthResponse.class))),
+            @ApiResponse(responseCode = "400", description = "입력값 오류",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @ApiResponse(responseCode = "401", description = "인증 실패 또는 비밀번호 불일치",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @ApiResponse(responseCode = "429", description = "비밀번호 확인 시도 초과",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<com.todo.global.response.ApiResponse<ReauthResponse>> reauthenticate(
+            ReauthRequest request,
+            Authentication authentication
+    );
 }

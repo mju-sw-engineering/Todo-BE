@@ -1,5 +1,6 @@
 package com.todo.domain.user.controller;
 
+import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.global.response.ApiResponse;
@@ -42,7 +43,10 @@ public interface UserControllerDocs {
     @Operation(
             summary = "회원 탈퇴",
             description = """
-                    계정을 삭제합니다.
+                    재인증 후 계정을 삭제합니다.
+
+                    먼저 POST /api/auth/reauth 로 비밀번호를 확인해 재인증 토큰을 발급받아야 합니다.
+                    토큰은 1회용이며 5분간 유효합니다.
 
                     개인정보(계정, 알림, 읽음 상태, 동의 이력, 이메일 인증 기록)는 실제로 삭제하고,
                     팀 공동 기록은 삭제하지 않고 작성자만 익명화합니다.
@@ -53,12 +57,18 @@ public interface UserControllerDocs {
     )
     @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "회원 탈퇴 성공"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "재인증 토큰 누락",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401",
+                    description = "인증 실패 또는 재인증 토큰이 유효하지 않음(만료·사용됨·용도 불일치)",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "권한 이양 중 오류",
                     content = @Content(schema = @Schema(hidden = true)))
     })
     @SecurityRequirement(name = "bearerAuth")
-    ResponseEntity<ApiResponse<Void>> deleteUser(Authentication authentication);
+    ResponseEntity<ApiResponse<Void>> deleteUser(
+            DeleteUserRequest request,
+            Authentication authentication
+    );
 
 }

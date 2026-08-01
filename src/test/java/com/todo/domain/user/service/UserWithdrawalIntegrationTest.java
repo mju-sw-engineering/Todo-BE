@@ -1,6 +1,10 @@
 package com.todo.domain.user.service;
 
+import com.todo.domain.auth.dto.request.ReauthRequest;
 import com.todo.domain.auth.entity.ConsentType;
+import com.todo.domain.auth.entity.ReauthPurpose;
+import com.todo.domain.auth.repository.ReauthTokenRepository;
+import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.entity.UserConsent;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.chat.entity.TeamChatMessage;
@@ -23,6 +27,7 @@ import com.todo.domain.todo.entity.TodoReactionType;
 import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -82,6 +87,10 @@ class UserWithdrawalIntegrationTest {
     private NotificationRepository notificationRepository;
     @Autowired
     private UserConsentRepository userConsentRepository;
+    @Autowired
+    private ReauthService reauthService;
+    @Autowired
+    private ReauthTokenRepository reauthTokenRepository;
 
     private User withdrawing;
     private User staying;
@@ -100,8 +109,14 @@ class UserWithdrawalIntegrationTest {
         teamMemberRepository.save(TeamMember.create(team, withdrawing, TeamMemberRole.MEMBER));
     }
 
+    /**
+     * 실제 재인증을 거쳐 탈퇴한다. 토큰 발급과 소비까지 함께 검증된다.
+     */
     private void withdraw() {
-        userService.deleteUser("leaving");
+        String reauthToken = reauthService
+                .reauthenticate("leaving", new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL))
+                .reauthToken();
+        userService.deleteUser("leaving", new DeleteUserRequest(reauthToken));
         entityManager.flush();
         entityManager.clear();
     }
@@ -254,5 +269,45 @@ class UserWithdrawalIntegrationTest {
 
         assertThat(userRepository.findByLoginId("leaving")).isPresent();
         assertThat(rejoined.getId()).isNotEqualTo(withdrawing.getId());
+    }
+
+    @Test
+    void 재인증_없이는_탈퇴할_수_없다() {
+        assertThatThrownBy(() -> userService.deleteUser("leaving", new DeleteUserRequest("없는토큰")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
+
+        entityManager.clear();
+        assertThat(userRepository.findByLoginId("leaving")).isPresent();
+    }
+
+    @Test
+    void 같은_재인증_토큰으로_두_번_탈퇴할_수_없다() {
+        String reauthToken = reauthService
+                .reauthenticate("leaving", new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL))
+                .reauthToken();
+        userService.deleteUser("leaving", new DeleteUserRequest(reauthToken));
+        entityManager.flush();
+
+        User rejoined = userRepository.save(
+                User.create("leaving", passwordEncoder.encode(RAW_PASSWORD), "돌아온사람", null));
+        entityManager.flush();
+
+        // 1회용이므로 재가입한 계정에도 같은 토큰을 재사용할 수 없다.
+        assertThatThrownBy(() -> userService.deleteUser("leaving", new DeleteUserRequest(reauthToken)))
+                .isInstanceOf(BusinessException.class);
+        entityManager.clear();
+        assertThat(userRepository.findById(rejoined.getId())).isPresent();
+    }
+
+    @Test
+    void 탈퇴하면_남아있던_재인증_토큰도_삭제된다() {
+        reauthService.reauthenticate("leaving", new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL));
+        entityManager.flush();
+
+        withdraw();
+
+        // reauth_tokens.user_id FK가 RESTRICT라 이 정리를 빠뜨리면 탈퇴가 실패한다.
+        assertThat(reauthTokenRepository.findAll()).isEmpty();
     }
 }

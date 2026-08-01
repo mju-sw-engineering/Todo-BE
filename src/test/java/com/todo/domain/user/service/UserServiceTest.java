@@ -1,7 +1,10 @@
 package com.todo.domain.user.service;
 
+import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
+import com.todo.domain.auth.repository.ReauthTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
+import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.notification.repository.NotificationRepository;
@@ -15,6 +18,7 @@ import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
+import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -43,6 +47,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
+
+    private static final String REAUTH_TOKEN = "reauth-token";
 
     @InjectMocks
     private UserService userService;
@@ -73,6 +79,10 @@ class UserServiceTest {
     private EmailVerificationRepository emailVerificationRepository;
     @Mock
     private MailOutboxRepository mailOutboxRepository;
+    @Mock
+    private ReauthTokenRepository reauthTokenRepository;
+    @Mock
+    private ReauthService reauthService;
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {
@@ -164,7 +174,7 @@ class UserServiceTest {
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1");
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verify(todoRepository).clearCreatorByUserId(1L);
         verify(teamChatMessageRepository).clearSenderByUserId(1L);
@@ -179,7 +189,7 @@ class UserServiceTest {
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of(100L));
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of(1000L));
 
-        userService.deleteUser("user1");
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         // 삭제 대상 참가 기록의 반응을 먼저 지워야 todo_reactions FK(RESTRICT)에 걸리지 않는다.
         var inOrder = inOrder(todoReactionRepository, todoParticipantRepository);
@@ -196,7 +206,7 @@ class UserServiceTest {
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1");
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
         verify(todoRepository, never()).markAsFailWhenNoParticipantsRemain(anyList());
@@ -211,7 +221,7 @@ class UserServiceTest {
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of(100L, 101L));
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of(1000L));
 
-        userService.deleteUser("user1");
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         // 잔여 0명 → FAIL, 잔여 전원 성공 → SUCCESS. 참가자 제거가 끝난 뒤에 평가해야 한다.
         var inOrder = inOrder(todoParticipantRepository, todoRepository);
@@ -229,7 +239,7 @@ class UserServiceTest {
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1");
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verify(notificationRepository).deleteByReceiverId(1L);
         verify(teamChatReadStatusRepository).deleteByUserId(1L);
@@ -248,7 +258,7 @@ class UserServiceTest {
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1");
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verifyNoInteractions(emailVerificationRepository, mailOutboxRepository);
         verify(userRepository).delete(user);
@@ -262,7 +272,7 @@ class UserServiceTest {
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1");
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         // flush까지 해야 정리를 빠뜨린 참조가 FK 위반으로 이 트랜잭션 안에서 드러난다.
         var inOrder = inOrder(notificationRepository, userConsentRepository, teamChatMessageRepository,
@@ -286,7 +296,7 @@ class UserServiceTest {
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1");
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verify(teamService).deleteTeamWithAllData(10L);
         verify(userRepository).delete(user);
@@ -307,7 +317,7 @@ class UserServiceTest {
         given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
         given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
-        userService.deleteUser("user1");
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         assertThat(remainingMember.getRole()).isEqualTo(TeamMemberRole.LEADER);
         verify(teamService, never()).deleteTeamWithAllData(10L);
@@ -321,7 +331,7 @@ class UserServiceTest {
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
         willThrow(new RuntimeException("DB 오류")).given(userConsentRepository).deleteByUserId(1L);
 
-        assertThatThrownBy(() -> userService.deleteUser("user1"))
+        assertThatThrownBy(() -> userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN)))
                 .isInstanceOf(RuntimeException.class);
 
         verify(userRepository, never()).delete(user);

@@ -3,11 +3,14 @@ package com.todo.domain.auth.controller;
 import com.todo.domain.auth.dto.request.EmailSendRequest;
 import com.todo.domain.auth.dto.request.EmailVerifyRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
+import com.todo.domain.auth.dto.request.ReauthRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.EmailVerifyResponse;
 import com.todo.domain.auth.dto.response.LoginResponse;
+import com.todo.domain.auth.dto.response.ReauthResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import com.todo.domain.auth.service.AuthService;
+import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.service.EmailVerificationService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -26,6 +29,7 @@ public class AuthController implements AuthControllerDocs {
 
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
+    private final ReauthService reauthService;
 
     @PostMapping("/email/send")
     public ResponseEntity<ApiResponse<Void>> sendEmailCode(@Valid @RequestBody EmailSendRequest request) {
@@ -48,6 +52,15 @@ public class AuthController implements AuthControllerDocs {
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(ApiResponse.success(authService.login(request)));
+    }
+
+    @PostMapping("/reauth")
+    public ResponseEntity<ApiResponse<ReauthResponse>> reauthenticate(
+            @Valid @RequestBody ReauthRequest request,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        return ResponseEntity.ok(ApiResponse.success(reauthService.reauthenticate(loginId, request)));
     }
 
     @PostMapping("/logout")
