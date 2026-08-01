@@ -11,7 +11,7 @@ import java.util.List;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
-    @Query("SELECT m FROM ChatMessage m JOIN FETCH m.sender " +
+    @Query("SELECT m FROM ChatMessage m LEFT JOIN FETCH m.sender " +
             "WHERE m.todo.id = :todoId " +
             "ORDER BY m.id DESC")
     List<ChatMessage> findLatestMessages(
@@ -19,7 +19,7 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             Pageable pageable
     );
 
-    @Query("SELECT m FROM ChatMessage m JOIN FETCH m.sender " +
+    @Query("SELECT m FROM ChatMessage m LEFT JOIN FETCH m.sender " +
             "WHERE m.todo.id = :todoId AND m.id < :cursorId " +
             "ORDER BY m.id DESC")
     List<ChatMessage> findMessagesByCursor(

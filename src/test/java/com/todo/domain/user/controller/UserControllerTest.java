@@ -1,5 +1,6 @@
 package com.todo.domain.user.controller;
 
+import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.service.UserService;
@@ -47,13 +48,14 @@ class UserControllerTest {
     }
 
     @Test
-    void 회원탈퇴_응답을_반환한다() {
+    void 회원탈퇴_응답을_반환하고_비밀번호를_서비스에_전달한다() {
         UserController controller = new UserController(userService);
+        DeleteUserRequest request = new DeleteUserRequest("rawPwd");
 
-        ResponseEntity<ApiResponse<Void>> response = controller.deleteUser(auth());
+        ResponseEntity<ApiResponse<Void>> response = controller.deleteUser(request, auth());
 
         assertThat(response.getBody().getMessage()).isEqualTo("회원 탈퇴가 완료되었습니다");
-        then(userService).should().deleteUser("user1");
+        then(userService).should().deleteUser("user1", request);
     }
 
     private TestingAuthenticationToken auth() {
