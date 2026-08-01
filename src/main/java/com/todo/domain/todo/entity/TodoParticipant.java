@@ -26,8 +26,11 @@ public class TodoParticipant {
     @JoinColumn(name = "todo_id", nullable = false)
     private Todo todo;
 
+    /**
+     * 참가자가 탈퇴하면 null이 된다. 완료·실패 기록은 팀 달성 이력이므로 상태와 시각만 남기고 익명화한다.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id")
     private User user;
 
     @Enumerated(EnumType.STRING)

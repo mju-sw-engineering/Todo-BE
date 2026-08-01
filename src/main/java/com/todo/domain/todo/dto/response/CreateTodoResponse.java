@@ -26,7 +26,7 @@ public record CreateTodoResponse(
         return new CreateTodoResponse(
                 todo.getId(),
                 todo.getTeam().getId(),
-                todo.getCreator().getId(),
+                todo.getCreator() == null ? null : todo.getCreator().getId(),
                 todo.getTitle(),
                 todo.getDescription(),
                 toKstOffset(todo.getDeadline()),

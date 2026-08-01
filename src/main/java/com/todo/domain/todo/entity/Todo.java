@@ -24,8 +24,11 @@ public class Todo extends BaseTimeEntity {
     @JoinColumn(name = "team_id", nullable = false)
     private Team team;
 
+    /**
+     * 생성자가 탈퇴하면 null이 된다. Todo 자체는 팀 공동 기록이므로 삭제하지 않는다.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "creator_id", nullable = false)
+    @JoinColumn(name = "creator_id")
     private User creator;
 
     @Column(nullable = false)

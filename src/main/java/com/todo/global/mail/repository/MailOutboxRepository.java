@@ -38,4 +38,11 @@ public interface MailOutboxRepository extends JpaRepository<MailOutbox, Long> {
             @Param("statuses") List<MailOutboxStatus> statuses,
             @Param("threshold") LocalDateTime threshold
     );
+
+    /**
+     * 발송 대기·이력에 남은 수신자 주소와 본문(인증 코드, 초대 링크)은 개인정보이므로 탈퇴 시 삭제한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM MailOutbox m WHERE m.recipient = :recipient")
+    int deleteByRecipient(@Param("recipient") String recipient);
 }

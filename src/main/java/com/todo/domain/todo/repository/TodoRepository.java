@@ -26,9 +26,6 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
     @Query("SELECT t.id FROM Todo t WHERE t.team.id = :teamId")
     List<Long> findIdsByTeamId(@Param("teamId") Long teamId);
 
-    @Query("SELECT t.id FROM Todo t WHERE t.creator.id = :creatorId")
-    List<Long> findIdsByCreatorId(@Param("creatorId") Long creatorId);
-
     @Modifying
     @Query("DELETE FROM Todo t WHERE t.team.id = :teamId")
     void deleteByTeamId(@Param("teamId") Long teamId);
@@ -37,12 +34,12 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
     @Query("DELETE FROM Todo t WHERE t.id IN :todoIds")
     void deleteByIdIn(@Param("todoIds") List<Long> todoIds);
 
-    @Query("SELECT t FROM Todo t JOIN FETCH t.creator WHERE t.team.id = :teamId ORDER BY t.createdAt DESC")
+    @Query("SELECT t FROM Todo t LEFT JOIN FETCH t.creator WHERE t.team.id = :teamId ORDER BY t.createdAt DESC")
     List<Todo> findByTeamIdWithCreator(@Param("teamId") Long teamId);
 
     @Query("""
             SELECT t FROM Todo t
-            JOIN FETCH t.creator
+            LEFT JOIN FETCH t.creator
             WHERE t.team.id = :teamId
               AND t.status = :status
             ORDER BY t.createdAt DESC
@@ -54,7 +51,7 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
 
     @Query("""
             SELECT t FROM Todo t
-            JOIN FETCH t.creator
+            LEFT JOIN FETCH t.creator
             WHERE t.team.id = :teamId
               AND t.status IN :statuses
             ORDER BY t.createdAt DESC
@@ -66,7 +63,7 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
 
     @Query("""
             SELECT t FROM Todo t
-            JOIN FETCH t.creator
+            LEFT JOIN FETCH t.creator
             WHERE t.team.id = :teamId
               AND t.deadline >= :start
               AND t.deadline < :end
@@ -78,6 +75,46 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
             @Param("end") LocalDateTime end
     );
 
-    @Query("SELECT t FROM Todo t JOIN FETCH t.creator JOIN FETCH t.team WHERE t.id = :todoId")
+    @Query("SELECT t FROM Todo t LEFT JOIN FETCH t.creator JOIN FETCH t.team WHERE t.id = :todoId")
     Optional<Todo> findByIdWithCreatorAndTeam(@Param("todoId") Long todoId);
+
+    /**
+     * 탈퇴자가 생성한 Todo는 팀 공동 기록이므로 삭제하지 않고 생성자만 익명화한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Todo t SET t.creator = null WHERE t.creator.id = :userId")
+    int clearCreatorByUserId(@Param("userId") Long userId);
+
+    /**
+     * 진행 중 참가 기록이 제거되어 참가자가 0명이 된 Todo를 FAIL로 확정한다.
+     * 마감 스케줄러가 이미 확정한 Todo를 되돌리지 않도록 IN_PROGRESS만 대상으로 한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Todo t
+            SET t.status = com.todo.domain.todo.entity.TodoStatus.FAIL
+            WHERE t.id IN :todoIds
+              AND t.status = com.todo.domain.todo.entity.TodoStatus.IN_PROGRESS
+              AND NOT EXISTS (SELECT 1 FROM TodoParticipant tp WHERE tp.todo.id = t.id)
+            """)
+    int markAsFailWhenNoParticipantsRemain(@Param("todoIds") List<Long> todoIds);
+
+    /**
+     * 진행 중 참가 기록이 제거된 뒤 남은 참가자가 전원 SUCCESS면 Todo를 SUCCESS로 확정한다.
+     * 참가자가 0명인 Todo가 "미완료 0건"으로 성공 처리되지 않도록 EXISTS로 잔여 참가자를 요구한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Todo t
+            SET t.status = com.todo.domain.todo.entity.TodoStatus.SUCCESS
+            WHERE t.id IN :todoIds
+              AND t.status = com.todo.domain.todo.entity.TodoStatus.IN_PROGRESS
+              AND EXISTS (SELECT 1 FROM TodoParticipant tp WHERE tp.todo.id = t.id)
+              AND NOT EXISTS (
+                  SELECT 1 FROM TodoParticipant tp
+                  WHERE tp.todo.id = t.id
+                    AND tp.status <> com.todo.domain.todo.entity.ParticipantStatus.SUCCESS
+              )
+            """)
+    int markAsSuccessWhenRemainingAllSucceeded(@Param("todoIds") List<Long> todoIds);
 }

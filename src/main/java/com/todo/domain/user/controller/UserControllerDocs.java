@@ -39,7 +39,18 @@ public interface UserControllerDocs {
             Authentication authentication
     );
 
-    @Operation(summary = "회원 탈퇴", description = "현재 로그인된 사용자의 계정과 관련 데이터를 삭제합니다.")
+    @Operation(
+            summary = "회원 탈퇴",
+            description = """
+                    계정을 삭제합니다.
+
+                    개인정보(계정, 알림, 읽음 상태, 동의 이력, 이메일 인증 기록)는 실제로 삭제하고,
+                    팀 공동 기록은 삭제하지 않고 작성자만 익명화합니다.
+                    탈퇴자가 만든 투두와 완료된 참가 기록은 남으며 작성자가 '탈퇴한 사용자'로 표시됩니다.
+                    진행 중이던 배정은 배정 목록에서 제거되고 해당 투두 상태가 재평가됩니다.
+                    복구 유예기간은 없습니다.
+                    """
+    )
     @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "회원 탈퇴 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
@@ -49,4 +60,5 @@ public interface UserControllerDocs {
     })
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<ApiResponse<Void>> deleteUser(Authentication authentication);
+
 }
