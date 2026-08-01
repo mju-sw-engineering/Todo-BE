@@ -60,8 +60,8 @@ class TeamChatServiceTest {
         User sender = userWithId(1L);
         Team team = teamWithId(100L);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
-        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(teamRepository.getReferenceById(100L)).willReturn(team);
         given(teamChatMessageRepository.save(any(TeamChatMessage.class))).willAnswer(invocation -> {
             TeamChatMessage message = invocation.getArgument(0);
             ReflectionTestUtils.setField(message, "id", 1000L);
@@ -90,23 +90,9 @@ class TeamChatServiceTest {
     }
 
     @Test
-    void 메시지_저장은_팀이_없으면_404_예외를_던진다() {
-        User sender = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
-        given(teamRepository.findById(100L)).willReturn(Optional.empty());
-
-        assertThatThrownBy(() -> teamChatService.saveMessage(100L, "user1", new ChatMessageRequest("안녕")))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("존재하지 않는 팀입니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
-    }
-
-    @Test
     void 메시지_저장은_팀원이_아니면_403_예외를_던진다() {
         User sender = userWithId(1L);
-        Team team = teamWithId(100L);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
-        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
         assertThatThrownBy(() -> teamChatService.saveMessage(100L, "user1", new ChatMessageRequest("안녕")))
@@ -117,14 +103,14 @@ class TeamChatServiceTest {
     }
 
     @Test
-    void 메시지_저장시_다른_팀원에게_알림을_보낸다() {
+    void 메시지_저장시_다른_팀원에게_알림을_저장없이_푸시한다() {
         User sender = userWithId(1L);
         User receiver = userWithId(2L);
         Team team = teamWithId(100L);
         TeamMember member = TeamMember.create(team, receiver, TeamMemberRole.MEMBER);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
-        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(teamRepository.getReferenceById(100L)).willReturn(team);
         given(teamMemberRepository.findByTeamIdExcludingUser(100L, 1L)).willReturn(List.of(member));
         given(teamChatMessageRepository.save(any(TeamChatMessage.class))).willAnswer(invocation -> {
             TeamChatMessage message = invocation.getArgument(0);
@@ -135,8 +121,9 @@ class TeamChatServiceTest {
 
         teamChatService.saveMessage(100L, "user1", new ChatMessageRequest("안녕"));
 
-        then(notificationService).should().sendAll(
+        then(notificationService).should().pushAll(
                 eq(List.of(receiver)), eq(NotificationType.CHAT_MESSAGE), any(), any(), eq(100L));
+        then(notificationService).should(never()).sendAll(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -254,9 +241,7 @@ class TeamChatServiceTest {
     @Test
     void 읽음처리는_팀원이_아니면_403_예외를_던진다() {
         User user = userWithId(1L);
-        Team team = teamWithId(100L);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
         assertThatThrownBy(() -> teamChatService.markAsRead(100L, "user1", new MarkAsReadRequest(500L)))
@@ -326,8 +311,8 @@ class TeamChatServiceTest {
 
     private void givenTeamMemberWithTeam(User user, Team team) {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamRepository.findById(team.getId())).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(team.getId(), user.getId())).willReturn(true);
+        given(teamRepository.getReferenceById(team.getId())).willReturn(team);
     }
 
     private User userWithId(Long id) {

@@ -1,7 +1,6 @@
 package com.todo.global.websocket;
 
 import com.todo.domain.team.repository.TeamMemberRepository;
-import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +21,6 @@ public class TeamSubscriptionValidator {
             "/user/queue/errors"
     );
 
-    private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
 
@@ -41,10 +39,8 @@ public class TeamSubscriptionValidator {
 
         Long teamId = parseTeamId(matcher.group(1));
 
-        if (!teamRepository.existsById(teamId)) {
-            throw new MessageDeliveryException("존재하지 않는 팀입니다.");
-        }
-
+        // 팀 존재 확인은 하지 않는다. 없는 팀이면 아래 멤버 확인이 어차피 실패하고,
+        // 응답 메시지가 갈리면 인증된 사용자가 팀 ID를 열거해 존재 여부를 알아낼 수 있다.
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new MessageDeliveryException("사용자를 찾을 수 없습니다."));
 
