@@ -2,8 +2,8 @@ package com.todo.domain.todo.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.Valid;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -22,7 +22,10 @@ public record CreateTodoRequest(
         @Schema(description = "마감 시간 (ISO-8601 오프셋 포함)", example = "2026-05-21T12:00:00Z")
         OffsetDateTime deadline,
 
-        @NotEmpty
-        @Schema(description = "배정할 팀원 ID 리스트", example = "[1, 2, 3]")
-        List<Long> assigneeIds
+        @Schema(description = "DIRECT Todo 담당자 ID 목록 (tasks와 함께 전달할 수 없음)", example = "[1, 2, 3]")
+        List<Long> assigneeIds,
+
+        @Valid
+        @Schema(description = "TASK Todo 작업 목록 (assigneeIds와 함께 전달할 수 없음)")
+        List<CreateTodoTaskRequest> tasks
 ) {}

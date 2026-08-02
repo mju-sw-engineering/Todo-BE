@@ -12,7 +12,6 @@ public record TeamDetailResponse(
         @Schema(description = "초대 코드") String inviteCode,
         @Schema(description = "팀원 수") int memberCount,
         @Schema(description = "성공 개수") int successCount,
-        @Schema(description = "연속 todo 횟수") int continuousTodoCount,
         @Schema(description = "팀원 목록") List<TeamMemberResponse> members
 ) {
     public static TeamDetailResponse from(Team team, List<TeamMemberResponse> members) {
@@ -23,12 +22,11 @@ public record TeamDetailResponse(
                 team.getInviteCode(),
                 members.size(),
                 team.getSuccessCount(),
-                team.getConsecutiveTodoCount(),
                 members
         );
     }
 
     public TeamDetailResponse withImageUrl(String resolvedImageUrl) {
-        return new TeamDetailResponse(teamId, teamName, resolvedImageUrl, inviteCode, memberCount, successCount, continuousTodoCount, members);
+        return new TeamDetailResponse(teamId, teamName, resolvedImageUrl, inviteCode, memberCount, successCount, members);
     }
 }

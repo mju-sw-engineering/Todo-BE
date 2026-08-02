@@ -22,15 +22,15 @@ class TeamRepositoryTest {
     private TeamRepository teamRepository;
 
     @Test
-    void 성공_카운트와_연속_카운트를_원자적으로_증가시킨다() {
+    void 성공_카운트를_원자적으로_증가시키고_수정_행_수를_반환한다() {
         Team team = entityManager.persist(Team.create("팀", null, "INVITE1"));
         entityManager.flush();
 
-        teamRepository.incrementSuccessCount(team.getId());
+        int updatedCount = teamRepository.incrementSuccessCount(team.getId());
 
         Team updated = entityManager.find(Team.class, team.getId());
         entityManager.refresh(updated);
+        assertThat(updatedCount).isOne();
         assertThat(updated.getSuccessCount()).isEqualTo(1);
-        assertThat(updated.getConsecutiveTodoCount()).isEqualTo(1);
     }
 }

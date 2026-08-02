@@ -12,25 +12,25 @@ import java.util.Optional;
 
 public interface TodoReactionRepository extends JpaRepository<TodoReaction, Long> {
 
-    Optional<TodoReaction> findByTodoParticipantIdAndUserId(Long todoParticipantId, Long userId);
+    Optional<TodoReaction> findByTodoWorkItemIdAndUserId(Long todoWorkItemId, Long userId);
 
     @Query("""
-            SELECT tr.todoParticipant.id AS todoParticipantId,
+            SELECT tr.todoWorkItem.id AS todoWorkItemId,
                    tr.reactionType AS reactionType,
                    COUNT(tr) AS reactionCount
             FROM TodoReaction tr
-            WHERE tr.todoParticipant.id IN :todoParticipantIds
-            GROUP BY tr.todoParticipant.id, tr.reactionType
+            WHERE tr.todoWorkItem.id IN :todoWorkItemIds
+            GROUP BY tr.todoWorkItem.id, tr.reactionType
             """)
-    List<TodoReactionCount> countByTodoParticipantIds(@Param("todoParticipantIds") List<Long> todoParticipantIds);
+    List<TodoReactionCount> countByTodoWorkItemIds(@Param("todoWorkItemIds") List<Long> todoWorkItemIds);
 
-    List<TodoReaction> findByTodoParticipantIdInAndUserId(List<Long> todoParticipantIds, Long userId);
+    List<TodoReaction> findByTodoWorkItemIdInAndUserId(List<Long> todoWorkItemIds, Long userId);
 
-    long countByTodoParticipantIdAndReactionType(Long todoParticipantId, TodoReactionType reactionType);
+    long countByTodoWorkItemIdAndReactionType(Long todoWorkItemId, TodoReactionType reactionType);
 
     @Modifying
-    @Query("DELETE FROM TodoReaction tr WHERE tr.todoParticipant.id IN :participantIds")
-    void deleteByTodoParticipantIdIn(@Param("participantIds") List<Long> participantIds);
+    @Query("DELETE FROM TodoReaction tr WHERE tr.todoWorkItem.id IN :workItemIds")
+    void deleteByTodoWorkItemIdIn(@Param("workItemIds") List<Long> workItemIds);
 
     @Modifying
     @Query("DELETE FROM TodoReaction tr WHERE tr.user.id = :userId")

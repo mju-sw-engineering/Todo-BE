@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "todo_reactions",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"todo_participant_id", "user_id"}))
+        uniqueConstraints = @UniqueConstraint(columnNames = {"todo_work_item_id", "user_id"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TodoReaction {
@@ -29,8 +29,8 @@ public class TodoReaction {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "todo_participant_id", nullable = false)
-    private TodoParticipant todoParticipant;
+    @JoinColumn(name = "todo_work_item_id", nullable = false)
+    private TodoWorkItem todoWorkItem;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -40,9 +40,9 @@ public class TodoReaction {
     @Column(nullable = false)
     private TodoReactionType reactionType;
 
-    public static TodoReaction create(TodoParticipant todoParticipant, User user, TodoReactionType reactionType) {
+    public static TodoReaction create(TodoWorkItem todoWorkItem, User user, TodoReactionType reactionType) {
         TodoReaction reaction = new TodoReaction();
-        reaction.todoParticipant = todoParticipant;
+        reaction.todoWorkItem = todoWorkItem;
         reaction.user = user;
         reaction.reactionType = reactionType;
         return reaction;

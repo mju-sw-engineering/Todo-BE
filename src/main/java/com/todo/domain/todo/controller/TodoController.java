@@ -1,6 +1,7 @@
 package com.todo.domain.todo.controller;
 
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.AssignTodoWorkItemRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
@@ -8,6 +9,8 @@ import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
+import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
+import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
 import com.todo.domain.todo.service.TodoService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -84,6 +87,7 @@ public class TodoController implements TodoControllerDocs {
     }
 
     @PostMapping("/todo-participants/{participantId}/reactions")
+    @Deprecated(since = "2026-08-02", forRemoval = false)
     public ResponseEntity<ApiResponse<TodoReactionResponse>> reactTodoParticipant(
             @PathVariable Long participantId,
             @Valid @RequestBody ReactTodoRequest request,
@@ -91,6 +95,17 @@ public class TodoController implements TodoControllerDocs {
     ) {
         String loginId = authentication.getName();
         TodoReactionResponse response = todoService.reactTodoParticipant(participantId, loginId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "이모지 반응이 반영되었습니다."));
+    }
+
+    @PostMapping("/todo-work-items/{workItemId}/reactions")
+    public ResponseEntity<ApiResponse<TodoReactionResponse>> reactTodoWorkItem(
+            @PathVariable Long workItemId,
+            @Valid @RequestBody ReactTodoRequest request,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        TodoReactionResponse response = todoService.reactTodoWorkItem(workItemId, loginId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "이모지 반응이 반영되었습니다."));
     }
 
@@ -103,5 +118,37 @@ public class TodoController implements TodoControllerDocs {
         String loginId = authentication.getName();
         todoService.submitTodo(todoId, loginId, request);
         return ResponseEntity.ok(ApiResponse.success(null, "인증 사진이 제출되었습니다."));
+    }
+
+    @PostMapping("/todo-work-items/{workItemId}/submission")
+    public ResponseEntity<ApiResponse<Void>> submitTodoWorkItem(
+            @PathVariable Long workItemId,
+            @Valid @RequestBody SubmitTodoRequest request,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        todoService.submitTodoWorkItem(workItemId, loginId, request);
+        return ResponseEntity.ok(ApiResponse.success(null, "인증 사진이 제출되었습니다."));
+    }
+
+    @GetMapping("/todo-work-items/{workItemId}/submission")
+    public ResponseEntity<ApiResponse<TodoWorkItemSubmissionResponse>> getTodoWorkItemSubmission(
+            @PathVariable Long workItemId,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(workItemId, loginId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @PatchMapping("/todo-work-items/{workItemId}/assignee")
+    public ResponseEntity<ApiResponse<TodoWorkItemAssigneeResponse>> reassignTodoWorkItem(
+            @PathVariable Long workItemId,
+            @Valid @RequestBody AssignTodoWorkItemRequest request,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        TodoWorkItemAssigneeResponse response = todoService.reassignTodoWorkItem(workItemId, loginId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "담당자가 재배정되었습니다."));
     }
 }

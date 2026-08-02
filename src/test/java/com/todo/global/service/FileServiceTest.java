@@ -19,6 +19,8 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -192,6 +194,63 @@ class FileServiceTest {
         assertThat(captor.getValue().signatureDuration().getSeconds()).isEqualTo(3600);
         assertThat(captor.getValue().getObjectRequest().bucket()).isEqualTo("uploads");
         assertThat(captor.getValue().getObjectRequest().key()).isEqualTo("profiles/1/a.png");
+    }
+
+    @Test
+    void 본인_proofs_경로의_5MB_이하_파일은_인증_사진으로_검증한다() {
+        given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
+                .contentType("image/webp")
+                .contentLength(5L * 1024 * 1024)
+                .build());
+
+        fileService.validateProofImage(1L, "proofs/1/a.webp");
+
+        ArgumentCaptor<HeadObjectRequest> captor = ArgumentCaptor.forClass(HeadObjectRequest.class);
+        then(s3Client).should().headObject(captor.capture());
+        assertThat(captor.getValue().bucket()).isEqualTo("uploads");
+        assertThat(captor.getValue().key()).isEqualTo("proofs/1/a.webp");
+    }
+
+    @Test
+    void 다른_사용자의_인증_사진_key는_거절한다() {
+        assertThatThrownBy(() -> fileService.validateProofImage(1L, "proofs/2/a.jpg"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 업로드한 인증 사진만 제출할 수 있습니다.");
+
+        then(s3Client).should(never()).headObject(any(HeadObjectRequest.class));
+    }
+
+    @Test
+    void 썸네일_key는_인증_사진으로_거절한다() {
+        assertThatThrownBy(() -> fileService.validateProofImage(1L, "proofs/1/thumbs/a.jpg"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("썸네일 파일은 인증 사진으로 제출할 수 없습니다.");
+
+        then(s3Client).should(never()).headObject(any(HeadObjectRequest.class));
+    }
+
+    @Test
+    void 크기가_5MB를_초과한_인증_사진은_거절한다() {
+        given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
+                .contentType("image/jpeg")
+                .contentLength(5L * 1024 * 1024 + 1)
+                .build());
+
+        assertThatThrownBy(() -> fileService.validateProofImage(1L, "proofs/1/a.jpg"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("인증 사진은 5MB 이하만 제출할 수 있습니다.");
+    }
+
+    @Test
+    void 허용하지_않는_MIME의_인증_사진은_거절한다() {
+        given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
+                .contentType("image/gif")
+                .contentLength(1024L)
+                .build());
+
+        assertThatThrownBy(() -> fileService.validateProofImage(1L, "proofs/1/a.gif"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("지원하지 않는 이미지 형식입니다.");
     }
 
     @Test

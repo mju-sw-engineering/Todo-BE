@@ -41,10 +41,21 @@ public class Todo extends BaseTimeEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    private TodoMode mode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private TodoStatus status;
 
-    public void markAsSuccess() {
+    /**
+     * 실패한 Todo는 남은 WorkItem이 모두 성공하더라도 다시 성공할 수 없다.
+     */
+    public boolean markAsSuccess() {
+        if (this.status != TodoStatus.IN_PROGRESS) {
+            return false;
+        }
         this.status = TodoStatus.SUCCESS;
+        return true;
     }
 
     public void markAsFail() {
@@ -53,14 +64,29 @@ public class Todo extends BaseTimeEntity {
         }
     }
 
-    public static Todo create(Team team, User creator, String title, String description, LocalDateTime deadline) {
+    public static Todo create(
+            Team team,
+            User creator,
+            String title,
+            String description,
+            LocalDateTime deadline,
+            TodoMode mode
+    ) {
         Todo todo = new Todo();
         todo.team = team;
         todo.creator = creator;
         todo.title = title;
         todo.description = description;
         todo.deadline = deadline;
+        todo.mode = mode;
         todo.status = TodoStatus.IN_PROGRESS;
         return todo;
+    }
+
+    /**
+     * 기존 DIRECT Todo 생성 경로와의 호환용 팩토리다.
+     */
+    public static Todo create(Team team, User creator, String title, String description, LocalDateTime deadline) {
+        return create(team, creator, title, description, deadline, TodoMode.DIRECT);
     }
 }
