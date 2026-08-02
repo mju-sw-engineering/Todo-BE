@@ -3,6 +3,7 @@ package com.todo.domain.notification.service;
 import com.todo.domain.notification.dto.response.NotificationResponse;
 import com.todo.domain.notification.entity.Notification;
 import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessage;
 import com.todo.domain.notification.event.NotificationDelivery;
 import com.todo.domain.notification.event.NotificationDispatchEvent;
 import com.todo.domain.notification.repository.NotificationRepository;
@@ -66,7 +67,7 @@ class NotificationServiceTest {
         User receiver = userWithId(2L, "user2");
         givenSavedNotifications();
 
-        notificationService.sendAll(List.of(receiver), NotificationType.TODO_CREATED, "제목", "내용", 10L);
+        notificationService.sendAll(List.of(receiver), null, new NotificationMessage(NotificationType.TODO_CREATED, "제목", "내용"), 10L);
 
         then(messagingTemplate).should(never()).convertAndSendToUser(anyString(), anyString(), any());
         ArgumentCaptor<NotificationDispatchEvent> captor = ArgumentCaptor.forClass(NotificationDispatchEvent.class);
@@ -81,7 +82,7 @@ class NotificationServiceTest {
         User receiver = userWithId(2L, "user2");
         givenSavedNotifications();
 
-        notificationService.sendAll(List.of(receiver), NotificationType.TODO_CREATED, "제목", "내용", 10L);
+        notificationService.sendAll(List.of(receiver), null, new NotificationMessage(NotificationType.TODO_CREATED, "제목", "내용"), 10L);
 
         then(eventPublisher).should(never()).publishEvent(any(NotificationDispatchEvent.class));
         then(messagingTemplate).should()
@@ -93,7 +94,7 @@ class NotificationServiceTest {
         List<User> receivers = List.of(userWithId(2L, "user2"), userWithId(3L, "user3"));
         givenSavedNotifications();
 
-        notificationService.sendAll(receivers, NotificationType.CHAT_MESSAGE, "제목", "내용", 10L);
+        notificationService.sendAll(receivers, null, new NotificationMessage(NotificationType.CHAT_MESSAGE, "제목", "내용"), 10L);
 
         ArgumentCaptor<List<Notification>> captor = ArgumentCaptor.forClass(List.class);
         then(notificationRepository).should().saveAll(captor.capture());
@@ -104,7 +105,7 @@ class NotificationServiceTest {
 
     @Test
     void 수신자가_없으면_저장도_발송도_하지_않는다() {
-        notificationService.sendAll(List.of(), NotificationType.TODO_CREATED, "제목", "내용", 10L);
+        notificationService.sendAll(List.of(), null, new NotificationMessage(NotificationType.TODO_CREATED, "제목", "내용"), 10L);
 
         then(notificationRepository).should(never()).saveAll(any());
         then(messagingTemplate).should(never()).convertAndSendToUser(anyString(), anyString(), any());
@@ -118,7 +119,7 @@ class NotificationServiceTest {
         givenSavedNotifications();
 
         assertThatCode(() -> notificationService.sendAll(
-                List.of(receiver), NotificationType.TODO_CREATED, "제목", "내용", 10L))
+                List.of(receiver), null, new NotificationMessage(NotificationType.TODO_CREATED, "제목", "내용"), 10L))
                 .doesNotThrowAnyException();
     }
 
@@ -126,7 +127,7 @@ class NotificationServiceTest {
     void pushAll은_저장하지_않고_WebSocket으로만_발송한다() {
         List<User> receivers = List.of(userWithId(2L, "user2"), userWithId(3L, "user3"));
 
-        notificationService.pushAll(receivers, NotificationType.CHAT_MESSAGE, "제목", "내용", 100L);
+        notificationService.pushAll(receivers, new NotificationMessage(NotificationType.CHAT_MESSAGE, "제목", "내용"), 100L);
 
         then(notificationRepository).should(never()).saveAll(any());
         ArgumentCaptor<NotificationResponse> captor = ArgumentCaptor.forClass(NotificationResponse.class);
@@ -145,7 +146,7 @@ class NotificationServiceTest {
         TransactionSynchronizationManager.initSynchronization();
         User receiver = userWithId(2L, "user2");
 
-        notificationService.pushAll(List.of(receiver), NotificationType.CHAT_MESSAGE, "제목", "내용", 100L);
+        notificationService.pushAll(List.of(receiver), new NotificationMessage(NotificationType.CHAT_MESSAGE, "제목", "내용"), 100L);
 
         then(messagingTemplate).should(never()).convertAndSendToUser(anyString(), anyString(), any());
         ArgumentCaptor<NotificationDispatchEvent> captor = ArgumentCaptor.forClass(NotificationDispatchEvent.class);
@@ -157,7 +158,7 @@ class NotificationServiceTest {
 
     @Test
     void pushAll은_수신자가_없으면_발송하지_않는다() {
-        notificationService.pushAll(List.of(), NotificationType.CHAT_MESSAGE, "제목", "내용", 100L);
+        notificationService.pushAll(List.of(), new NotificationMessage(NotificationType.CHAT_MESSAGE, "제목", "내용"), 100L);
 
         then(messagingTemplate).should(never()).convertAndSendToUser(anyString(), anyString(), any());
         then(eventPublisher).should(never()).publishEvent(any(NotificationDispatchEvent.class));
