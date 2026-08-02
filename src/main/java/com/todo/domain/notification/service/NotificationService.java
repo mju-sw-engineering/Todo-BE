@@ -5,7 +5,7 @@ import com.todo.domain.notification.dto.response.NotificationResponse;
 import com.todo.domain.notification.dto.response.UnreadNotificationCountResponse;
 import com.todo.domain.notification.entity.Notification;
 import com.todo.domain.notification.message.NotificationMessage;
-import com.todo.domain.notification.message.NotificationMessages;
+import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.event.NotificationDelivery;
 import com.todo.domain.notification.event.NotificationDispatchEvent;
 import com.todo.domain.notification.repository.NotificationRepository;
@@ -44,7 +44,7 @@ public class NotificationService {
      * 여러 수신자에게 같은 알림을 한 번의 batch insert로 저장한다.
      * 저장은 호출자 트랜잭션에 포함되고, WebSocket 발송은 커밋 후로 미룬다.
      *
-     * <p>문구는 {@link NotificationMessages}의 팩토리로 만든다. 행위자 이름은 문구에 직접
+     * <p>문구는 {@link NotificationMessageFactory}로 만든다. 행위자 이름은 문구에 직접
      * 넣지 않고 자리표시자로 두며, 여기 넘긴 actor로 조회 시점에 치환된다. 이름을 박아
      * 저장하면 닉네임 변경·탈퇴 후 과거 알림이 옛 이름을 계속 보여준다.
      *
