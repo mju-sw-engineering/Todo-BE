@@ -8,7 +8,8 @@ class JwtUtilTest {
 
     private final JwtUtil jwtUtil = new JwtUtil(
             "test-secret-key-for-jwt-signing-that-is-long-enough",
-            60000
+            60000,
+            1209600000
     );
 
     @Test

@@ -8,18 +8,23 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
 
     private final SecretKey secretKey;
     private final long expiration;
+    private final long refreshExpiration;
 
     public JwtUtil(@Value("${jwt.secret}") String secret,
-                   @Value("${jwt.expiration}") long expiration) {
+                   @Value("${jwt.expiration}") long expiration,
+                   @Value("${jwt.refresh-expiration}") long refreshExpiration) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expiration = expiration;
+        this.refreshExpiration = refreshExpiration;
     }
 
     public String generateToken(String loginId) {
@@ -33,6 +38,14 @@ public class JwtUtil {
 
     public String extractLoginId(String token) {
         return getClaims(token).getSubject();
+    }
+
+    public String generateRefreshToken() {
+        return UUID.randomUUID().toString();
+    }
+
+    public LocalDateTime refreshTokenExpiresAt() {
+        return LocalDateTime.now().plusSeconds(refreshExpiration / 1000);
     }
 
     public boolean isValid(String token) {

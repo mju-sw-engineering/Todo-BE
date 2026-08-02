@@ -3,6 +3,7 @@ package com.todo.domain.user.service;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
+import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
@@ -82,6 +83,8 @@ class UserServiceTest {
     private MailOutboxRepository mailOutboxRepository;
     @Mock
     private ReauthTokenRepository reauthTokenRepository;
+    @Mock
+    private RefreshTokenRepository refreshTokenRepository;
     @Mock
     private ReauthService reauthService;
     @Mock

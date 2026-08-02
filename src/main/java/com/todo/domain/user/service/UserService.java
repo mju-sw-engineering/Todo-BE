@@ -3,6 +3,7 @@ package com.todo.domain.user.service;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
+import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
@@ -53,6 +54,7 @@ public class UserService {
     private final EmailVerificationRepository emailVerificationRepository;
     private final MailOutboxRepository mailOutboxRepository;
     private final ReauthTokenRepository reauthTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final ReauthService reauthService;
     private final FileDeletionOutboxService fileDeletionOutboxService;
 
@@ -101,6 +103,7 @@ public class UserService {
         todoReactionRepository.deleteByUserId(userId);
         userConsentRepository.deleteByUserId(userId);
         reauthTokenRepository.deleteByUserId(userId);
+        refreshTokenRepository.deleteByUserId(userId);
         if (email != null) {
             emailVerificationRepository.deleteByEmail(email);
             mailOutboxRepository.deleteByRecipient(email);
