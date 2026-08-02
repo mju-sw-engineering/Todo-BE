@@ -36,7 +36,7 @@ public class MailOutboxPoller {
             try {
                 mailOutboxService.dispatch(id);
             } catch (RuntimeException e) {
-                log.warn("메일 재시도 발송 실패. outboxId={}", id, e);
+                log.warn("메일 재시도 발송 중 예외 발생. outboxId={}", id, e);
             }
         }
     }
@@ -49,7 +49,7 @@ public class MailOutboxPoller {
                 List.of(MailOutboxStatus.SENT, MailOutboxStatus.FAILED), threshold
         );
         if (deleted > 0) {
-            log.info("오래된 메일 outbox {}건 정리", deleted);
+            log.info("오래된 메일 outbox 정리 완료. deletedCount={}", deleted);
         }
     }
 }

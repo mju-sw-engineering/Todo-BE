@@ -117,7 +117,13 @@ public class NotificationService {
                         delivery.payload()
                 );
             } catch (Exception e) {
-                log.warn("알림 WebSocket 전송 실패 - receiverLoginId: {}", delivery.receiverLoginId(), e);
+                log.warn(
+                        "알림 WebSocket 전송 실패. notificationId={}, type={}, referenceId={}",
+                        delivery.payload().notificationId(),
+                        delivery.payload().type(),
+                        delivery.payload().referenceId(),
+                        e
+                );
             }
         }
     }

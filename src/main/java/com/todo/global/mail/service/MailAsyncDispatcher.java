@@ -18,9 +18,9 @@ public class MailAsyncDispatcher {
             mailOutboxService.dispatch(outboxId);
         } catch (RuntimeException e) {
             log.warn(
-                    "MAIL_ASYNC_DISPATCH_FAILED outboxId={}, exceptionType={}",
+                    "메일 비동기 발송 실패. outboxId={}",
                     outboxId,
-                    e.getClass().getSimpleName()
+                    e
             );
         }
     }

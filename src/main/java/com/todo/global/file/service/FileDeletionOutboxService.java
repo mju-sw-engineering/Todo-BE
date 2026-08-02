@@ -57,11 +57,11 @@ public class FileDeletionOutboxService {
         } catch (RuntimeException e) {
             outbox.recordFailure(LocalDateTime.now(KST));
             log.warn(
-                    "FILE_DELETE_FAILED outboxId={}, attemptCount={}, status={}, exceptionType={}",
+                    "파일 삭제 실패. outboxId={}, attemptCount={}, status={}",
                     outbox.getId(),
                     outbox.getAttemptCount(),
                     outbox.getStatus(),
-                    e.getClass().getSimpleName()
+                    e
             );
         }
     }

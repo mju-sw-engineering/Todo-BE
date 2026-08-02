@@ -75,12 +75,12 @@ public class MailOutboxService {
         } catch (MailException | MessagingException e) {
             outbox.recordFailure(now);
             log.warn(
-                    "MAIL_SMTP_FAILED outboxId={}, type={}, attemptCount={}, status={}, exceptionType={}",
+                    "메일 발송 실패. outboxId={}, type={}, attemptCount={}, status={}",
                     outbox.getId(),
                     outbox.getType(),
                     outbox.getAttemptCount(),
                     outbox.getStatus(),
-                    e.getClass().getSimpleName()
+                    e
             );
         }
     }

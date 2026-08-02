@@ -101,7 +101,7 @@ public class FileService {
 
             return thumbnailKey;
         } catch (Exception e) {
-            log.warn("인증 사진 썸네일 생성 실패 — key: {}, message: {}", objectKey, e.getMessage());
+            log.warn("인증 사진 썸네일 생성 실패. objectKey={}", objectKey, e);
             return null;
         }
     }
@@ -122,7 +122,7 @@ public class FileService {
         try {
             deleteObjectOrThrow(objectKey);
         } catch (FileStorageException e) {
-            log.warn("MinIO object 삭제 실패 — key: {}, message: {}", objectKey, e.getMessage());
+            log.warn("파일 삭제 실패. objectKey={}", objectKey, e);
         }
     }
 

@@ -46,7 +46,11 @@ public class ChatMessageCleanupScheduler {
         } while (deleted == BATCH_SIZE);
 
         if (total > 0) {
-            log.info("보관 기간({}일)이 지난 채팅 메시지 {}건 정리", retentionDays, total);
+            log.info(
+                    "보관 기간이 지난 채팅 메시지 정리 완료. retentionDays={}, deletedCount={}",
+                    retentionDays,
+                    total
+            );
         }
     }
 }

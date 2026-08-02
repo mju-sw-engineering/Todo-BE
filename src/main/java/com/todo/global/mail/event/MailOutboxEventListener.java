@@ -3,6 +3,7 @@ package com.todo.global.mail.event;
 import com.todo.global.mail.service.MailAsyncDispatcher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -21,11 +22,17 @@ public class MailOutboxEventListener {
     public void onMailEnqueued(MailEnqueuedEvent event) {
         try {
             mailAsyncDispatcher.dispatch(event.outboxId());
+        } catch (TaskRejectedException e) {
+            log.warn(
+                    "메일 비동기 스레드 풀 작업 제출 거부. outboxId={}, 폴러 재시도 예정",
+                    event.outboxId(),
+                    e
+            );
         } catch (RuntimeException e) {
             log.warn(
-                    "MAIL_ASYNC_SUBMIT_FAILED outboxId={}, exceptionType={}, 폴러 재시도 예정",
+                    "메일 비동기 발송 요청 실패. outboxId={}, 폴러 재시도 예정",
                     event.outboxId(),
-                    e.getClass().getSimpleName()
+                    e
             );
         }
     }

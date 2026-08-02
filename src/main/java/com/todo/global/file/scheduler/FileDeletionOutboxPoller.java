@@ -36,7 +36,7 @@ public class FileDeletionOutboxPoller {
             try {
                 fileDeletionOutboxService.dispatch(id);
             } catch (RuntimeException e) {
-                log.warn("파일 삭제 재시도 실패. outboxId={}", id, e);
+                log.warn("파일 삭제 재시도 중 예외 발생. outboxId={}", id, e);
             }
         }
     }
@@ -50,7 +50,7 @@ public class FileDeletionOutboxPoller {
                 threshold
         );
         if (deleted > 0) {
-            log.info("오래된 파일 삭제 outbox {}건 정리", deleted);
+            log.info("오래된 파일 삭제 outbox 정리 완료. deletedCount={}", deleted);
         }
     }
 }
