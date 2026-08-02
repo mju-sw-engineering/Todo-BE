@@ -64,11 +64,20 @@ bash scripts/setup-hooks.sh
 - 로컬에 gitleaks가 없으면 제한된 패턴 폴백을 사용하며, CI의 secret-scan이 최종 방어선이다.
 
 **로컬 실행 전 필요한 설정** (`src/main/resources/application-local.yml`):
-- DB 접속 정보 (`spring.datasource.url`, `username`, `password`)
-- JWT 시크릿 (`jwt.secret`)
-- 메일 서버 정보 (`spring.mail.*`)
-- S3 호환 스토리지 정보 (`minio.endpoint`, `access-key`, `secret-key`, `bucket`)
-- 프론트엔드 기준 URL (`app.frontend-base-url`)
+`.gitignore` 대상이라 커밋되지 않는다. 운영 값을 넣지 않는다.
+
+| 설정 | 비고 |
+|---|---|
+| `spring.datasource.url` / `username` / `password` | |
+| `jwt.secret` | HS256이라 32바이트(영문 32자) 이상 |
+| `spring.mail.*` | 이메일 인증·팀 초대 메일 발송 |
+| `minio.endpoint` / `access-key` / `secret-key` / `bucket` | 프로필·인증사진 업로드 |
+| `swagger.auth.username` / `password` | **`application.yml`이 환경변수를 참조하는데 기본값이 없다.** 환경변수도 로컬 설정도 없으면 기동이 실패한다 |
+| `spring.jpa.hibernate.ddl-auto` | 아래 참조 |
+
+기본값이 있어 생략 가능한 것: `app.frontend-base-url`, `todo.scheduling.enabled`, `chat.cleanup.*`, `mail.async.*`, `file-deletion.*`
+
+**`ddl-auto`는 운영과 같은 `validate`를 쓴다.** 스키마는 Flyway가 만들고 Hibernate는 대조만 한다. `update`로 두면 엔티티와 마이그레이션이 어긋나도 Hibernate가 조용히 `ALTER`로 고쳐버려, 로컬에서는 멀쩡한데 운영 배포에서 기동이 막힌다. 실제로 `availability_polls.end_hour`가 `TINYINT`로 생성된 문제가 그렇게 드러났고, 로컬에서 재현하려 했을 때도 `update` 때문에 그냥 통과했다.
 
 ---
 
