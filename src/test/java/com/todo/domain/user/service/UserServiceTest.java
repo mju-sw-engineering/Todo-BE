@@ -3,6 +3,7 @@ package com.todo.domain.user.service;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
+import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
@@ -56,23 +57,42 @@ class UserServiceTest {
     @InjectMocks
     private UserService userService;
 
-    @Mock private UserRepository userRepository;
-    @Mock private TeamMemberRepository teamMemberRepository;
-    @Mock private FileService fileService;
-    @Mock private TeamService teamService;
-    @Mock private TodoWorkItemRepository todoWorkItemRepository;
-    @Mock private TodoReactionRepository todoReactionRepository;
-    @Mock private TodoWorkItemLifecycleService todoWorkItemLifecycleService;
-    @Mock private TeamChatMessageRepository teamChatMessageRepository;
-    @Mock private TeamChatReadStatusRepository teamChatReadStatusRepository;
-    @Mock private TodoRepository todoRepository;
-    @Mock private NotificationRepository notificationRepository;
-    @Mock private UserConsentRepository userConsentRepository;
-    @Mock private EmailVerificationRepository emailVerificationRepository;
-    @Mock private MailOutboxRepository mailOutboxRepository;
-    @Mock private ReauthTokenRepository reauthTokenRepository;
-    @Mock private ReauthService reauthService;
-    @Mock private FileDeletionOutboxService fileDeletionOutboxService;
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private TeamMemberRepository teamMemberRepository;
+    @Mock
+    private FileService fileService;
+    @Mock
+    private TeamService teamService;
+    @Mock
+    private TodoWorkItemRepository todoWorkItemRepository;
+    @Mock
+    private TodoReactionRepository todoReactionRepository;
+    @Mock
+    private TodoWorkItemLifecycleService todoWorkItemLifecycleService;
+    @Mock
+    private TeamChatMessageRepository teamChatMessageRepository;
+    @Mock
+    private TeamChatReadStatusRepository teamChatReadStatusRepository;
+    @Mock
+    private TodoRepository todoRepository;
+    @Mock
+    private NotificationRepository notificationRepository;
+    @Mock
+    private UserConsentRepository userConsentRepository;
+    @Mock
+    private EmailVerificationRepository emailVerificationRepository;
+    @Mock
+    private MailOutboxRepository mailOutboxRepository;
+    @Mock
+    private ReauthTokenRepository reauthTokenRepository;
+    @Mock
+    private RefreshTokenRepository refreshTokenRepository;
+    @Mock
+    private ReauthService reauthService;
+    @Mock
+    private FileDeletionOutboxService fileDeletionOutboxService;
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {
