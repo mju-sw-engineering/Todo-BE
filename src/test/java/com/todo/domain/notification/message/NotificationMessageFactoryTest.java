@@ -48,6 +48,26 @@ class NotificationMessageFactoryTest {
     }
 
     @Test
+    void 할일_배정_문구는_투두별_묶음_개수를_채우고_행위자는_자리표시자로_남긴다() {
+        NotificationMessage message = factory.todoAssigned("기말 발표", 2);
+
+        assertThat(message.type()).isEqualTo(NotificationType.TODO_ASSIGNED);
+        assertThat(message.title()).isEqualTo("새로운 할 일이 배정되었습니다.");
+        assertThat(message.content()).isEqualTo("{actor}님이 '기말 발표'의 할 일 2개를 배정했습니다.");
+        assertThat(message.content()).contains(NotificationActorText.PLACEHOLDER);
+    }
+
+    @Test
+    void 할일_미배정_문구는_투두별_묶음_개수를_채우고_행위자는_자리표시자로_남긴다() {
+        NotificationMessage message = factory.todoUnassigned("기말 발표", 3);
+
+        assertThat(message.type()).isEqualTo(NotificationType.TODO_UNASSIGNED);
+        assertThat(message.title()).isEqualTo("할 일이 미배정 상태가 되었습니다.");
+        assertThat(message.content()).isEqualTo("{actor}님이 '기말 발표'의 할 일 3개를 미배정으로 변경했습니다.");
+        assertThat(message.content()).contains(NotificationActorText.PLACEHOLDER);
+    }
+
+    @Test
     void 채팅_문구는_발신자_닉네임을_그대로_채운다() {
         NotificationMessage message = factory.chatMessage("윤진", "안녕하세요");
 

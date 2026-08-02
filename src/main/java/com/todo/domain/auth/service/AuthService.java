@@ -2,10 +2,13 @@ package com.todo.domain.auth.service;
 
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
+import com.todo.domain.auth.dto.response.LoginResult;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import com.todo.domain.auth.entity.ConsentType;
+import com.todo.domain.auth.entity.RefreshToken;
 import com.todo.domain.auth.entity.UserConsent;
+import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -33,6 +36,7 @@ public class AuthService implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final UserConsentRepository userConsentRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final FileService fileService;
@@ -69,7 +73,8 @@ public class AuthService implements UserDetailsService {
         return SignupResponse.from(user).withImageUrl(fileService.resolveImageUrl(user.getProfileImageUrl()));
     }
 
-    public LoginResponse login(LoginRequest request) {
+    @Transactional
+    public LoginResult login(LoginRequest request) {
         User user = userRepository.findByLoginId(request.loginId())
                 .orElseThrow(() -> new BusinessException("아이디 또는 비밀번호가 올바르지 않습니다.", HttpStatus.UNAUTHORIZED));
 
@@ -77,7 +82,55 @@ public class AuthService implements UserDetailsService {
             throw new BusinessException("아이디 또는 비밀번호가 올바르지 않습니다.", HttpStatus.UNAUTHORIZED);
         }
 
-        return new LoginResponse(jwtUtil.generateToken(user.getLoginId()));
+        String accessToken = jwtUtil.generateToken(user.getLoginId());
+        String rawRefreshToken = jwtUtil.generateRefreshToken();
+        refreshTokenRepository.save(
+                RefreshToken.create(user, rawRefreshToken, jwtUtil.refreshTokenExpiresAt())
+        );
+        return new LoginResult(accessToken, rawRefreshToken);
+    }
+
+    @Transactional
+    public LoginResult refresh(String rawToken) {
+        if (rawToken == null) {
+            throw new BusinessException("리프레시 토큰이 없습니다.", HttpStatus.UNAUTHORIZED);
+        }
+
+        RefreshToken token = refreshTokenRepository.findByToken(rawToken)
+                .orElseThrow(() -> new BusinessException("유효하지 않은 리프레시 토큰입니다.", HttpStatus.UNAUTHORIZED));
+
+        if (token.isUsed()) {
+            // 재사용 감지 — 해당 사용자의 모든 토큰 삭제
+            refreshTokenRepository.deleteByUserId(token.getUser().getId());
+            throw new BusinessException("유효하지 않은 리프레시 토큰입니다.", HttpStatus.UNAUTHORIZED);
+        }
+
+        if (token.isExpired()) {
+            refreshTokenRepository.delete(token);
+            throw new BusinessException("만료된 리프레시 토큰입니다.", HttpStatus.UNAUTHORIZED);
+        }
+
+        token.markAsUsed();
+
+        User user = token.getUser();
+        String newRawToken = jwtUtil.generateRefreshToken();
+        refreshTokenRepository.save(
+                RefreshToken.create(user, newRawToken, jwtUtil.refreshTokenExpiresAt())
+        );
+
+        return new LoginResult(jwtUtil.generateToken(user.getLoginId()), newRawToken);
+    }
+
+    @Transactional
+    public void logout(String rawToken) {
+        if (rawToken == null) {
+            return;
+        }
+        refreshTokenRepository.findByToken(rawToken).ifPresent(token -> {
+            if (!token.isUsed()) {
+                refreshTokenRepository.delete(token);
+            }
+        });
     }
 
     @Override

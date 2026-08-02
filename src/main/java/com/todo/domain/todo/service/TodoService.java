@@ -6,38 +6,45 @@ import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
+import com.todo.domain.todo.dto.request.AssignTodoWorkItemRequest;
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.CreateTodoTaskRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
-import com.todo.domain.todo.dto.response.ParticipantDetailResponse;
+import com.todo.domain.todo.dto.response.MyWorkSummaryResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
+import com.todo.domain.todo.dto.response.TodoDirectAssigneeResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
-import com.todo.domain.todo.dto.response.TodoParticipantStatusResponse;
+import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoReportActionCandidateResponse;
 import com.todo.domain.todo.dto.response.TodoReportDailyStatResponse;
 import com.todo.domain.todo.dto.response.TodoReportPeriodResponse;
 import com.todo.domain.todo.dto.response.TodoReportSummaryResponse;
-import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
-import com.todo.domain.todo.entity.ParticipantStatus;
+import com.todo.domain.todo.dto.response.TodoTaskResponse;
+import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
+import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
 import com.todo.domain.todo.entity.Todo;
-import com.todo.domain.todo.entity.TodoParticipant;
+import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoReaction;
 import com.todo.domain.todo.entity.TodoReactionType;
 import com.todo.domain.todo.entity.TodoStatus;
-import com.todo.domain.todo.repository.TodoParticipantDetail;
-import com.todo.domain.todo.repository.TodoParticipantRepository;
-import com.todo.domain.todo.repository.TodoParticipantSummary;
+import com.todo.domain.todo.entity.TodoWorkItem;
+import com.todo.domain.todo.entity.WorkItemStatus;
+import com.todo.domain.todo.entity.WorkItemType;
 import com.todo.domain.todo.repository.TodoReactionCount;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.todo.repository.TodoWorkItemRepository;
+import com.todo.domain.todo.repository.TodoWorkItemSummary;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.domain.user.support.WithdrawnUserDisplay;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -54,8 +61,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -64,10 +75,11 @@ import java.util.stream.Collectors;
 public class TodoService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final ZoneOffset KST_OFFSET = ZoneOffset.ofHours(9);
     private static final int ACTION_CANDIDATE_LIMIT = 5;
 
     private final TodoRepository todoRepository;
-    private final TodoParticipantRepository todoParticipantRepository;
+    private final TodoWorkItemRepository todoWorkItemRepository;
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
@@ -79,55 +91,45 @@ public class TodoService {
 
     @Transactional
     public CreateTodoResponse createTodo(String loginId, Long teamId, CreateTodoRequest request) {
-        User creator = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
-
+        User creator = findAuthenticatedUser(loginId);
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND));
+        requireTeamMember(teamId, creator.getId(), "팀에 접근할 권한이 없습니다.");
 
-        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, creator.getId())) {
-            throw new BusinessException("팀에 접근할 권한이 없습니다.", HttpStatus.FORBIDDEN);
+        LocalDateTime todoDeadline = toKstLocalDateTime(request.deadline());
+        if (todoDeadline == null || !todoDeadline.isAfter(LocalDateTime.now(KST))) {
+            throw new BusinessException("Todo 마감은 현재보다 미래여야 합니다.", HttpStatus.BAD_REQUEST);
         }
 
+        List<Long> assigneeIds = request.assigneeIds() == null ? List.of() : request.assigneeIds();
+        List<CreateTodoTaskRequest> tasks = request.tasks() == null ? List.of() : request.tasks();
+        boolean hasDirectAssignees = !assigneeIds.isEmpty();
+        boolean hasTasks = !tasks.isEmpty();
+        if (hasDirectAssignees == hasTasks) {
+            throw new BusinessException("assigneeIds와 tasks 중 하나만 입력해야 합니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        TodoMode mode = hasTasks ? TodoMode.TASK : TodoMode.DIRECT;
         Todo todo = todoRepository.save(Todo.create(
                 team,
                 creator,
                 request.title(),
                 request.description(),
-                toKstLocalDateTime(request.deadline())
+                todoDeadline,
+                mode
         ));
 
-        List<Long> assigneeIds = request.assigneeIds();
-        for (Long assigneeId : assigneeIds) {
-            User assignee = userRepository.findById(assigneeId)
-                    .orElseThrow(() -> new BusinessException("존재하지 않는 사용자입니다: " + assigneeId, HttpStatus.NOT_FOUND));
-            if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, assigneeId)) {
-                throw new BusinessException("팀 멤버가 아닌 사용자는 배정할 수 없습니다: " + assigneeId, HttpStatus.BAD_REQUEST);
-            }
-            todoParticipantRepository.save(TodoParticipant.create(todo, assignee));
-        }
+        List<TodoWorkItem> workItems = hasTasks
+                ? createTaskWorkItems(todo, teamId, tasks)
+                : createDirectWorkItems(todo, teamId, assigneeIds);
+        todoWorkItemRepository.saveAll(workItems);
 
-        sendTodoCreatedNotifications(todo, creator);
-
-        return CreateTodoResponse.from(todo, assigneeIds);
+        sendCreationNotifications(todo, creator, workItems);
+        return toCreateResponse(todo, workItems);
     }
-
-    private void sendTodoCreatedNotifications(Todo todo, User creator) {
-        List<TeamMember> receivers = teamMemberRepository.findByTeamIdExcludingUser(
-                todo.getTeam().getId(), creator.getId()
-        );
-        notificationService.sendAll(
-                receivers.stream().map(TeamMember::getUser).toList(),
-                creator,
-                notificationMessageFactory.todoCreated(todo.getTitle()),
-                todo.getId()
-        );
-    }
-
 
     public List<TodoSummaryResponse> getTodoList(Long teamId, String loginId, String filter, String date) {
         User user = validateTeamMember(teamId, loginId);
-
         boolean hasFilter = filter != null && !filter.isBlank();
         boolean hasDate = date != null && !date.isBlank();
         if (hasFilter && hasDate) {
@@ -145,8 +147,7 @@ public class TodoService {
         } else {
             todos = findTodosByFilter(teamId, filter);
         }
-
-        return toSummaryResponses(todos, user.getId(), LocalDateTime.now(KST));
+        return toSummaryResponses(todos, user.getId());
     }
 
     public TodoPeriodReportResponse getTodoPeriodReport(
@@ -155,20 +156,19 @@ public class TodoService {
             String startDate,
             String endDate
     ) {
-        User user = validateTeamMember(teamId, loginId);
+        validateTeamMember(teamId, loginId);
         LocalDate start = parseRequiredDate("startDate", startDate);
         LocalDate end = parseRequiredDate("endDate", endDate);
         if (start.isAfter(end)) {
             throw new BusinessException("startDate는 endDate보다 늦을 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
 
-        List<Todo> todos = todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
+        List<TodoWorkItem> workItems = todoWorkItemRepository.findByTeamIdAndEffectiveDeadlineBetween(
                 teamId,
                 start.atStartOfDay(),
                 end.plusDays(1).atStartOfDay()
         );
-        List<TodoSummaryResponse> todoSummaries = toSummaryResponses(todos, user.getId(), LocalDateTime.now(KST));
-        List<TodoReportDailyStatResponse> dailyStats = buildDailyStats(start, end, todoSummaries);
+        List<TodoReportDailyStatResponse> dailyStats = buildDailyStats(start, end, workItems);
         TodoReportSummaryResponse summary = buildPeriodSummary(dailyStats);
 
         return TodoPeriodReportResponse.from(
@@ -176,402 +176,509 @@ public class TodoService {
                 summary,
                 findWeakestDay(dailyStats),
                 dailyStats,
-                buildActionCandidates(todoSummaries)
+                buildActionCandidates(workItems)
         );
     }
 
     public TodoDetailResponse getTodoDetail(Long todoId, String loginId) {
-        User user = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
-
+        User user = findAuthenticatedUser(loginId);
         Todo todo = todoRepository.findByIdWithCreatorAndTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
+        requireTeamMember(todo.getTeam().getId(), user.getId(), "해당 투두의 상세 정보 조회 권한이 없습니다.");
 
-        if (!teamMemberRepository.existsByTeamIdAndUserId(todo.getTeam().getId(), user.getId())) {
-            throw new BusinessException("해당 투두의 상세 정보 조회 권한이 없습니다.", HttpStatus.FORBIDDEN);
-        }
+        List<TodoWorkItem> workItems = todoWorkItemRepository.findByTodoIdOrderByPositionAsc(todoId);
+        Map<Long, Map<TodoReactionType, Long>> reactionCounts = getReactionCountsByWorkItemId(workItems);
+        Map<Long, TodoReactionType> myReactions = getMyReactionsByWorkItemId(workItems, user.getId());
 
-        List<TodoParticipantDetail> participants = todoParticipantRepository.findDetailByTodoId(todoId);
-        Map<Long, Map<TodoReactionType, Long>> reactionCountsByParticipantId = getReactionCountsByParticipantId(participants);
-        Map<Long, TodoReactionType> myReactionsByParticipantId = getMyReactionsByParticipantId(participants, user.getId());
-        long total = participants.size();
-        long success = participants.stream()
-                .filter(p -> p.getStatus() == ParticipantStatus.SUCCESS)
-                .count();
-
-        List<ParticipantDetailResponse> participantResponses = participants.stream()
-                .map(p -> new ParticipantDetailResponse(
-                        p.getTodoParticipantId(),
-                        p.getUserId(),
-                        WithdrawnUserDisplay.nicknameOrWithdrawn(p.getNickname()),
-                        fileService.resolveImageUrl(p.getProfileImageUrl()),
-                        fileService.resolveImageUrl(p.getProofImageKey()),
-                        fileService.resolveImageUrl(p.getProofThumbnailKey()),
-                        mapStatus(p.getStatus()),
-                        buildReactionResponses(reactionCountsByParticipantId.getOrDefault(
-                                p.getTodoParticipantId(),
-                                Map.of()
-                        )),
-                        myReactionsByParticipantId.get(p.getTodoParticipantId())
+        List<TodoDirectAssigneeResponse> directAssignees = workItems.stream()
+                .filter(workItem -> workItem.getType() == WorkItemType.DIRECT)
+                .map(workItem -> TodoDirectAssigneeResponse.from(
+                        workItem,
+                        toKstOffset(workItem.getSubmittedAt()),
+                        resolveThumbnailUrl(workItem),
+                        reactionCounts.getOrDefault(workItem.getId(), Map.of()),
+                        myReactions.get(workItem.getId())
+                ))
+                .toList();
+        List<TodoTaskResponse> tasks = workItems.stream()
+                .filter(workItem -> workItem.getType() == WorkItemType.TASK)
+                .map(workItem -> TodoTaskResponse.from(
+                        workItem,
+                        toKstOffset(workItem.getDeadline()),
+                        toKstOffset(workItem.getSubmittedAt()),
+                        resolveThumbnailUrl(workItem),
+                        reactionCounts.getOrDefault(workItem.getId(), Map.of()),
+                        myReactions.get(workItem.getId())
                 ))
                 .toList();
 
-        return new TodoDetailResponse(
-                todo.getId(),
-                todo.getTitle(),
+        return TodoDetailResponse.from(
+                todo,
                 toKstOffset(todo.getDeadline()),
                 resolveCreatorNickname(todo),
-                resolveDisplayStatus(todo.getStatus(), todo.getDeadline(), LocalDateTime.now(KST)),
-                success + " / " + total,
-                participantResponses
+                achievementCount(workItems),
+                directAssignees,
+                tasks
         );
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void submitTodo(Long todoId, String loginId, SubmitTodoRequest request) {
-        SubmitTodoCheck check = transactionTemplate.execute(status -> checkSubmitTodo(todoId, loginId));
-        check.throwIfFailed();
+        User user = findAuthenticatedUser(loginId);
+        TodoWorkItem workItem = todoWorkItemRepository
+                .findDirectByTodoIdAndAssigneeIdWithTodo(todoId, user.getId())
+                .orElseThrow(() -> new BusinessException("해당 투두의 DIRECT 담당자가 아닙니다.", HttpStatus.FORBIDDEN));
+        submitWorkItem(workItem.getId(), workItem.getTodo().getId(), user, request.proofImageKey());
+    }
 
-        String proofThumbnailKey = fileService.createProofThumbnail(request.proofImageKey());
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void submitTodoWorkItem(Long workItemId, String loginId, SubmitTodoRequest request) {
+        User user = findAuthenticatedUser(loginId);
+        TodoWorkItem workItem = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
+        submitWorkItem(workItemId, workItem.getTodo().getId(), user, request.proofImageKey());
+    }
 
-        SubmitTodoCheck result;
-        try {
-            result = transactionTemplate.execute(status ->
-                    submitTodoInTransaction(todoId, check.userId(), request.proofImageKey(), proofThumbnailKey)
+    public TodoWorkItemSubmissionResponse getTodoWorkItemSubmission(Long workItemId, String loginId) {
+        User user = findAuthenticatedUser(loginId);
+        TodoWorkItem workItem = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
+        requireTeamMember(workItem.getTodo().getTeam().getId(), user.getId(), "해당 제출 사진을 조회할 권한이 없습니다.");
+        if (workItem.getProofImageKey() == null || workItem.getSubmittedAt() == null) {
+            throw new BusinessException("제출된 인증 사진이 없습니다.", HttpStatus.NOT_FOUND);
+        }
+
+        String originalUrl = fileService.resolveImageUrl(workItem.getProofImageKey());
+        String thumbnailUrl = workItem.getProofThumbnailKey() == null
+                ? originalUrl
+                : fileService.resolveImageUrl(workItem.getProofThumbnailKey());
+        OffsetDateTime expiresAt = OffsetDateTime.now(KST_OFFSET).plus(fileService.getPresignedUrlExpiration());
+        return TodoWorkItemSubmissionResponse.from(
+                workItem,
+                toKstOffset(workItem.getSubmittedAt()),
+                originalUrl,
+                thumbnailUrl,
+                expiresAt
+        );
+    }
+
+    @Transactional
+    public TodoReactionResponse reactTodoWorkItem(Long workItemId, String loginId, ReactTodoRequest request) {
+        User user = findAuthenticatedUser(loginId);
+        TodoWorkItem workItem = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
+        requireTeamMember(workItem.getTodo().getTeam().getId(), user.getId(), "팀에 접근할 권한이 없습니다.");
+        if (workItem.getProofImageKey() == null || workItem.getProofImageKey().isBlank()) {
+            throw new BusinessException("인증 사진이 제출된 항목에만 반응할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        TodoReactionType reactionType = request.type();
+        TodoReaction reaction = todoReactionRepository.findByTodoWorkItemIdAndUserId(workItemId, user.getId())
+                .map(existing -> updateOrDeleteReaction(existing, reactionType))
+                .orElseGet(() -> todoReactionRepository.save(TodoReaction.create(workItem, user, reactionType)));
+        long count = todoReactionRepository.countByTodoWorkItemIdAndReactionType(workItemId, reactionType);
+        return TodoReactionResponse.from(reaction, count);
+    }
+
+    /**
+     * 기존 participant 반응 경로의 deprecated 별칭이다. PK는 마이그레이션에서 그대로 보존된다.
+     */
+    @Deprecated
+    @Transactional
+    public TodoReactionResponse reactTodoParticipant(Long participantId, String loginId, ReactTodoRequest request) {
+        return reactTodoWorkItem(participantId, loginId, request);
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public TodoWorkItemAssigneeResponse reassignTodoWorkItem(
+            Long workItemId,
+            String loginId,
+            AssignTodoWorkItemRequest request
+    ) {
+        User requester = findAuthenticatedUser(loginId);
+        TodoWorkItem snapshot = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
+        Long teamId = snapshot.getTodo().getTeam().getId();
+        requireTeamMember(teamId, requester.getId(), "해당 WorkItem을 재배정할 권한이 없습니다.");
+        if (snapshot.getAssignee() != null) {
+            throw new BusinessException("이미 담당자가 배정된 WorkItem입니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        User assignee = userRepository.findById(request.assigneeId())
+                .orElseThrow(() -> new BusinessException("존재하지 않는 사용자입니다.", HttpStatus.NOT_FOUND));
+        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, assignee.getId())) {
+            throw new BusinessException("현재 팀원만 담당자로 배정할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        AssignmentResult result = transactionTemplate.execute(status -> assignWorkItem(
+                workItemId,
+                snapshot.getTodo().getId(),
+                requester,
+                assignee
+        ));
+        if (result == null) {
+            throw new BusinessException("재배정에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        result.throwIfFailed();
+        return result.response();
+    }
+
+    private List<TodoWorkItem> createDirectWorkItems(Todo todo, Long teamId, List<Long> assigneeIds) {
+        if (new HashSet<>(assigneeIds).size() != assigneeIds.size()) {
+            throw new BusinessException("DIRECT 담당자를 중복해서 배정할 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+        Map<Long, User> users = findAssignableUsers(teamId, assigneeIds);
+        return assigneeIds.stream()
+                .map(assigneeId -> TodoWorkItem.createDirect(todo, users.get(assigneeId)))
+                .toList();
+    }
+
+    private List<TodoWorkItem> createTaskWorkItems(
+            Todo todo,
+            Long teamId,
+            List<CreateTodoTaskRequest> tasks
+    ) {
+        List<Long> assigneeIds = tasks.stream().map(CreateTodoTaskRequest::assigneeId).distinct().toList();
+        Map<Long, User> users = findAssignableUsers(teamId, assigneeIds);
+        List<TodoWorkItem> workItems = new ArrayList<>();
+        for (int position = 0; position < tasks.size(); position++) {
+            CreateTodoTaskRequest task = tasks.get(position);
+            LocalDateTime taskDeadline = toKstLocalDateTime(task.deadline());
+            if (taskDeadline == null || !taskDeadline.isAfter(LocalDateTime.now(KST))) {
+                throw new BusinessException("Task 마감은 현재보다 미래여야 합니다.", HttpStatus.BAD_REQUEST);
+            }
+            workItems.add(TodoWorkItem.createTask(
+                    todo,
+                    users.get(task.assigneeId()),
+                    task.title(),
+                    task.description(),
+                    taskDeadline,
+                    position
+            ));
+        }
+        return workItems;
+    }
+
+    private Map<Long, User> findAssignableUsers(Long teamId, List<Long> userIds) {
+        Map<Long, User> users = new LinkedHashMap<>();
+        for (Long userId : userIds) {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new BusinessException(
+                            "존재하지 않는 사용자입니다: " + userId,
+                            HttpStatus.NOT_FOUND
+                    ));
+            if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, userId)) {
+                throw new BusinessException("팀 멤버가 아닌 사용자는 배정할 수 없습니다: " + userId, HttpStatus.BAD_REQUEST);
+            }
+            users.put(userId, user);
+        }
+        return users;
+    }
+
+    private void sendCreationNotifications(Todo todo, User creator, List<TodoWorkItem> workItems) {
+        if (todo.getMode() == TodoMode.DIRECT) {
+            List<User> receivers = teamMemberRepository.findByTeamIdExcludingUser(
+                            todo.getTeam().getId(),
+                            creator.getId()
+                    ).stream()
+                    .map(TeamMember::getUser)
+                    .toList();
+            notificationService.sendAll(
+                    receivers,
+                    creator,
+                    notificationMessageFactory.todoCreated(todo.getTitle()),
+                    todo.getId()
             );
+            return;
+        }
+
+        Map<Long, Long> assignmentCounts = workItems.stream()
+                .collect(Collectors.groupingBy(
+                        workItem -> workItem.getAssignee().getId(),
+                        LinkedHashMap::new,
+                        Collectors.counting()
+                ));
+        Map<Long, User> assignedUsers = workItems.stream()
+                .map(TodoWorkItem::getAssignee)
+                .collect(Collectors.toMap(User::getId, Function.identity(), (left, right) -> left));
+
+        List<User> createdReceivers = teamMemberRepository.findByTeamIdExcludingUser(
+                        todo.getTeam().getId(),
+                        creator.getId()
+                ).stream()
+                .map(TeamMember::getUser)
+                .filter(user -> !assignmentCounts.containsKey(user.getId()))
+                .toList();
+        notificationService.sendAll(
+                createdReceivers,
+                creator,
+                notificationMessageFactory.todoCreated(todo.getTitle()),
+                todo.getId()
+        );
+
+        assignmentCounts.forEach((assigneeId, count) -> {
+            if (!creator.getId().equals(assigneeId)) {
+                notificationService.send(
+                        assignedUsers.get(assigneeId),
+                        creator,
+                        notificationMessageFactory.todoAssigned(todo.getTitle(), Math.toIntExact(count)),
+                        todo.getId()
+                );
+            }
+        });
+    }
+
+    private CreateTodoResponse toCreateResponse(Todo todo, List<TodoWorkItem> workItems) {
+        List<TodoDirectAssigneeResponse> directAssignees = workItems.stream()
+                .filter(workItem -> workItem.getType() == WorkItemType.DIRECT)
+                .map(workItem -> TodoDirectAssigneeResponse.from(workItem, null, null, Map.of(), null))
+                .toList();
+        List<TodoTaskResponse> tasks = workItems.stream()
+                .filter(workItem -> workItem.getType() == WorkItemType.TASK)
+                .map(workItem -> TodoTaskResponse.from(
+                        workItem,
+                        toKstOffset(workItem.getDeadline()),
+                        null,
+                        null,
+                        Map.of(),
+                        null
+                ))
+                .toList();
+        return CreateTodoResponse.from(todo, toKstOffset(todo.getDeadline()), directAssignees, tasks);
+    }
+
+    private void submitWorkItem(Long workItemId, Long todoId, User user, String proofImageKey) {
+        OperationResult check = transactionTemplate.execute(status -> checkSubmission(todoId, workItemId, user.getId()));
+        requireOperationResult(check).throwIfFailed();
+
+        fileService.validateProofImage(user.getId(), proofImageKey);
+        if (todoWorkItemRepository.existsByProofImageKey(proofImageKey)) {
+            throw new BusinessException("이미 다른 WorkItem에 제출된 인증 사진입니다.", HttpStatus.BAD_REQUEST);
+        }
+        String proofThumbnailKey = fileService.createProofThumbnail(proofImageKey);
+
+        OperationResult result;
+        try {
+            result = transactionTemplate.execute(status -> submitInTransaction(
+                    todoId,
+                    workItemId,
+                    user.getId(),
+                    proofImageKey,
+                    proofThumbnailKey
+            ));
         } catch (RuntimeException e) {
             cleanupProofThumbnail(proofThumbnailKey, e);
+            if (e instanceof DataIntegrityViolationException) {
+                throw new BusinessException("이미 다른 WorkItem에 제출된 인증 사진입니다.", HttpStatus.BAD_REQUEST);
+            }
             throw e;
         }
+        result = requireOperationResult(result);
         if (result.hasFailed()) {
             cleanupProofThumbnail(proofThumbnailKey, result.failure());
         }
         result.throwIfFailed();
     }
 
-    private void cleanupProofThumbnail(String proofThumbnailKey, RuntimeException primaryFailure) {
-        try {
-            fileService.deleteObject(proofThumbnailKey);
-        } catch (RuntimeException deleteException) {
-            primaryFailure.addSuppressed(deleteException);
-        }
+    private OperationResult checkSubmission(Long todoId, Long workItemId, Long userId) {
+        Todo todo = todoRepository.findByIdWithLock(todoId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
+        TodoWorkItem workItem = todoWorkItemRepository.findByIdWithLock(workItemId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
+        return validateSubmission(todo, workItem, userId);
     }
 
-    private SubmitTodoCheck checkSubmitTodo(Long todoId, String loginId) {
-        User user = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
-
-        markExpiredTodosAsFail();
-        TodoParticipant participant = todoParticipantRepository
-                .findByTodoIdAndUserIdWithTodo(todoId, user.getId())
-                .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.FORBIDDEN));
-
-        if (LocalDateTime.now(KST).isAfter(participant.getTodo().getDeadline())) {
-            participant.markAsFail();
-            participant.getTodo().markAsFail();
-            return SubmitTodoCheck.failed(user.getId(), "마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
-        }
-
-        return SubmitTodoCheck.success(user.getId());
-    }
-
-    private SubmitTodoCheck submitTodoInTransaction(
+    private OperationResult submitInTransaction(
             Long todoId,
+            Long workItemId,
             Long userId,
             String proofImageKey,
             String proofThumbnailKey
     ) {
-        markExpiredTodosAsFail();
-
-        // 락 순서는 반드시 Todo -> 참가자다. 반대로 잡으면 데드락이 난다.
-        //
-        // 참가자 행만 잠그면 서로 다른 담당자의 동시 제출이 각자 다른 행을 잠가 아무것도
-        // 직렬화되지 않는다. MySQL 기본 REPEATABLE READ에서 두 트랜잭션은 상대의 미커밋
-        // 제출을 보지 못하므로 아래 집계에서 둘 다 "아직 전부 성공이 아니다"로 판정하고,
-        // 참가자는 전부 SUCCESS인데 Todo만 IN_PROGRESS로 남는다.
         Todo todo = todoRepository.findByIdWithLock(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
-        TodoParticipant participant = todoParticipantRepository
-                .findByTodoIdAndUserIdWithLock(todoId, userId)
-                .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.FORBIDDEN));
+        TodoWorkItem workItem = todoWorkItemRepository.findByIdWithLock(workItemId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
+        OperationResult validation = validateSubmission(todo, workItem, userId);
+        if (validation.hasFailed()) {
+            return validation;
+        }
+        if (todoWorkItemRepository.existsByProofImageKey(proofImageKey)) {
+            return OperationResult.failed("이미 다른 WorkItem에 제출된 인증 사진입니다.", HttpStatus.BAD_REQUEST);
+        }
 
-        if (LocalDateTime.now(KST).isAfter(todo.getDeadline())) {
-            participant.markAsFail();
+        workItem.submit(proofImageKey, proofThumbnailKey);
+        long totalCount = todoWorkItemRepository.countByTodoId(todoId);
+        long successCount = todoWorkItemRepository.countByTodoIdAndStatus(todoId, WorkItemStatus.SUCCESS);
+        if (totalCount > 0 && totalCount == successCount && todo.markAsSuccess()) {
+            teamRepository.incrementSuccessCount(todo.getTeam().getId());
+        }
+        return OperationResult.success();
+    }
+
+    private OperationResult validateSubmission(Todo todo, TodoWorkItem workItem, Long userId) {
+        if (!todo.getId().equals(workItem.getTodo().getId())) {
+            return OperationResult.failed("Todo와 WorkItem이 일치하지 않습니다.", HttpStatus.BAD_REQUEST);
+        }
+        if (workItem.getAssignee() == null || !userId.equals(workItem.getAssignee().getId())) {
+            return OperationResult.failed("해당 WorkItem의 담당자가 아닙니다.", HttpStatus.FORBIDDEN);
+        }
+        if (workItem.getStatus() != WorkItemStatus.IN_PROGRESS) {
+            return OperationResult.failed("이미 제출했거나 종료된 WorkItem입니다.", HttpStatus.CONFLICT);
+        }
+        if (LocalDateTime.now(KST).isAfter(workItem.getEffectiveDeadline())) {
+            workItem.markAsFail();
             todo.markAsFail();
-            return SubmitTodoCheck.failed(userId, "마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
+            return OperationResult.failed("마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
         }
-
-        participant.submit(proofImageKey, proofThumbnailKey);
-        // 카운터 갱신은 팀 행을 잠그는 원자적 UPDATE로 처리해 동시 제출 시 유실을 막는다.
-        teamRepository.incrementSuccessCount(todo.getTeam().getId());
-
-        long totalParticipants = todoParticipantRepository.countByTodoId(todoId);
-        long successCount = todoParticipantRepository.countByTodoIdAndStatus(todoId, ParticipantStatus.SUCCESS);
-        if (successCount == totalParticipants) {
-            todo.markAsSuccess();
-        }
-
-        return SubmitTodoCheck.success(userId);
+        return OperationResult.success();
     }
 
-    @Transactional
-    public TodoReactionResponse reactTodoParticipant(Long participantId, String loginId, ReactTodoRequest request) {
-        User user = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
-        TodoParticipant participant = todoParticipantRepository.findByIdWithTodoAndTeam(participantId)
-                .orElseThrow(() -> new BusinessException("존재하지 않는 투두 참여자입니다.", HttpStatus.NOT_FOUND));
-
-        Long teamId = participant.getTodo().getTeam().getId();
-        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())) {
-            throw new BusinessException("팀에 접근할 권한이 없습니다.", HttpStatus.FORBIDDEN);
+    private AssignmentResult assignWorkItem(Long workItemId, Long todoId, User requester, User assignee) {
+        Todo todo = todoRepository.findByIdWithLock(todoId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
+        TodoWorkItem workItem = todoWorkItemRepository.findByIdWithLock(workItemId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
+        if (workItem.getAssignee() != null) {
+            return AssignmentResult.failed("다른 요청이 먼저 담당자를 배정했습니다.", HttpStatus.CONFLICT);
         }
-        if (participant.getProofImageKey() == null || participant.getProofImageKey().isBlank()) {
-            throw new BusinessException("인증 사진이 제출된 투두에만 반응할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        if (workItem.getStatus() != WorkItemStatus.IN_PROGRESS) {
+            return AssignmentResult.failed("진행 중인 WorkItem만 재배정할 수 있습니다.", HttpStatus.BAD_REQUEST);
         }
-
-        TodoReactionType reactionType = request.type();
-        todoReactionRepository.findByTodoParticipantIdAndUserId(participantId, user.getId())
-                .ifPresentOrElse(
-                        reaction -> updateOrDeleteReaction(reaction, reactionType),
-                        () -> todoReactionRepository.save(TodoReaction.create(participant, user, reactionType))
-                );
-
-        long count = todoReactionRepository.countByTodoParticipantIdAndReactionType(participantId, reactionType);
-        return TodoReactionResponse.from(reactionType, count);
-    }
-
-    private void markExpiredTodosAsFail() {
-        todoRepository.markExpiredTodosAsFail(LocalDateTime.now(KST));
-    }
-
-    private record SubmitTodoCheck(Long userId, BusinessException failure) {
-        static SubmitTodoCheck success(Long userId) {
-            return new SubmitTodoCheck(userId, null);
+        if (LocalDateTime.now(KST).isAfter(workItem.getEffectiveDeadline())) {
+            workItem.markAsFail();
+            todo.markAsFail();
+            return AssignmentResult.failed("마감이 지난 WorkItem은 재배정할 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+        if (workItem.getType() == WorkItemType.DIRECT
+                && todoWorkItemRepository.findDirectByTodoIdAndAssigneeId(todoId, assignee.getId()).isPresent()) {
+            return AssignmentResult.failed("이미 같은 Todo의 DIRECT 담당자입니다.", HttpStatus.CONFLICT);
         }
 
-        static SubmitTodoCheck failed(Long userId, String message, HttpStatus status) {
-            return new SubmitTodoCheck(userId, new BusinessException(message, status));
-        }
-
-        boolean hasFailed() {
-            return failure != null;
-        }
-
-        void throwIfFailed() {
-            if (failure != null) {
-                throw failure;
-            }
-        }
-    }
-
-    private User validateTeamMember(Long teamId, String loginId) {
-        User user = userRepository.findByLoginId(loginId)
-                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
-
-        if (!teamRepository.existsById(teamId)) {
-            throw new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND);
-        }
-        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())) {
-            throw new BusinessException("팀에 접근할 권한이 없습니다.", HttpStatus.FORBIDDEN);
-        }
-
-        return user;
-    }
-
-    private List<Todo> findTodosByFilter(Long teamId, String filter) {
-        if (filter == null || filter.isBlank()) {
-            return todoRepository.findByTeamIdWithCreator(teamId);
-        }
-
-        return switch (filter) {
-            case "IN_PROGRESS" -> todoRepository.findByTeamIdAndStatusWithCreator(teamId, TodoStatus.IN_PROGRESS);
-            case "ENDED" -> todoRepository.findByTeamIdAndStatusInWithCreator(
-                    teamId,
-                    List.of(TodoStatus.SUCCESS, TodoStatus.FAIL)
+        workItem.assign(assignee);
+        if (!requester.getId().equals(assignee.getId())) {
+            notificationService.send(
+                    assignee,
+                    requester,
+                    notificationMessageFactory.todoAssigned(todo.getTitle(), 1),
+                    todo.getId()
             );
-            default -> throw new BusinessException("알 수 없는 투두 필터입니다.", HttpStatus.BAD_REQUEST);
-        };
+        }
+        return AssignmentResult.success(TodoWorkItemAssigneeResponse.from(workItem));
     }
 
-    private LocalDate parseDate(String date) {
-        if (date == null || date.isBlank()) {
-            throw new BusinessException("date 파라미터는 필수입니다.", HttpStatus.BAD_REQUEST);
-        }
-
-        try {
-            return LocalDate.parse(date);
-        } catch (DateTimeParseException e) {
-            throw new BusinessException("date 형식은 yyyy-MM-dd 이어야 합니다.", HttpStatus.BAD_REQUEST);
-        }
-    }
-
-    private LocalDate parseRequiredDate(String parameterName, String date) {
-        if (date == null || date.isBlank()) {
-            throw new BusinessException(parameterName + " 파라미터는 필수입니다.", HttpStatus.BAD_REQUEST);
-        }
-
-        try {
-            return LocalDate.parse(date);
-        } catch (DateTimeParseException e) {
-            throw new BusinessException(parameterName + " 형식은 yyyy-MM-dd 이어야 합니다.", HttpStatus.BAD_REQUEST);
-        }
-    }
-
-    private List<TodoSummaryResponse> toSummaryResponses(List<Todo> todos, Long userId, LocalDateTime now) {
+    private List<TodoSummaryResponse> toSummaryResponses(List<Todo> todos, Long userId) {
         if (todos.isEmpty()) {
             return List.of();
         }
-
-        List<Long> todoIds = todos.stream().map(Todo::getId).toList();
-        Map<Long, List<TodoParticipantSummary>> participantsByTodoId = todoParticipantRepository
-                .findSummaryByTodoIdIn(todoIds)
+        Map<Long, List<TodoWorkItemSummary>> workItemsByTodoId = todoWorkItemRepository
+                .findSummaryByTodoIdIn(todos.stream().map(Todo::getId).toList())
                 .stream()
-                .collect(Collectors.groupingBy(TodoParticipantSummary::getTodoId));
+                .collect(Collectors.groupingBy(TodoWorkItemSummary::getTodoId));
 
         return todos.stream()
-                .map(todo -> toSummaryResponse(todo, participantsByTodoId.getOrDefault(todo.getId(), List.of()), userId, now))
+                .map(todo -> {
+                    List<TodoWorkItemSummary> workItems = workItemsByTodoId.getOrDefault(todo.getId(), List.of());
+                    int total = workItems.size();
+                    int success = countStatus(workItems, WorkItemStatus.SUCCESS);
+                    List<TodoWorkItemSummary> mine = workItems.stream()
+                            .filter(workItem -> userId.equals(workItem.getAssigneeId()))
+                            .toList();
+                    MyWorkSummaryResponse mySummary = MyWorkSummaryResponse.from(
+                            todo,
+                            mine.size(),
+                            countStatus(mine, WorkItemStatus.SUCCESS),
+                            countStatus(mine, WorkItemStatus.FAIL),
+                            countStatus(mine, WorkItemStatus.IN_PROGRESS)
+                    );
+                    return TodoSummaryResponse.from(
+                            todo,
+                            toKstOffset(todo.getDeadline()),
+                            success + " / " + total,
+                            mySummary
+                    );
+                })
                 .toList();
     }
 
-    private Map<Long, Map<TodoReactionType, Long>> getReactionCountsByParticipantId(
-            List<TodoParticipantDetail> participants
-    ) {
-        List<Long> participantIds = participants.stream()
-                .map(TodoParticipantDetail::getTodoParticipantId)
-                .toList();
-        if (participantIds.isEmpty()) {
+    private int countStatus(List<TodoWorkItemSummary> workItems, WorkItemStatus status) {
+        return Math.toIntExact(workItems.stream().filter(workItem -> workItem.getStatus() == status).count());
+    }
+
+    private Map<Long, Map<TodoReactionType, Long>> getReactionCountsByWorkItemId(List<TodoWorkItem> workItems) {
+        List<Long> ids = workItems.stream().map(TodoWorkItem::getId).toList();
+        if (ids.isEmpty()) {
             return Map.of();
         }
-
         Map<Long, Map<TodoReactionType, Long>> result = new HashMap<>();
-        for (TodoReactionCount reactionCount : todoReactionRepository.countByTodoParticipantIds(participantIds)) {
-            result.computeIfAbsent(reactionCount.getTodoParticipantId(), ignored -> new EnumMap<>(TodoReactionType.class))
-                    .put(reactionCount.getReactionType(), reactionCount.getReactionCount());
+        for (TodoReactionCount count : todoReactionRepository.countByTodoWorkItemIds(ids)) {
+            result.computeIfAbsent(count.getTodoWorkItemId(), ignored -> new EnumMap<>(TodoReactionType.class))
+                    .put(count.getReactionType(), count.getReactionCount());
         }
-
         return result;
     }
 
-    private Map<Long, TodoReactionType> getMyReactionsByParticipantId(
-            List<TodoParticipantDetail> participants,
-            Long userId
-    ) {
-        List<Long> participantIds = participants.stream()
-                .map(TodoParticipantDetail::getTodoParticipantId)
-                .toList();
-        if (participantIds.isEmpty()) {
+    private Map<Long, TodoReactionType> getMyReactionsByWorkItemId(List<TodoWorkItem> workItems, Long userId) {
+        List<Long> ids = workItems.stream().map(TodoWorkItem::getId).toList();
+        if (ids.isEmpty()) {
             return Map.of();
         }
-
-        return todoReactionRepository.findByTodoParticipantIdInAndUserId(participantIds, userId)
-                .stream()
+        return todoReactionRepository.findByTodoWorkItemIdInAndUserId(ids, userId).stream()
                 .collect(Collectors.toMap(
-                        reaction -> reaction.getTodoParticipant().getId(),
+                        reaction -> reaction.getTodoWorkItem().getId(),
                         TodoReaction::getReactionType
                 ));
     }
 
-    private List<TodoReactionResponse> buildReactionResponses(Map<TodoReactionType, Long> reactionCounts) {
-        return List.of(TodoReactionType.values()).stream()
-                .map(type -> TodoReactionResponse.from(type, reactionCounts.getOrDefault(type, 0L)))
-                .toList();
-    }
-
-    private void updateOrDeleteReaction(TodoReaction reaction, TodoReactionType reactionType) {
-        if (reaction.hasSameType(reactionType)) {
+    private TodoReaction updateOrDeleteReaction(TodoReaction reaction, TodoReactionType requestedType) {
+        if (reaction.hasSameType(requestedType)) {
             todoReactionRepository.delete(reaction);
-            return;
+            return reaction;
         }
-
-        reaction.updateType(reactionType);
-    }
-
-    private TodoSummaryResponse toSummaryResponse(
-            Todo todo,
-            List<TodoParticipantSummary> participants,
-            Long userId,
-            LocalDateTime now
-    ) {
-        long total = participants.size();
-        long success = participants.stream()
-                .filter(p -> p.getStatus() == ParticipantStatus.SUCCESS)
-                .count();
-        // 익명 참가 기록은 userId가 null이므로 현재 사용자 기준으로 비교해 NPE를 피한다.
-        String myStatus = participants.stream()
-                .filter(p -> userId.equals(p.getUserId()))
-                .findFirst()
-                .map(p -> mapStatus(p.getStatus()))
-                .orElse(null);
-        List<TodoParticipantStatusResponse> participantResponses = participants.stream()
-                .map(p -> new TodoParticipantStatusResponse(
-                        p.getUserId(),
-                        WithdrawnUserDisplay.nicknameOrWithdrawn(p.getNickname()),
-                        mapStatus(p.getStatus())
-                ))
-                .toList();
-
-        return new TodoSummaryResponse(
-                todo.getId(),
-                todo.getTitle(),
-                toKstOffset(todo.getDeadline()),
-                resolveCreatorNickname(todo),
-                resolveDisplayStatus(todo.getStatus(), todo.getDeadline(), now),
-                success + " / " + total,
-                myStatus,
-                calculateProgressRate(success, total),
-                participantResponses
-        );
-    }
-
-    private int calculateProgressRate(long achievementCount, long participantCount) {
-        if (participantCount == 0) {
-            return 0;
-        }
-
-        return (int) (achievementCount * 100 / participantCount);
+        reaction.updateType(requestedType);
+        return reaction;
     }
 
     private List<TodoReportDailyStatResponse> buildDailyStats(
             LocalDate start,
             LocalDate end,
-            List<TodoSummaryResponse> todoSummaries
+            List<TodoWorkItem> workItems
     ) {
-        Map<LocalDate, List<TodoSummaryResponse>> todosByDate = todoSummaries.stream()
-                .collect(Collectors.groupingBy(todo -> todo.deadline().toLocalDate()));
-        List<TodoReportDailyStatResponse> dailyStats = new ArrayList<>();
-
+        Map<LocalDate, List<TodoWorkItem>> byDate = workItems.stream()
+                .collect(Collectors.groupingBy(workItem -> workItem.getEffectiveDeadline().toLocalDate()));
+        List<TodoReportDailyStatResponse> result = new ArrayList<>();
         for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
-            List<TodoSummaryResponse> dailyTodos = todosByDate.getOrDefault(date, List.of());
-            int totalCount = dailyTodos.size();
-            int successCount = countByStatus(dailyTodos, TodoStatus.SUCCESS);
-            int failCount = countByStatus(dailyTodos, TodoStatus.FAIL);
-            int inProgressCount = countByStatus(dailyTodos, TodoStatus.IN_PROGRESS);
-
-            dailyStats.add(TodoReportDailyStatResponse.from(
+            List<TodoWorkItem> daily = byDate.getOrDefault(date, List.of());
+            int success = countEntityStatus(daily, WorkItemStatus.SUCCESS);
+            int fail = countEntityStatus(daily, WorkItemStatus.FAIL);
+            int inProgress = countEntityStatus(daily, WorkItemStatus.IN_PROGRESS);
+            result.add(TodoReportDailyStatResponse.from(
                     date,
-                    totalCount,
-                    successCount,
-                    failCount,
-                    inProgressCount,
-                    calculateAchievementRate(successCount, totalCount)
+                    daily.size(),
+                    success,
+                    fail,
+                    inProgress,
+                    calculateAchievementRate(success, daily.size())
             ));
         }
+        return result;
+    }
 
-        return dailyStats;
+    private int countEntityStatus(List<TodoWorkItem> workItems, WorkItemStatus status) {
+        return Math.toIntExact(workItems.stream().filter(workItem -> workItem.getStatus() == status).count());
     }
 
     private TodoReportSummaryResponse buildPeriodSummary(List<TodoReportDailyStatResponse> dailyStats) {
-        int totalCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::totalTodoCount).sum();
-        int successCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::successCount).sum();
-        int failCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::failCount).sum();
-        int inProgressCount = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::inProgressCount).sum();
-
+        int total = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::totalTodoCount).sum();
+        int success = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::successCount).sum();
+        int fail = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::failCount).sum();
+        int inProgress = dailyStats.stream().mapToInt(TodoReportDailyStatResponse::inProgressCount).sum();
         return TodoReportSummaryResponse.from(
-                totalCount,
-                successCount,
-                failCount,
-                inProgressCount,
-                calculateAchievementRate(successCount, totalCount)
+                total,
+                success,
+                fail,
+                inProgress,
+                calculateAchievementRate(success, total)
         );
     }
 
@@ -585,141 +692,201 @@ public class TodoService {
                 .orElse(null);
     }
 
-    private List<TodoReportActionCandidateResponse> buildActionCandidates(
-            List<TodoSummaryResponse> todoSummaries
-    ) {
-        List<TodoSummaryResponse> sortedCandidates = todoSummaries.stream()
-                .filter(todo -> todo.status() != TodoStatus.SUCCESS && todo.status() != TodoStatus.FAIL)
+    private List<TodoReportActionCandidateResponse> buildActionCandidates(List<TodoWorkItem> workItems) {
+        List<Candidate> candidates = workItems.stream()
+                .collect(Collectors.groupingBy(workItem -> workItem.getTodo().getId(), LinkedHashMap::new, Collectors.toList()))
+                .values()
+                .stream()
+                .filter(items -> items.get(0).getTodo().getStatus() == TodoStatus.IN_PROGRESS)
+                .map(Candidate::from)
                 .sorted(Comparator
-                        .comparingInt(TodoSummaryResponse::progressRate)
-                        .thenComparing(Comparator.comparingInt(this::getUnverifiedCount).reversed())
-                        .thenComparing(TodoSummaryResponse::deadline))
+                        .comparingInt(Candidate::progressRate)
+                        .thenComparing(Comparator.comparingInt(Candidate::unverifiedCount).reversed())
+                        .thenComparing(Candidate::deadline))
                 .limit(ACTION_CANDIDATE_LIMIT)
                 .toList();
-        List<TodoReportActionCandidateResponse> responses = new ArrayList<>();
 
-        for (int index = 0; index < sortedCandidates.size(); index++) {
-            TodoSummaryResponse todo = sortedCandidates.get(index);
-            int participantCount = getParticipantCount(todo);
-            int achievementCount = getAchievementCount(todo);
-            responses.add(TodoReportActionCandidateResponse.from(
+        List<TodoReportActionCandidateResponse> result = new ArrayList<>();
+        for (int index = 0; index < candidates.size(); index++) {
+            Candidate candidate = candidates.get(index);
+            result.add(TodoReportActionCandidateResponse.from(
                     index + 1,
-                    todo.todoId(),
-                    todo.title(),
-                    todo.deadline(),
-                    todo.status(),
-                    achievementCount,
-                    participantCount,
-                    Math.max(participantCount - achievementCount, 0),
-                    todo.progressRate()
+                    candidate.todo().getId(),
+                    candidate.todo().getTitle(),
+                    toKstOffset(candidate.deadline()),
+                    candidate.todo().getStatus(),
+                    candidate.successCount(),
+                    candidate.totalCount(),
+                    candidate.unverifiedCount(),
+                    candidate.progressRate()
             ));
         }
-
-        return responses;
+        return result;
     }
 
-    private int countByStatus(List<TodoSummaryResponse> todos, TodoStatus status) {
-        return (int) todos.stream()
-                .filter(todo -> todo.status() == status)
-                .count();
-    }
-
-    private Integer calculateAchievementRate(int successCount, int totalCount) {
-        if (totalCount == 0) {
-            return null;
+    private User validateTeamMember(Long teamId, String loginId) {
+        User user = findAuthenticatedUser(loginId);
+        if (!teamRepository.existsById(teamId)) {
+            throw new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND);
         }
-
-        return successCount * 100 / totalCount;
+        requireTeamMember(teamId, user.getId(), "팀에 접근할 권한이 없습니다.");
+        return user;
     }
 
-    private int sortAchievementRate(Integer achievementRate) {
-        if (achievementRate == null) {
-            return 101;
-        }
-
-        return achievementRate;
+    private User findAuthenticatedUser(String loginId) {
+        return userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
     }
 
-    private int getAchievementCount(TodoSummaryResponse todo) {
-        return parseAchievementCountPart(todo.achievementCount(), 0);
-    }
-
-    private int getParticipantCount(TodoSummaryResponse todo) {
-        int parsedCount = parseAchievementCountPart(todo.achievementCount(), 1);
-        if (parsedCount > 0) {
-            return parsedCount;
-        }
-        if (todo.participants() == null) {
-            return 0;
-        }
-
-        return todo.participants().size();
-    }
-
-    private int getUnverifiedCount(TodoSummaryResponse todo) {
-        return Math.max(getParticipantCount(todo) - getAchievementCount(todo), 0);
-    }
-
-    private int parseAchievementCountPart(String achievementCount, int partIndex) {
-        if (achievementCount == null || achievementCount.isBlank()) {
-            return 0;
-        }
-
-        String[] parts = achievementCount.split("/");
-        if (parts.length <= partIndex) {
-            return 0;
-        }
-
-        try {
-            return Integer.parseInt(parts[partIndex].trim());
-        } catch (NumberFormatException e) {
-            return 0;
+    private void requireTeamMember(Long teamId, Long userId, String message) {
+        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, userId)) {
+            throw new BusinessException(message, HttpStatus.FORBIDDEN);
         }
     }
 
-    /**
-     * 생성자가 탈퇴하면 creator가 null이다. Todo는 유지되므로 표시명만 익명으로 바꾼다.
-     */
-    private String resolveCreatorNickname(Todo todo) {
-        if (todo.getCreator() == null) {
-            return WithdrawnUserDisplay.NICKNAME;
+    private List<Todo> findTodosByFilter(Long teamId, String filter) {
+        if (filter == null || filter.isBlank()) {
+            return todoRepository.findByTeamIdWithCreator(teamId);
         }
-
-        return todo.getCreator().getNickname();
-    }
-
-    private String mapStatus(ParticipantStatus status) {
-        return switch (status) {
-            case SUCCESS -> "완료";
-            case IN_PROGRESS -> "미완료";
-            case FAIL -> "실패";
+        return switch (filter) {
+            case "IN_PROGRESS" -> todoRepository.findByTeamIdAndStatusWithCreator(teamId, TodoStatus.IN_PROGRESS);
+            case "ENDED" -> todoRepository.findByTeamIdAndStatusInWithCreator(
+                    teamId,
+                    List.of(TodoStatus.SUCCESS, TodoStatus.FAIL)
+            );
+            default -> throw new BusinessException("알 수 없는 투두 필터입니다.", HttpStatus.BAD_REQUEST);
         };
     }
 
-    /**
-     * 마감이 지난 IN_PROGRESS 투두는 스케줄러가 FAIL로 바꾸기 전이라도 응답에서는 FAIL로 표시한다.
-     * (스케줄러 주기 사이 조회 시 표시 값이 흔들리지 않도록 계산으로 보정)
-     */
-    private TodoStatus resolveDisplayStatus(TodoStatus status, LocalDateTime deadline, LocalDateTime now) {
-        if (status == TodoStatus.IN_PROGRESS && deadline != null && deadline.isBefore(now)) {
-            return TodoStatus.FAIL;
+    private LocalDate parseDate(String date) {
+        try {
+            return LocalDate.parse(date);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException("date 형식은 yyyy-MM-dd 이어야 합니다.", HttpStatus.BAD_REQUEST);
         }
-        return status;
+    }
+
+    private LocalDate parseRequiredDate(String parameterName, String date) {
+        if (date == null || date.isBlank()) {
+            throw new BusinessException(parameterName + " 파라미터는 필수입니다.", HttpStatus.BAD_REQUEST);
+        }
+        try {
+            return LocalDate.parse(date);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(parameterName + " 형식은 yyyy-MM-dd 이어야 합니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private String achievementCount(List<TodoWorkItem> workItems) {
+        long success = workItems.stream().filter(workItem -> workItem.getStatus() == WorkItemStatus.SUCCESS).count();
+        return success + " / " + workItems.size();
+    }
+
+    private String resolveThumbnailUrl(TodoWorkItem workItem) {
+        if (workItem.getProofThumbnailKey() != null && !workItem.getProofThumbnailKey().isBlank()) {
+            return fileService.resolveImageUrl(workItem.getProofThumbnailKey());
+        }
+        return fileService.resolveImageUrl(workItem.getProofImageKey());
+    }
+
+    private String resolveCreatorNickname(Todo todo) {
+        return todo.getCreator() == null ? WithdrawnUserDisplay.NICKNAME : todo.getCreator().getNickname();
+    }
+
+    private Integer calculateAchievementRate(int successCount, int totalCount) {
+        return totalCount == 0 ? null : successCount * 100 / totalCount;
+    }
+
+    private int sortAchievementRate(Integer achievementRate) {
+        return achievementRate == null ? 101 : achievementRate;
     }
 
     private OffsetDateTime toKstOffset(LocalDateTime dateTime) {
-        if (dateTime == null) {
-            return null;
-        }
-
-        return dateTime.atOffset(ZoneOffset.ofHours(9));
+        return dateTime == null ? null : dateTime.atOffset(KST_OFFSET);
     }
 
     private LocalDateTime toKstLocalDateTime(OffsetDateTime dateTime) {
-        if (dateTime == null) {
-            return null;
+        return dateTime == null ? null : dateTime.withOffsetSameInstant(KST_OFFSET).toLocalDateTime();
+    }
+
+    private void cleanupProofThumbnail(String proofThumbnailKey, RuntimeException primaryFailure) {
+        try {
+            fileService.deleteObject(proofThumbnailKey);
+        } catch (RuntimeException deleteException) {
+            primaryFailure.addSuppressed(deleteException);
+        }
+    }
+
+    private OperationResult requireOperationResult(OperationResult result) {
+        if (result == null) {
+            throw new BusinessException("제출 처리에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return result;
+    }
+
+    private record OperationResult(BusinessException failure) {
+        static OperationResult success() {
+            return new OperationResult(null);
         }
 
-        return dateTime.withOffsetSameInstant(ZoneOffset.ofHours(9)).toLocalDateTime();
+        static OperationResult failed(String message, HttpStatus status) {
+            return new OperationResult(new BusinessException(message, status));
+        }
+
+        boolean hasFailed() {
+            return failure != null;
+        }
+
+        void throwIfFailed() {
+            if (failure != null) {
+                throw failure;
+            }
+        }
+    }
+
+    private record AssignmentResult(TodoWorkItemAssigneeResponse response, BusinessException failure) {
+        static AssignmentResult success(TodoWorkItemAssigneeResponse response) {
+            return new AssignmentResult(response, null);
+        }
+
+        static AssignmentResult failed(String message, HttpStatus status) {
+            return new AssignmentResult(null, new BusinessException(message, status));
+        }
+
+        void throwIfFailed() {
+            if (failure != null) {
+                throw failure;
+            }
+        }
+    }
+
+    private record Candidate(
+            Todo todo,
+            LocalDateTime deadline,
+            int successCount,
+            int totalCount,
+            int unverifiedCount,
+            int progressRate
+    ) {
+        static Candidate from(List<TodoWorkItem> workItems) {
+            Todo todo = workItems.get(0).getTodo();
+            int total = workItems.size();
+            int success = Math.toIntExact(workItems.stream()
+                    .filter(workItem -> workItem.getStatus() == WorkItemStatus.SUCCESS)
+                    .count());
+            LocalDateTime deadline = workItems.stream()
+                    .filter(workItem -> workItem.getStatus() == WorkItemStatus.IN_PROGRESS)
+                    .map(TodoWorkItem::getEffectiveDeadline)
+                    .min(LocalDateTime::compareTo)
+                    .orElse(todo.getDeadline());
+            return new Candidate(
+                    todo,
+                    deadline,
+                    success,
+                    total,
+                    Math.max(total - success, 0),
+                    total == 0 ? 0 : success * 100 / total
+            );
+        }
     }
 }

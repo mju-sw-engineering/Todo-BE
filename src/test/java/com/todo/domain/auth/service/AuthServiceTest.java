@@ -2,10 +2,12 @@ package com.todo.domain.auth.service;
 
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
-import com.todo.domain.auth.dto.response.LoginResponse;
+import com.todo.domain.auth.dto.response.LoginResult;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import com.todo.domain.auth.entity.ConsentType;
+import com.todo.domain.auth.entity.RefreshToken;
 import com.todo.domain.auth.entity.UserConsent;
+import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -24,6 +26,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,6 +48,8 @@ class AuthServiceTest {
     @Mock
     private UserConsentRepository userConsentRepository;
     @Mock
+    private RefreshTokenRepository refreshTokenRepository;
+    @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
     private JwtUtil jwtUtil;
@@ -52,6 +57,8 @@ class AuthServiceTest {
     private FileService fileService;
     @Mock
     private EmailVerificationService emailVerificationService;
+
+    // ──────────── signup ────────────
 
     @Test
     void 회원가입_성공() {
@@ -139,16 +146,22 @@ class AuthServiceTest {
         then(userRepository).should(never()).save(any());
     }
 
+    // ──────────── login ────────────
+
     @Test
     void 로그인_성공() {
         User user = User.create("user1", "encoded", "닉네임", null);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(passwordEncoder.matches("password123!", "encoded")).willReturn(true);
         given(jwtUtil.generateToken("user1")).willReturn("access-token");
+        given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
+        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
 
-        LoginResponse response = authService.login(new LoginRequest("user1", "password123!"));
+        LoginResult result = authService.login(new LoginRequest("user1", "password123!"));
 
-        assertThat(response.accessToken()).isEqualTo("access-token");
+        assertThat(result.accessToken()).isEqualTo("access-token");
+        assertThat(result.refreshToken()).isEqualTo("refresh-uuid");
+        then(refreshTokenRepository).should().save(any(RefreshToken.class));
     }
 
     @Test
@@ -170,6 +183,93 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
+
+    // ──────────── refresh ────────────
+
+    @Test
+    void 리프레시_성공() {
+        User user = User.create("user1", "encoded", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        RefreshToken token = RefreshToken.create(user, "old-uuid", LocalDateTime.now().plusDays(14));
+        given(refreshTokenRepository.findByToken("old-uuid")).willReturn(Optional.of(token));
+        given(jwtUtil.generateToken("user1")).willReturn("new-access-token");
+        given(jwtUtil.generateRefreshToken()).willReturn("new-uuid");
+        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
+
+        LoginResult result = authService.refresh("old-uuid");
+
+        assertThat(result.accessToken()).isEqualTo("new-access-token");
+        assertThat(result.refreshToken()).isEqualTo("new-uuid");
+        assertThat(token.isUsed()).isTrue();
+        then(refreshTokenRepository).should().save(any(RefreshToken.class));
+    }
+
+    @Test
+    void 리프레시_토큰이_없으면_예외를_던진다() {
+        assertThatThrownBy(() -> authService.refresh(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("리프레시 토큰");
+    }
+
+    @Test
+    void 리프레시_토큰이_DB에_없으면_예외를_던진다() {
+        given(refreshTokenRepository.findByToken("unknown")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.refresh("unknown"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("유효하지 않은");
+    }
+
+    @Test
+    void 리프레시_재사용_감지시_해당_사용자_토큰_전체_삭제하고_예외를_던진다() {
+        User user = User.create("user1", "encoded", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        RefreshToken usedToken = RefreshToken.create(user, "used-uuid", LocalDateTime.now().plusDays(14));
+        usedToken.markAsUsed();
+        given(refreshTokenRepository.findByToken("used-uuid")).willReturn(Optional.of(usedToken));
+
+        assertThatThrownBy(() -> authService.refresh("used-uuid"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("유효하지 않은");
+        then(refreshTokenRepository).should().deleteByUserId(1L);
+    }
+
+    @Test
+    void 리프레시_토큰_만료시_예외를_던진다() {
+        User user = User.create("user1", "encoded", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        RefreshToken expiredToken = RefreshToken.create(user, "expired-uuid", LocalDateTime.now().minusSeconds(1));
+        given(refreshTokenRepository.findByToken("expired-uuid")).willReturn(Optional.of(expiredToken));
+
+        assertThatThrownBy(() -> authService.refresh("expired-uuid"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("만료");
+    }
+
+    // ──────────── logout ────────────
+
+    @Test
+    void 로그아웃_성공() {
+        User user = User.create("user1", "encoded", "닉네임", null);
+        RefreshToken token = RefreshToken.create(user, "my-uuid", LocalDateTime.now().plusDays(14));
+        given(refreshTokenRepository.findByToken("my-uuid")).willReturn(Optional.of(token));
+
+        authService.logout("my-uuid");
+
+        then(refreshTokenRepository).should().delete(token);
+    }
+
+    @Test
+    void 로그아웃_토큰이_null이면_아무것도_하지_않는다() {
+        authService.logout(null);
+
+        then(refreshTokenRepository).should(never()).findByToken(any());
+    }
+
+    // ──────────── loadUserByUsername ────────────
 
     @Test
     void 사용자_상세정보를_로드한다() {

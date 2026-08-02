@@ -1,15 +1,13 @@
 package com.todo.domain.todo.service;
 
-import com.todo.domain.notification.entity.NotificationType;
-import com.todo.domain.notification.message.NotificationMessage;
 import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
-import com.todo.domain.team.entity.TeamMember;
-import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
+import com.todo.domain.todo.dto.request.AssignTodoWorkItemRequest;
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.CreateTodoTaskRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
@@ -17,18 +15,20 @@ import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
-import com.todo.domain.todo.entity.ParticipantStatus;
+import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
+import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
 import com.todo.domain.todo.entity.Todo;
-import com.todo.domain.todo.entity.TodoParticipant;
+import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoReaction;
 import com.todo.domain.todo.entity.TodoReactionType;
 import com.todo.domain.todo.entity.TodoStatus;
-import com.todo.domain.todo.repository.TodoParticipantRepository;
-import com.todo.domain.todo.repository.TodoParticipantDetail;
-import com.todo.domain.todo.repository.TodoParticipantSummary;
-import com.todo.domain.todo.repository.TodoReactionCount;
+import com.todo.domain.todo.entity.TodoWorkItem;
+import com.todo.domain.todo.entity.WorkItemStatus;
+import com.todo.domain.todo.entity.WorkItemType;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.todo.repository.TodoWorkItemRepository;
+import com.todo.domain.todo.repository.TodoWorkItemSummary;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -36,6 +36,7 @@ import com.todo.global.service.FileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -44,10 +45,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -57,11 +59,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class TodoServiceTest {
+
+    private static final Long TEAM_ID = 100L;
+    private static final Long TODO_ID = 10L;
 
     @InjectMocks
     private TodoService todoService;
@@ -69,7 +73,7 @@ class TodoServiceTest {
     @Mock
     private TodoRepository todoRepository;
     @Mock
-    private TodoParticipantRepository todoParticipantRepository;
+    private TodoWorkItemRepository todoWorkItemRepository;
     @Mock
     private TeamRepository teamRepository;
     @Mock
@@ -84,7 +88,6 @@ class TodoServiceTest {
     private TransactionTemplate transactionTemplate;
     @Mock
     private NotificationService notificationService;
-
     @Mock
     private NotificationMessageFactory notificationMessageFactory;
 
@@ -97,733 +100,601 @@ class TodoServiceTest {
     }
 
     @Test
-    void 전체_조회는_필터가_없으면_전체_레포지토리_메서드를_호출한다() {
-        User user = userWithId(1L);
-        Todo todo = todoWithId(10L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 5, 20, 10, 0));
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdWithCreator(100L)).willReturn(List.of(todo));
-        given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L))).willReturn(List.of(
-                participant(10L, 1L, "닉네임1", ParticipantStatus.SUCCESS),
-                participant(10L, 2L, "닉네임2", ParticipantStatus.IN_PROGRESS)
+    void DIRECT_생성은_담당자마다_DIRECT_WorkItem을_만든다() {
+        User creator = user(1L);
+        User firstAssignee = user(2L);
+        User secondAssignee = user(3L);
+        Team team = team();
+        givenCreateAccess(creator, team);
+        given(todoRepository.save(any(Todo.class))).willAnswer(invocation -> {
+            Todo todo = invocation.getArgument(0);
+            setId(todo, TODO_ID);
+            return todo;
+        });
+        given(userRepository.findById(2L)).willReturn(Optional.of(firstAssignee));
+        given(userRepository.findById(3L)).willReturn(Optional.of(secondAssignee));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 3L)).willReturn(true);
+
+        CreateTodoResponse response = todoService.createTodo("user1", TEAM_ID, new CreateTodoRequest(
+                "공통 인증", "설명", futureOffset(3), List.of(2L, 3L), null
         ));
 
-        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null, null);
-
-        assertThat(response).hasSize(1);
-        assertThat(response.get(0).achievementCount()).isEqualTo("1 / 2");
-        assertThat(response.get(0).myStatus()).isEqualTo("완료");
-        assertThat(response.get(0).progressRate()).isEqualTo(50);
-        assertThat(response.get(0).participants()).hasSize(2);
-        assertThat(response.get(0).participants().get(0).memberId()).isEqualTo(1L);
-        assertThat(response.get(0).participants().get(0).nickname()).isEqualTo("닉네임1");
-        assertThat(response.get(0).participants().get(0).status()).isEqualTo("완료");
-        assertThat(response.get(0).participants().get(1).memberId()).isEqualTo(2L);
-        assertThat(response.get(0).participants().get(1).nickname()).isEqualTo("닉네임2");
-        assertThat(response.get(0).participants().get(1).status()).isEqualTo("미완료");
-        then(todoRepository).should().findByTeamIdWithCreator(100L);
+        assertThat(response.mode()).isEqualTo(TodoMode.DIRECT);
+        assertThat(response.directAssignees()).hasSize(2);
+        assertThat(response.tasks()).isEmpty();
+        ArgumentCaptor<List<TodoWorkItem>> workItems = ArgumentCaptor.forClass(List.class);
+        then(todoWorkItemRepository).should().saveAll(workItems.capture());
+        assertThat(workItems.getValue())
+                .extracting(TodoWorkItem::getType)
+                .containsOnly(WorkItemType.DIRECT);
+        assertThat(workItems.getValue())
+                .extracting(workItem -> workItem.getAssignee().getId())
+                .containsExactly(2L, 3L);
     }
 
     @Test
-    void 진행중_필터는_IN_PROGRESS_상태만_조회한다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdAndStatusWithCreator(100L, TodoStatus.IN_PROGRESS))
-                .willReturn(List.of());
+    void TASK_생성은_같은_담당자에게도_여러_Task_WorkItem과_순서를_보존한다() {
+        User creator = user(1L);
+        User assignee = user(2L);
+        Team team = team();
+        givenCreateAccess(creator, team);
+        given(todoRepository.save(any(Todo.class))).willAnswer(invocation -> {
+            Todo todo = invocation.getArgument(0);
+            setId(todo, TODO_ID);
+            return todo;
+        });
+        given(userRepository.findById(2L)).willReturn(Optional.of(assignee));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
 
-        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", "IN_PROGRESS", null);
-
-        assertThat(response).isEmpty();
-        then(todoRepository).should().findByTeamIdAndStatusWithCreator(100L, TodoStatus.IN_PROGRESS);
-    }
-
-    @Test
-    void 종료_필터는_SUCCESS_FAIL_상태를_조회한다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdAndStatusInWithCreator(100L, List.of(TodoStatus.SUCCESS, TodoStatus.FAIL)))
-                .willReturn(List.of());
-
-        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", "ENDED", null);
-
-        assertThat(response).isEmpty();
-        then(todoRepository).should()
-                .findByTeamIdAndStatusInWithCreator(100L, List.of(TodoStatus.SUCCESS, TodoStatus.FAIL));
-    }
-
-    @Test
-    void 알수없는_필터는_400_예외를_던진다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-
-        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", "UNKNOWN", null))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("알 수 없는 투두 필터입니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-    }
-
-    @Test
-    void 날짜_파라미터_조회는_해당_날짜_하루_범위를_전달한다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(eq(100L), any(), any()))
-                .willReturn(List.of());
-
-        todoService.getTodoList(100L, "user1", null, "2026-05-20");
-
-        then(todoRepository).should().findByTeamIdAndDeadlineBetweenWithCreator(
-                100L,
-                LocalDateTime.of(2026, 5, 20, 0, 0),
-                LocalDateTime.of(2026, 5, 21, 0, 0)
-        );
-    }
-
-    @Test
-    void 필터와_날짜를_함께_사용하면_400_예외를_던진다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-
-        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", "ENDED", "2026-05-20"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("filter와 date는 함께 사용할 수 없습니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-    }
-
-    @Test
-    void 날짜_형식이_잘못되면_400_예외를_던진다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-
-        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", null, "2026/05/20"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("date 형식은 yyyy-MM-dd 이어야 합니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-    }
-
-    @Test
-    void 특정날짜_조회는_date_기준_하루_범위를_전달한다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(eq(100L), any(), any()))
-                .willReturn(List.of());
-
-        todoService.getTodoList(100L, "user1", null, "2026-05-20");
-
-        then(todoRepository).should().findByTeamIdAndDeadlineBetweenWithCreator(
-                100L,
-                LocalDateTime.of(2026, 5, 20, 0, 0),
-                LocalDateTime.of(2026, 5, 21, 0, 0)
-        );
-    }
-
-    @Test
-    void 기간_리포트는_요약_일별통계_액션후보를_계산한다() {
-        User user = userWithId(1L);
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-        LocalDate yesterday = today.minusDays(1);
-        LocalDate tomorrow = today.plusDays(1);
-        LocalDateTime futureDeadline = LocalDateTime.now(ZoneId.of("Asia/Seoul")).plusDays(1);
-        Todo successTodo = todoWithId(10L, TodoStatus.SUCCESS, yesterday.atTime(10, 0));
-        Todo failTodo = todoWithId(11L, TodoStatus.FAIL, yesterday.atTime(18, 0));
-        Todo progressTodo = todoWithId(12L, TodoStatus.IN_PROGRESS, futureDeadline);
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdAndDeadlineBetweenWithCreator(
-                100L,
-                yesterday.atStartOfDay(),
-                tomorrow.plusDays(1).atStartOfDay()
-        )).willReturn(List.of(successTodo, failTodo, progressTodo));
-        given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L, 11L, 12L))).willReturn(List.of(
-                participant(10L, 1L, "닉네임1", ParticipantStatus.SUCCESS),
-                participant(10L, 2L, "닉네임2", ParticipantStatus.SUCCESS),
-                participant(11L, 1L, "닉네임1", ParticipantStatus.FAIL),
-                participant(11L, 2L, "닉네임2", ParticipantStatus.IN_PROGRESS),
-                participant(12L, 1L, "닉네임1", ParticipantStatus.SUCCESS),
-                participant(12L, 2L, "닉네임2", ParticipantStatus.IN_PROGRESS)
-        ));
-
-        TodoPeriodReportResponse response = todoService.getTodoPeriodReport(
-                100L,
-                "user1",
-                yesterday.toString(),
-                tomorrow.toString()
-        );
-
-        assertThat(response.period().dateCount()).isEqualTo(3);
-        assertThat(response.summary().totalTodoCount()).isEqualTo(3);
-        assertThat(response.summary().successCount()).isEqualTo(1);
-        assertThat(response.summary().failCount()).isEqualTo(1);
-        assertThat(response.summary().inProgressCount()).isEqualTo(1);
-        assertThat(response.summary().achievementRate()).isEqualTo(33);
-        assertThat(response.dailyStats()).hasSize(3);
-        assertThat(response.dailyStats().get(0).date()).isEqualTo(yesterday);
-        assertThat(response.dailyStats().get(0).achievementRate()).isEqualTo(50);
-        assertThat(response.weakestDay().date()).isEqualTo(tomorrow);
-        assertThat(response.actionCandidates()).hasSize(1);
-        assertThat(response.actionCandidates().get(0).todoId()).isEqualTo(12L);
-        assertThat(response.actionCandidates().get(0).achievementCount()).isEqualTo(1);
-        assertThat(response.actionCandidates().get(0).participantCount()).isEqualTo(2);
-        assertThat(response.actionCandidates().get(0).unverifiedCount()).isEqualTo(1);
-        assertThat(response.actionCandidates().get(0).progressRate()).isEqualTo(50);
-    }
-
-    @Test
-    void 마감이_지난_진행중_투두는_응답에서_실패로_표시된다() {
-        User user = userWithId(1L);
-        Todo expiredTodo = todoWithId(10L, TodoStatus.IN_PROGRESS, LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusMinutes(1));
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdWithCreator(100L)).willReturn(List.of(expiredTodo));
-        given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L))).willReturn(List.of(
-                participant(10L, 1L, "닉네임1", ParticipantStatus.IN_PROGRESS)
-        ));
-
-        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null, null);
-
-        assertThat(response).hasSize(1);
-        assertThat(response.get(0).status()).isEqualTo(TodoStatus.FAIL);
-    }
-
-    @Test
-    void 기간_리포트는_startDate가_endDate보다_늦으면_400_예외를_던진다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-
-        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
-                100L,
-                "user1",
-                "2026-05-22",
-                "2026-05-20"
-        ))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("startDate는 endDate보다 늦을 수 없습니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-        then(todoRepository).shouldHaveNoInteractions();
-    }
-
-    @Test
-    void 기간_리포트는_startDate가_없으면_400_예외를_던진다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
-
-        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
-                100L,
-                "user1",
+        CreateTodoResponse response = todoService.createTodo("user1", TEAM_ID, new CreateTodoRequest(
+                "발표 준비",
                 null,
-                "2026-05-20"
-        ))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("startDate 파라미터는 필수입니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-        then(todoRepository).shouldHaveNoInteractions();
+                futureOffset(3),
+                null,
+                List.of(
+                        new CreateTodoTaskRequest("자료 조사", null, 2L, futureOffset(1)),
+                        new CreateTodoTaskRequest("발표 자료", "슬라이드", 2L, futureOffset(2))
+                )
+        ));
+
+        assertThat(response.mode()).isEqualTo(TodoMode.TASK);
+        assertThat(response.directAssignees()).isEmpty();
+        assertThat(response.tasks()).extracting(task -> task.title()).containsExactly("자료 조사", "발표 자료");
+        assertThat(response.tasks()).extracting(task -> task.position()).containsExactly(0, 1);
     }
 
     @Test
-    void 기간_리포트는_endDate가_없으면_400_예외를_던진다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
+    void 생성은_DIRECT_담당자와_TASK를_함께_요청하면_거절한다() {
+        User creator = user(1L);
+        givenCreateAccess(creator, team());
 
-        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
-                100L,
-                "user1",
-                "2026-05-20",
-                " "
-        ))
+        assertThatThrownBy(() -> todoService.createTodo("user1", TEAM_ID, new CreateTodoRequest(
+                "잘못된 요청",
+                null,
+                futureOffset(1),
+                List.of(2L),
+                List.of(new CreateTodoTaskRequest("작업", null, 2L, futureOffset(1)))
+        )))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("endDate 파라미터는 필수입니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-        then(todoRepository).shouldHaveNoInteractions();
+                .hasMessage("assigneeIds와 tasks 중 하나만 입력해야 합니다.")
+                .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test
-    void 기간_리포트는_날짜_형식이_잘못되면_400_예외를_던진다() {
-        User user = userWithId(1L);
-        givenValidTeamMember(user);
+    void TASK_마감이_현재보다_과거면_생성을_거절한다() {
+        User creator = user(1L);
+        User assignee = user(2L);
+        Team team = team();
+        givenCreateAccess(creator, team);
+        given(userRepository.findById(2L)).willReturn(Optional.of(assignee));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
 
-        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
-                100L,
-                "user1",
-                "2026/05/20",
-                "2026-05-21"
-        ))
+        assertThatThrownBy(() -> todoService.createTodo("user1", TEAM_ID, new CreateTodoRequest(
+                "마감된 작업",
+                null,
+                futureOffset(1),
+                null,
+                List.of(new CreateTodoTaskRequest(
+                        "이미 마감된 Task",
+                        null,
+                        2L,
+                        OffsetDateTime.now(ZoneOffset.ofHours(9)).minusMinutes(1)
+                ))
+        )))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("startDate 형식은 yyyy-MM-dd 이어야 합니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-        then(todoRepository).shouldHaveNoInteractions();
+                .hasMessage("Task 마감은 현재보다 미래여야 합니다.")
+                .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        then(todoWorkItemRepository).shouldHaveNoInteractions();
     }
 
     @Test
-    void 팀_멤버가_아니면_403_예외를_던진다() {
-        User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamRepository.existsById(100L)).willReturn(true);
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
+    void 마감된_TASK가_부모를_FAIL로_만든_뒤에도_다른_진행중_TASK는_제출할_수_있다() {
+        User firstAssignee = user(1L);
+        User secondAssignee = user(2L);
+        Team team = team();
+        Todo todo = todo(team, TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(3));
+        TodoWorkItem expired = task(todo, firstAssignee, 20L, "지난 작업", LocalDateTime.now().minusMinutes(1), 0);
+        TodoWorkItem remaining = task(todo, secondAssignee, 21L, "남은 작업", LocalDateTime.now().plusDays(1), 1);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(firstAssignee));
+        given(userRepository.findByLoginId("user2")).willReturn(Optional.of(secondAssignee));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(expired));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(21L)).willReturn(Optional.of(remaining));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(expired));
+        given(todoWorkItemRepository.findByIdWithLock(21L)).willReturn(Optional.of(remaining));
+        given(fileService.createProofThumbnail("remaining-proof")).willReturn("remaining-thumb");
+        given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(2L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
 
-        assertThatThrownBy(() -> todoService.getTodoList(100L, "user1", null, null))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("expired-proof")))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("팀에 접근할 권한이 없습니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+                .hasMessage("마감 시간이 지났습니다.");
+        assertThat(expired.getStatus()).isEqualTo(WorkItemStatus.FAIL);
+        assertThat(todo.getStatus()).isEqualTo(TodoStatus.FAIL);
+
+        todoService.submitTodoWorkItem(21L, "user2", new SubmitTodoRequest("remaining-proof"));
+
+        assertThat(remaining.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
+        assertThat(todo.getStatus()).isEqualTo(TodoStatus.FAIL);
+        then(teamRepository).shouldHaveNoInteractions();
     }
 
     @Test
-    void 인증_사진을_제출하면_즉시_완료_처리한다() {
-        User user = userWithId(1L);
-        Team team = teamWithId(100L);
-        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
-        TodoParticipant participant = todoParticipantWithId(20L, todo, user);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
-        given(todoRepository.findByIdWithLock(10L)).willReturn(Optional.of(todo));
-        given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L)).willReturn(Optional.of(participant));
-        given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
-        given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
-        given(todoParticipantRepository.countByTodoIdAndStatus(10L, ParticipantStatus.SUCCESS)).willReturn(1L);
+    void WorkItem_제출은_담당자가_아니면_403을_반환하고_파일을_검증하지_않는다() {
+        User assignee = user(1L);
+        User outsider = user(2L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = task(todo, assignee, 20L, "담당 작업", LocalDateTime.now().plusDays(1), 0);
+        given(userRepository.findByLoginId("user2")).willReturn(Optional.of(outsider));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
 
-        todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key"));
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "user2", new SubmitTodoRequest("proof")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("해당 WorkItem의 담당자가 아닙니다.")
+                .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+        then(fileService).shouldHaveNoInteractions();
+    }
 
-        assertThat(participant.getStatus()).isEqualTo(ParticipantStatus.SUCCESS);
-        assertThat(participant.getProofImageKey()).isEqualTo("proof-key");
-        assertThat(participant.getProofThumbnailKey()).isEqualTo("proof-thumb-key");
+    @Test
+    void 다른_WorkItem에_사용된_인증사진은_중복_제출할_수_없다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = task(todo, assignee, 20L, "새 작업", LocalDateTime.now().plusDays(1), 0);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(assignee));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+        given(todoWorkItemRepository.existsByProofImageKey("used-proof")).willReturn(true);
+
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("used-proof")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 다른 WorkItem에 제출된 인증 사진입니다.")
+                .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        then(fileService).should().validateProofImage(1L, "used-proof");
+        then(fileService).shouldHaveNoMoreInteractions();
+    }
+
+    @Test
+    void 마지막_WorkItem_제출은_부모를_성공으로_한번만_전이시키고_중복_제출은_409다() {
+        User assignee = user(1L);
+        Team team = team();
+        Todo todo = todo(team, TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(assignee));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+        given(fileService.createProofThumbnail("proof")).willReturn("thumb");
+        given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(1L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
+
+        todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("proof"));
+
+        assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
-        then(todoParticipantRepository).should().findByTodoIdAndUserIdWithLock(10L, 1L);
-        then(teamRepository).should().incrementSuccessCount(100L);
-    }
+        then(teamRepository).should().incrementSuccessCount(TEAM_ID);
 
-    @Test
-    void 인증_사진_썸네일_생성에_실패해도_원본으로_제출을_완료한다() {
-        User user = userWithId(1L);
-        Team team = teamWithId(100L);
-        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
-        TodoParticipant participant = todoParticipantWithId(20L, todo, user);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
-        given(todoRepository.findByIdWithLock(10L)).willReturn(Optional.of(todo));
-        given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L)).willReturn(Optional.of(participant));
-        given(fileService.createProofThumbnail("proof-key")).willReturn(null);
-        given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
-        given(todoParticipantRepository.countByTodoIdAndStatus(10L, ParticipantStatus.SUCCESS)).willReturn(1L);
-
-        todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key"));
-
-        assertThat(participant.getStatus()).isEqualTo(ParticipantStatus.SUCCESS);
-        assertThat(participant.getProofImageKey()).isEqualTo("proof-key");
-        assertThat(participant.getProofThumbnailKey()).isNull();
-        assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
-    }
-
-    @Test
-    void 인증_사진_제출_트랜잭션이_실패하면_생성된_썸네일을_삭제한다() {
-        User user = userWithId(1L);
-        Team team = teamWithId(100L);
-        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
-        TodoParticipant participantForCheck = todoParticipantWithId(20L, todo, user);
-        TodoParticipant alreadySubmittedParticipant = submittedParticipantWithId(20L, todo, user);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
-                .willReturn(Optional.of(participantForCheck));
-        given(todoRepository.findByIdWithLock(10L)).willReturn(Optional.of(todo));
-        given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L))
-                .willReturn(Optional.of(alreadySubmittedParticipant));
-        given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
-
-        assertThatThrownBy(() -> todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key")))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("another-proof")))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("이미 제출되었거나 완료된 투두입니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
-
-        then(fileService).should().deleteObject("proof-thumb-key");
+                .hasMessage("이미 제출했거나 종료된 WorkItem입니다.")
+                .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        then(teamRepository).shouldHaveNoMoreInteractions();
     }
 
     @Test
-    void 썸네일_삭제가_실패해도_제출_실패_예외를_유지한다() {
-        User user = userWithId(1L);
-        Team team = teamWithId(100L);
-        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
-        TodoParticipant participantForCheck = todoParticipantWithId(20L, todo, user);
-        TodoParticipant alreadySubmittedParticipant = submittedParticipantWithId(20L, todo, user);
-        IllegalStateException deleteFailure = new IllegalStateException("delete failed");
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
-                .willReturn(Optional.of(participantForCheck));
-        given(todoRepository.findByIdWithLock(10L)).willReturn(Optional.of(todo));
-        given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L))
-                .willReturn(Optional.of(alreadySubmittedParticipant));
-        given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
-        doThrow(deleteFailure).when(fileService).deleteObject("proof-thumb-key");
+    void 미배정_TASK는_팀원이_재배정할_수_있다() {
+        User requester = user(1L);
+        User newAssignee = user(2L);
+        Team team = team();
+        Todo todo = todo(team, TodoMode.TASK, TodoStatus.FAIL, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = task(todo, null, 20L, "인수인계", LocalDateTime.now().plusDays(1), 0);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(requester));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
+        given(userRepository.findById(2L)).willReturn(Optional.of(newAssignee));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
 
-        assertThatThrownBy(() -> todoService.submitTodo(10L, "user1", new SubmitTodoRequest("proof-key")))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("이미 제출되었거나 완료된 투두입니다.")
-                .satisfies(e -> assertThat(e.getSuppressed()).containsExactly(deleteFailure));
-    }
-
-    @Test
-    void 이모지_반응은_없으면_생성한다() {
-        User user = userWithId(1L);
-        Team team = teamWithId(100L);
-        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
-        TodoParticipant participant = submittedParticipantWithId(20L, todo, userWithId(2L));
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoParticipantRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(participant));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
-        given(todoReactionRepository.findByTodoParticipantIdAndUserId(20L, 1L)).willReturn(Optional.empty());
-        given(todoReactionRepository.countByTodoParticipantIdAndReactionType(20L, TodoReactionType.LIKE)).willReturn(1L);
-
-        TodoReactionResponse response = todoService.reactTodoParticipant(
-                20L,
-                "user1",
-                new ReactTodoRequest(TodoReactionType.LIKE)
+        TodoWorkItemAssigneeResponse response = todoService.reassignTodoWorkItem(
+                20L, "user1", new AssignTodoWorkItemRequest(2L)
         );
+
+        assertThat(response.assigneeId()).isEqualTo(2L);
+        assertThat(workItem.getAssignee()).isSameAs(newAssignee);
+    }
+
+    @Test
+    void 팀원은_제출사진의_원본과_썸네일_URL을_조회할_수_있다() {
+        User viewer = user(1L);
+        User assignee = user(2L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = task(todo, assignee, 20L, "사진 작업", LocalDateTime.now().plusDays(1), 0);
+        setField(workItem, "proofImageKey", "proof/original.jpg");
+        setField(workItem, "proofThumbnailKey", "proof/thumb.webp");
+        setField(workItem, "submittedAt", LocalDateTime.of(2026, 8, 2, 12, 0));
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
+        given(fileService.resolveImageUrl("proof/original.jpg")).willReturn("original-url");
+        given(fileService.resolveImageUrl("proof/thumb.webp")).willReturn("thumb-url");
+        given(fileService.getPresignedUrlExpiration()).willReturn(Duration.ofMinutes(10));
+
+        TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(20L, "user1");
+
+        assertThat(response.workItemId()).isEqualTo(20L);
+        assertThat(response.assigneeId()).isEqualTo(2L);
+        assertThat(response.originalUrl()).isEqualTo("original-url");
+        assertThat(response.thumbnailUrl()).isEqualTo("thumb-url");
+        assertThat(response.submittedAt()).isEqualTo(OffsetDateTime.of(2026, 8, 2, 12, 0, 0, 0, ZoneOffset.ofHours(9)));
+    }
+
+    @Test
+    void 제출된_WorkItem에는_팀원이_반응을_새로_남길_수_있다() {
+        User reactor = user(1L);
+        User assignee = user(2L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = task(todo, assignee, 20L, "반응 대상", LocalDateTime.now().plusDays(1), 0);
+        setField(workItem, "proofImageKey", "proof.jpg");
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(reactor));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
+        given(todoReactionRepository.findByTodoWorkItemIdAndUserId(20L, 1L)).willReturn(Optional.empty());
+        given(todoReactionRepository.save(any(TodoReaction.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(todoReactionRepository.countByTodoWorkItemIdAndReactionType(20L, TodoReactionType.LIKE)).willReturn(1L);
+
+        TodoReactionResponse response = todoService.reactTodoWorkItem(20L, "user1", new ReactTodoRequest(TodoReactionType.LIKE));
 
         assertThat(response.type()).isEqualTo(TodoReactionType.LIKE);
-        assertThat(response.count()).isEqualTo(1);
+        assertThat(response.count()).isEqualTo(1L);
         then(todoReactionRepository).should().save(any(TodoReaction.class));
     }
 
     @Test
-    void 이모지_반응은_다른_이모지를_누르면_변경한다() {
-        User user = userWithId(1L);
-        Team team = teamWithId(100L);
-        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
-        TodoParticipant participant = submittedParticipantWithId(20L, todo, userWithId(2L));
-        TodoReaction reaction = TodoReaction.create(participant, user, TodoReactionType.HEART);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoParticipantRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(participant));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
-        given(todoReactionRepository.findByTodoParticipantIdAndUserId(20L, 1L)).willReturn(Optional.of(reaction));
-        given(todoReactionRepository.countByTodoParticipantIdAndReactionType(20L, TodoReactionType.ANGRY)).willReturn(1L);
+    void 목록은_WorkItem_기준_달성수와_내_여러_작업상태를_요약한다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        givenListAccess(viewer);
+        given(todoRepository.findByTeamIdWithCreator(TEAM_ID)).willReturn(List.of(todo));
+        given(todoWorkItemRepository.findSummaryByTodoIdIn(List.of(TODO_ID))).willReturn(List.of(
+                summary(TODO_ID, 1L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 0),
+                summary(TODO_ID, 1L, WorkItemStatus.FAIL, WorkItemType.TASK, 1),
+                summary(TODO_ID, 1L, WorkItemStatus.IN_PROGRESS, WorkItemType.TASK, 2),
+                summary(TODO_ID, 2L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 3)
+        ));
 
-        todoService.reactTodoParticipant(20L, "user1", new ReactTodoRequest(TodoReactionType.ANGRY));
+        TodoSummaryResponse response = todoService.getTodoList(TEAM_ID, "user1", null, null).get(0);
 
-        assertThat(reaction.getReactionType()).isEqualTo(TodoReactionType.ANGRY);
+        assertThat(response.achievementCount()).isEqualTo("2 / 4");
+        assertThat(response.myWorkSummary().totalCount()).isEqualTo(3);
+        assertThat(response.myWorkSummary().successCount()).isEqualTo(1);
+        assertThat(response.myWorkSummary().failCount()).isEqualTo(1);
+        assertThat(response.myWorkSummary().inProgressCount()).isEqualTo(1);
     }
 
     @Test
-    void 이모지_반응은_같은_이모지를_다시_누르면_취소한다() {
-        User user = userWithId(1L);
-        Team team = teamWithId(100L);
-        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
-        TodoParticipant participant = submittedParticipantWithId(20L, todo, userWithId(2L));
-        TodoReaction reaction = TodoReaction.create(participant, user, TodoReactionType.LIKE);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(todoParticipantRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(participant));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
-        given(todoReactionRepository.findByTodoParticipantIdAndUserId(20L, 1L)).willReturn(Optional.of(reaction));
-        given(todoReactionRepository.countByTodoParticipantIdAndReactionType(20L, TodoReactionType.LIKE)).willReturn(0L);
+    void DIRECT_상세는_DIRECT_담당자만_노출하고_TASK_배열은_비운다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, viewer, 20L);
+        givenDetailAccess(viewer, todo);
+        given(todoWorkItemRepository.findByTodoIdOrderByPositionAsc(TODO_ID)).willReturn(List.of(workItem));
+        given(todoReactionRepository.countByTodoWorkItemIds(List.of(20L))).willReturn(List.of());
+        given(todoReactionRepository.findByTodoWorkItemIdInAndUserId(List.of(20L), 1L)).willReturn(List.of());
 
-        TodoReactionResponse response = todoService.reactTodoParticipant(
+        TodoDetailResponse response = todoService.getTodoDetail(TODO_ID, "user1");
+
+        assertThat(response.mode()).isEqualTo(TodoMode.DIRECT);
+        assertThat(response.directAssignees()).hasSize(1);
+        assertThat(response.tasks()).isEmpty();
+    }
+
+    @Test
+    void TASK_상세는_TASK만_노출하고_DIRECT_배열은_비운다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = task(todo, viewer, 20L, "세부 작업", LocalDateTime.now().plusDays(1), 0);
+        givenDetailAccess(viewer, todo);
+        given(todoWorkItemRepository.findByTodoIdOrderByPositionAsc(TODO_ID)).willReturn(List.of(workItem));
+        given(todoReactionRepository.countByTodoWorkItemIds(List.of(20L))).willReturn(List.of());
+        given(todoReactionRepository.findByTodoWorkItemIdInAndUserId(List.of(20L), 1L)).willReturn(List.of());
+
+        TodoDetailResponse response = todoService.getTodoDetail(TODO_ID, "user1");
+
+        assertThat(response.mode()).isEqualTo(TodoMode.TASK);
+        assertThat(response.directAssignees()).isEmpty();
+        assertThat(response.tasks()).extracting(task -> task.title()).containsExactly("세부 작업");
+    }
+
+    @Test
+    void 목록은_전체_상태_날짜_필터를_지원하고_잘못된_조합은_거절한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        assertThat(todoService.getTodoList(TEAM_ID, "user1", null, null)).isEmpty();
+        assertThat(todoService.getTodoList(TEAM_ID, "user1", "", null)).isEmpty();
+        assertThat(todoService.getTodoList(TEAM_ID, "user1", "IN_PROGRESS", null)).isEmpty();
+        assertThat(todoService.getTodoList(TEAM_ID, "user1", "ENDED", null)).isEmpty();
+        assertThat(todoService.getTodoList(TEAM_ID, "user1", null, "2026-08-02")).isEmpty();
+
+        assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "user1", "UNKNOWN", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("알 수 없는 투두 필터입니다.");
+        assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "user1", null, "2026/08/02"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("date 형식은 yyyy-MM-dd 이어야 합니다.");
+        assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "user1", "ENDED", "2026-08-02"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("filter와 date는 함께 사용할 수 없습니다.");
+    }
+
+    @Test
+    void 기간_리포트는_입력날짜를_검증하고_WorkItem_마감일_기준으로_집계한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(TEAM_ID, "user1", null, "2026-08-02"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startDate 파라미터는 필수입니다.");
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(TEAM_ID, "user1", " ", "2026-08-02"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startDate 파라미터는 필수입니다.");
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(TEAM_ID, "user1", "invalid", "2026-08-02"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startDate 형식은 yyyy-MM-dd 이어야 합니다.");
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
+                TEAM_ID, "user1", "2026-08-03", "2026-08-02"
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startDate는 endDate보다 늦을 수 없습니다.");
+
+        LocalDate reportDate = LocalDate.of(2026, 8, 2);
+        Team team = team();
+        Todo inProgressTodo = todo(
+                team,
+                TodoMode.TASK,
+                TodoStatus.IN_PROGRESS,
+                reportDate.atTime(23, 0)
+        );
+        TodoWorkItem success = task(inProgressTodo, user(1L), 20L, "완료", reportDate.atTime(10, 0), 0);
+        success.markAsSuccess();
+        TodoWorkItem inProgress = task(inProgressTodo, user(2L), 21L, "진행", reportDate.atTime(12, 0), 1);
+        Todo failedTodo = todo(team, TodoMode.TASK, TodoStatus.FAIL, reportDate.atTime(22, 0));
+        setId(failedTodo, 11L);
+        TodoWorkItem fail = task(failedTodo, user(3L), 22L, "실패", reportDate.atTime(14, 0), 0);
+        fail.markAsFail();
+        given(todoWorkItemRepository.findByTeamIdAndEffectiveDeadlineBetween(
+                TEAM_ID,
+                reportDate.atStartOfDay(),
+                reportDate.plusDays(2).atStartOfDay()
+        )).willReturn(List.of(success, inProgress, fail));
+
+        TodoPeriodReportResponse response = todoService.getTodoPeriodReport(
+                TEAM_ID,
+                "user1",
+                reportDate.toString(),
+                reportDate.plusDays(1).toString()
+        );
+
+        assertThat(response.summary().totalTodoCount()).isEqualTo(3);
+        assertThat(response.summary().successCount()).isEqualTo(1);
+        assertThat(response.summary().failCount()).isEqualTo(1);
+        assertThat(response.summary().inProgressCount()).isEqualTo(1);
+        assertThat(response.dailyStats()).hasSize(2);
+        assertThat(response.weakestDay().date()).isEqualTo(reportDate);
+        assertThat(response.actionCandidates()).hasSize(1);
+        assertThat(response.actionCandidates().get(0).todoId()).isEqualTo(TODO_ID);
+    }
+
+    @Test
+    void 제출사진_조회는_썸네일이_없으면_원본을_쓰고_미제출은_404다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem submitted = task(todo, user(2L), 20L, "제출", LocalDateTime.now().plusDays(1), 0);
+        setField(submitted, "proofImageKey", "proof/original.jpg");
+        setField(submitted, "submittedAt", LocalDateTime.now());
+        TodoWorkItem unsubmitted = task(todo, user(2L), 21L, "미제출", LocalDateTime.now().plusDays(1), 1);
+        TodoWorkItem missingTime = task(todo, user(2L), 22L, "시각 누락", LocalDateTime.now().plusDays(1), 2);
+        setField(missingTime, "proofImageKey", "proof/missing-time.jpg");
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(submitted));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(21L)).willReturn(Optional.of(unsubmitted));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(22L)).willReturn(Optional.of(missingTime));
+        given(fileService.resolveImageUrl("proof/original.jpg")).willReturn("original-url");
+        given(fileService.getPresignedUrlExpiration()).willReturn(Duration.ofMinutes(10));
+
+        TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(20L, "user1");
+
+        assertThat(response.thumbnailUrl()).isEqualTo("original-url");
+        assertThatThrownBy(() -> todoService.getTodoWorkItemSubmission(21L, "user1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("제출된 인증 사진이 없습니다.");
+        assertThatThrownBy(() -> todoService.getTodoWorkItemSubmission(22L, "user1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("제출된 인증 사진이 없습니다.");
+    }
+
+    @Test
+    void 같은_반응은_취소하고_다른_반응은_변경한다() {
+        User reactor = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        TodoWorkItem workItem = direct(todo, user(2L), 20L);
+        setField(workItem, "proofImageKey", "proof.jpg");
+        TodoReaction same = TodoReaction.create(workItem, reactor, TodoReactionType.LIKE);
+        TodoReaction different = TodoReaction.create(workItem, reactor, TodoReactionType.HEART);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(reactor));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
+        given(todoReactionRepository.findByTodoWorkItemIdAndUserId(20L, 1L))
+                .willReturn(Optional.of(same), Optional.of(different));
+
+        TodoReactionResponse cancelled = todoService.reactTodoWorkItem(
+                20L,
+                "user1",
+                new ReactTodoRequest(TodoReactionType.LIKE)
+        );
+        TodoReactionResponse changed = todoService.reactTodoWorkItem(
                 20L,
                 "user1",
                 new ReactTodoRequest(TodoReactionType.LIKE)
         );
 
-        assertThat(response.count()).isZero();
-        then(todoReactionRepository).should().delete(reaction);
+        assertThat(cancelled.count()).isZero();
+        assertThat(changed.type()).isEqualTo(TodoReactionType.LIKE);
+        assertThat(different.getReactionType()).isEqualTo(TodoReactionType.LIKE);
+        then(todoReactionRepository).should().delete(same);
     }
 
     @Test
-    void 투두_생성_성공() {
-        User creator = userWithId(1L);
-        User assignee = userWithId(2L);
-        Team team = teamWithId(100L);
-        OffsetDateTime deadline = OffsetDateTime.parse("2026-06-04T12:00:00+09:00");
-        CreateTodoRequest request = new CreateTodoRequest("투두", "설명", deadline, List.of(2L));
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
-        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
-        given(todoRepository.save(any(Todo.class))).willAnswer(invocation -> {
-            Todo todo = invocation.getArgument(0);
-            ReflectionTestUtils.setField(todo, "id", 10L);
-            return todo;
-        });
-        given(userRepository.findById(2L)).willReturn(Optional.of(assignee));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 2L)).willReturn(true);
+    void 재배정은_이미_배정된_항목을_400으로_거절하고_자기배정에는_알림을_보내지_않는다() {
+        User requester = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.FAIL, LocalDateTime.now().plusDays(2));
+        TodoWorkItem assigned = task(todo, user(2L), 20L, "배정됨", LocalDateTime.now().plusDays(1), 0);
+        TodoWorkItem unassigned = task(todo, null, 21L, "미배정", LocalDateTime.now().plusDays(1), 1);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(requester));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(assigned));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(21L)).willReturn(Optional.of(unassigned));
+        given(userRepository.findById(1L)).willReturn(Optional.of(requester));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(21L)).willReturn(Optional.of(unassigned));
 
-        CreateTodoResponse response = todoService.createTodo("user1", 100L, request);
-
-        assertThat(response.todoId()).isEqualTo(10L);
-        assertThat(response.teamId()).isEqualTo(100L);
-        assertThat(response.creatorId()).isEqualTo(1L);
-        assertThat(response.title()).isEqualTo("투두");
-        assertThat(response.description()).isEqualTo("설명");
-        assertThat(response.assigneeIds()).containsExactly(2L);
-        then(todoParticipantRepository).should().save(any(TodoParticipant.class));
-    }
-
-    @Test
-    void 투두_생성시_본인을_제외한_팀원에게_알림을_일괄_발송한다() {
-        User creator = userWithId(1L);
-        User other = userWithId(3L);
-        Team team = teamWithId(100L);
-        OffsetDateTime deadline = OffsetDateTime.parse("2026-06-04T12:00:00+09:00");
-        CreateTodoRequest request = new CreateTodoRequest("투두", "설명", deadline, List.of());
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
-        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
-        given(todoRepository.save(any(Todo.class))).willAnswer(invocation -> {
-            Todo todo = invocation.getArgument(0);
-            ReflectionTestUtils.setField(todo, "id", 10L);
-            return todo;
-        });
-        given(teamMemberRepository.findByTeamIdExcludingUser(100L, 1L))
-                .willReturn(List.of(TeamMember.create(team, other, TeamMemberRole.MEMBER)));
-        NotificationMessage message = new NotificationMessage(
-                NotificationType.TODO_CREATED, "새로운 투두가 생성되었습니다.", "{actor}님이 '투두'을(를) 만들었습니다.");
-        given(notificationMessageFactory.todoCreated("투두")).willReturn(message);
-
-        todoService.createTodo("user1", 100L, request);
-
-        then(notificationService).should().sendAll(
-                eq(List.of(other)), eq(creator), eq(message), eq(10L));
-    }
-
-    @Test
-    void 투두_생성은_팀원이_아니면_403_예외를_던진다() {
-        User creator = userWithId(1L);
-        Team team = teamWithId(100L);
-        CreateTodoRequest request = new CreateTodoRequest(
-                "투두",
-                null,
-                OffsetDateTime.parse("2026-06-04T12:00:00+09:00"),
-                List.of(2L)
-        );
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
-        given(teamRepository.findById(100L)).willReturn(Optional.of(team));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
-
-        assertThatThrownBy(() -> todoService.createTodo("user1", 100L, request))
+        assertThatThrownBy(() -> todoService.reassignTodoWorkItem(
+                20L, "user1", new AssignTodoWorkItemRequest(1L)
+        ))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("팀에 접근할 권한이 없습니다.")
-                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+                .hasMessage("이미 담당자가 배정된 WorkItem입니다.");
+
+        TodoWorkItemAssigneeResponse response = todoService.reassignTodoWorkItem(
+                21L, "user1", new AssignTodoWorkItemRequest(1L)
+        );
+
+        assertThat(response.assigneeId()).isEqualTo(1L);
+        then(notificationService).shouldHaveNoInteractions();
     }
 
-    @Test
-    void 투두_상세_조회_성공() {
-        User viewer = userWithId(1L);
-        User creator = userWithId(99L);
-        Team team = teamWithId(100L);
-        Todo todo = Todo.create(team, creator, "투두", "설명", LocalDateTime.of(2026, 6, 4, 12, 0));
-        ReflectionTestUtils.setField(todo, "id", 10L);
-        TodoParticipant mine = submittedParticipantWithId(20L, todo, viewer);
-        TodoReaction myReaction = TodoReaction.create(mine, viewer, TodoReactionType.LIKE);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
-        given(todoRepository.findByIdWithCreatorAndTeam(10L)).willReturn(Optional.of(todo));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
-        given(todoParticipantRepository.findDetailByTodoId(10L)).willReturn(List.of(
-                participantDetail(20L, 1L, "닉네임1", "profiles/1.png", "proof-key", "proof-thumb-key", ParticipantStatus.SUCCESS),
-                participantDetail(21L, 2L, "닉네임2", null, null, null, ParticipantStatus.IN_PROGRESS)
-        ));
-        given(todoReactionRepository.countByTodoParticipantIds(List.of(20L, 21L))).willReturn(List.of(
-                reactionCount(20L, TodoReactionType.LIKE, 2L)
-        ));
-        given(todoReactionRepository.findByTodoParticipantIdInAndUserId(List.of(20L, 21L), 1L))
-                .willReturn(List.of(myReaction));
-        given(fileService.resolveImageUrl("profiles/1.png")).willReturn("profile-url");
-        given(fileService.resolveImageUrl("proof-key")).willReturn("proof-url");
-        given(fileService.resolveImageUrl("proof-thumb-key")).willReturn("thumb-url");
-
-        TodoDetailResponse response = todoService.getTodoDetail(10L, "user1");
-
-        assertThat(response.todoId()).isEqualTo(10L);
-        assertThat(response.achievementCount()).isEqualTo("1 / 2");
-        assertThat(response.participants()).hasSize(2);
-        assertThat(response.participants().get(0).profileImageUrl()).isEqualTo("profile-url");
-        assertThat(response.participants().get(0).proofImageUrl()).isEqualTo("proof-url");
-        assertThat(response.participants().get(0).proofThumbnailUrl()).isEqualTo("thumb-url");
-        assertThat(response.participants().get(0).myReaction()).isEqualTo(TodoReactionType.LIKE);
-        assertThat(response.participants().get(0).reactions())
-                .anySatisfy(reaction -> {
-                    assertThat(reaction.type()).isEqualTo(TodoReactionType.LIKE);
-                    assertThat(reaction.count()).isEqualTo(2);
-                });
+    private void givenCreateAccess(User creator, Team team) {
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
+        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, creator.getId())).willReturn(true);
     }
 
-    @Test
-    void 투두_상세_조회는_참여자가_없어도_빈_반응맵으로_응답한다() {
-        User viewer = userWithId(1L);
-        Team team = teamWithId(100L);
-        Todo todo = todoWithTeamAndId(team, 10L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 6, 4, 12, 0));
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
-        given(todoRepository.findByIdWithCreatorAndTeam(10L)).willReturn(Optional.of(todo));
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
-        given(todoParticipantRepository.findDetailByTodoId(10L)).willReturn(List.of());
-
-        TodoDetailResponse response = todoService.getTodoDetail(10L, "user1");
-
-        assertThat(response.achievementCount()).isEqualTo("0 / 0");
-        assertThat(response.participants()).isEmpty();
-    }
-
-    private void givenValidTeamMember(User user) {
+    private void givenListAccess(User user) {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(teamRepository.existsById(100L)).willReturn(true);
-        given(teamMemberRepository.existsByTeamIdAndUserId(100L, user.getId())).willReturn(true);
+        given(teamRepository.existsById(TEAM_ID)).willReturn(true);
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, user.getId())).willReturn(true);
     }
 
-    private User userWithId(Long userId) {
-        User user = User.create("user" + userId, "encodedPwd", "닉네임" + userId, null);
-        ReflectionTestUtils.setField(user, "id", userId);
+    private void givenDetailAccess(User viewer, Todo todo) {
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
+        given(todoRepository.findByIdWithCreatorAndTeam(TODO_ID)).willReturn(Optional.of(todo));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, viewer.getId())).willReturn(true);
+    }
+
+    private User user(Long id) {
+        User user = User.create("user" + id, "encoded-password", "닉네임" + id, null);
+        setId(user, id);
         return user;
     }
 
-    private Team teamWithId(Long teamId) {
-        Team team = Team.create("팀", null, "invite");
-        ReflectionTestUtils.setField(team, "id", teamId);
+    private Team team() {
+        Team team = Team.create("팀", null, "invite-code");
+        setId(team, TEAM_ID);
         return team;
     }
 
-    private Todo todoWithId(Long todoId, TodoStatus status, LocalDateTime deadline) {
-        User creator = userWithId(99L);
-        Todo todo = Todo.create(null, creator, "투두", "설명", deadline);
-        ReflectionTestUtils.setField(todo, "id", todoId);
-        ReflectionTestUtils.setField(todo, "status", status);
+    private Todo todo(Team team, TodoMode mode, TodoStatus status, LocalDateTime deadline) {
+        Todo todo = Todo.create(team, user(99L), "투두", "설명", deadline, mode);
+        setId(todo, TODO_ID);
+        setField(todo, "status", status);
         return todo;
     }
 
-    private Todo todoWithTeamAndId(Team team, Long todoId, TodoStatus status, LocalDateTime deadline) {
-        User creator = userWithId(99L);
-        Todo todo = Todo.create(team, creator, "투두", "설명", deadline);
-        ReflectionTestUtils.setField(todo, "id", todoId);
-        ReflectionTestUtils.setField(todo, "status", status);
-        return todo;
+    private TodoWorkItem direct(Todo todo, User assignee, Long id) {
+        TodoWorkItem workItem = TodoWorkItem.createDirect(todo, assignee);
+        setId(workItem, id);
+        return workItem;
     }
 
-    private TodoParticipant todoParticipantWithId(Long participantId, Todo todo, User user) {
-        TodoParticipant participant = TodoParticipant.create(todo, user);
-        ReflectionTestUtils.setField(participant, "id", participantId);
-        return participant;
+    private TodoWorkItem task(Todo todo, User assignee, Long id, String title, LocalDateTime deadline, int position) {
+        TodoWorkItem workItem = TodoWorkItem.createTask(todo, assignee, title, null, deadline, position);
+        setId(workItem, id);
+        return workItem;
     }
 
-    private TodoParticipant submittedParticipantWithId(Long participantId, Todo todo, User user) {
-        TodoParticipant participant = todoParticipantWithId(participantId, todo, user);
-        ReflectionTestUtils.setField(participant, "proofImageKey", "proof-key");
-        ReflectionTestUtils.setField(participant, "proofThumbnailKey", "proof-thumb-key");
-        ReflectionTestUtils.setField(participant, "status", ParticipantStatus.SUCCESS);
-        return participant;
-    }
-
-    private TodoParticipantSummary participant(Long todoId, Long userId, String nickname, ParticipantStatus status) {
-        return new TodoParticipantSummary() {
+    private TodoWorkItemSummary summary(
+            Long todoId,
+            Long assigneeId,
+            WorkItemStatus status,
+            WorkItemType type,
+            int position
+    ) {
+        return new TodoWorkItemSummary() {
             @Override
             public Long getTodoId() {
                 return todoId;
             }
 
             @Override
-            public Long getUserId() {
-                return userId;
+            public Long getAssigneeId() {
+                return assigneeId;
             }
 
             @Override
             public String getNickname() {
-                return nickname;
+                return "닉네임" + assigneeId;
             }
 
             @Override
-            public ParticipantStatus getStatus() {
+            public WorkItemStatus getStatus() {
                 return status;
             }
-        };
-    }
 
-    private TodoParticipantDetail participantDetail(
-            Long todoParticipantId,
-            Long userId,
-            String nickname,
-            String profileImageUrl,
-            String proofImageKey,
-            String proofThumbnailKey,
-            ParticipantStatus status
-    ) {
-        return new TodoParticipantDetail() {
             @Override
-            public Long getTodoParticipantId() {
-                return todoParticipantId;
+            public WorkItemType getType() {
+                return type;
             }
 
             @Override
-            public Long getUserId() {
-                return userId;
-            }
-
-            @Override
-            public String getNickname() {
-                return nickname;
-            }
-
-            @Override
-            public String getProfileImageUrl() {
-                return profileImageUrl;
-            }
-
-            @Override
-            public String getProofImageKey() {
-                return proofImageKey;
-            }
-
-            @Override
-            public String getProofThumbnailKey() {
-                return proofThumbnailKey;
-            }
-
-            @Override
-            public ParticipantStatus getStatus() {
-                return status;
+            public int getPosition() {
+                return position;
             }
         };
     }
 
-    private TodoReactionCount reactionCount(Long todoParticipantId, TodoReactionType reactionType, long reactionCount) {
-        return new TodoReactionCount() {
-            @Override
-            public Long getTodoParticipantId() {
-                return todoParticipantId;
-            }
-
-            @Override
-            public TodoReactionType getReactionType() {
-                return reactionType;
-            }
-
-            @Override
-            public long getReactionCount() {
-                return reactionCount;
-            }
-        };
+    private OffsetDateTime futureOffset(int days) {
+        return OffsetDateTime.now(ZoneOffset.ofHours(9)).plusDays(days);
     }
 
-    @Test
-    void 생성자가_탈퇴한_투두는_생성자를_탈퇴한_사용자로_표시한다() {
-        User user = userWithId(1L);
-        Todo todo = todoWithId(10L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 5, 20, 10, 0));
-        ReflectionTestUtils.setField(todo, "creator", null);
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdWithCreator(100L)).willReturn(List.of(todo));
-        given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L))).willReturn(List.of(
-                participant(10L, 1L, "닉네임1", ParticipantStatus.IN_PROGRESS)
-        ));
-
-        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null, null);
-
-        assertThat(response.get(0).creatorNickname()).isEqualTo("탈퇴한 사용자");
+    private void setId(Object entity, Long id) {
+        setField(entity, "id", id);
     }
 
-    @Test
-    void 참가자가_탈퇴해도_익명_기록으로_목록에_남는다() {
-        User user = userWithId(1L);
-        Todo todo = todoWithId(10L, TodoStatus.IN_PROGRESS, LocalDateTime.of(2026, 5, 20, 10, 0));
-        givenValidTeamMember(user);
-        given(todoRepository.findByTeamIdWithCreator(100L)).willReturn(List.of(todo));
-        given(todoParticipantRepository.findSummaryByTodoIdIn(List.of(10L))).willReturn(List.of(
-                participant(10L, 1L, "닉네임1", ParticipantStatus.SUCCESS),
-                // 탈퇴자의 익명 참가 기록: userId와 nickname이 모두 null이다.
-                participant(10L, null, null, ParticipantStatus.SUCCESS)
-        ));
-
-        List<TodoSummaryResponse> response = todoService.getTodoList(100L, "user1", null, null);
-
-        assertThat(response.get(0).achievementCount()).isEqualTo("2 / 2");
-        assertThat(response.get(0).participants()).hasSize(2);
-        assertThat(response.get(0).participants().get(1).memberId()).isNull();
-        assertThat(response.get(0).participants().get(1).nickname()).isEqualTo("탈퇴한 사용자");
-        // 익명 기록의 userId가 null이어도 내 상태 판별이 NPE 없이 동작해야 한다.
-        assertThat(response.get(0).myStatus()).isEqualTo("완료");
+    private void setField(Object target, String name, Object value) {
+        ReflectionTestUtils.setField(target, name, value);
     }
 }

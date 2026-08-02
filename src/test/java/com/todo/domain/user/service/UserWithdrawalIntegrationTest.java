@@ -3,10 +3,10 @@ package com.todo.domain.user.service;
 import com.todo.domain.auth.dto.request.ReauthRequest;
 import com.todo.domain.auth.entity.ConsentType;
 import com.todo.domain.auth.entity.ReauthPurpose;
-import com.todo.domain.auth.repository.ReauthTokenRepository;
-import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.entity.UserConsent;
+import com.todo.domain.auth.repository.ReauthTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
+import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.chat.entity.TeamChatMessage;
 import com.todo.domain.chat.entity.TeamChatReadStatus;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
@@ -14,21 +14,24 @@ import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.notification.dto.response.NotificationResponse;
 import com.todo.domain.notification.entity.Notification;
 import com.todo.domain.notification.entity.NotificationType;
-import com.todo.domain.notification.repository.NotificationRepository;
 import com.todo.domain.notification.message.NotificationActorText;
+import com.todo.domain.notification.repository.NotificationRepository;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
-import com.todo.domain.todo.entity.ParticipantStatus;
 import com.todo.domain.todo.entity.Todo;
-import com.todo.domain.todo.entity.TodoParticipant;
+import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoReaction;
 import com.todo.domain.todo.entity.TodoReactionType;
-import com.todo.domain.todo.repository.TodoParticipantRepository;
+import com.todo.domain.todo.entity.TodoStatus;
+import com.todo.domain.todo.entity.TodoWorkItem;
+import com.todo.domain.todo.entity.WorkItemStatus;
+import com.todo.domain.todo.entity.WorkItemType;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.todo.repository.TodoWorkItemRepository;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -40,6 +43,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -51,12 +55,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * 실제 엔티티 그래프와 FK 제약이 살아 있는 상태에서 탈퇴 전체 흐름을 검증한다.
- *
- * <p>단위 테스트는 mock이라 FK 위반을 잡지 못한다. 참조 정리를 하나라도 빠뜨리면
- * 마지막 users 삭제가 실패해야 하는데, 그 계약을 확인할 수 있는 유일한 계층이다.
- */
+/** 실제 엔티티 그래프와 FK 제약이 살아 있는 탈퇴 전체 흐름 검증. */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
@@ -64,38 +63,22 @@ class UserWithdrawalIntegrationTest {
 
     private static final String RAW_PASSWORD = "rawPassword123!";
 
-    @Autowired
-    private UserService userService;
-    @Autowired
-    private EntityManager entityManager;
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-    @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private TeamRepository teamRepository;
-    @Autowired
-    private TeamMemberRepository teamMemberRepository;
-    @Autowired
-    private TodoRepository todoRepository;
-    @Autowired
-    private TodoParticipantRepository todoParticipantRepository;
-    @Autowired
-    private TodoReactionRepository todoReactionRepository;
-    @Autowired
-    private TeamChatMessageRepository teamChatMessageRepository;
-    @Autowired
-    private TeamChatReadStatusRepository teamChatReadStatusRepository;
-    @Autowired
-    private NotificationRepository notificationRepository;
-    @Autowired
-    private UserConsentRepository userConsentRepository;
-    @Autowired
-    private ReauthService reauthService;
-    @Autowired
-    private ReauthTokenRepository reauthTokenRepository;
-    @Autowired
-    private FileDeletionOutboxRepository fileDeletionOutboxRepository;
+    @Autowired private UserService userService;
+    @Autowired private EntityManager entityManager;
+    @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired private UserRepository userRepository;
+    @Autowired private TeamRepository teamRepository;
+    @Autowired private TeamMemberRepository teamMemberRepository;
+    @Autowired private TodoRepository todoRepository;
+    @Autowired private TodoWorkItemRepository todoWorkItemRepository;
+    @Autowired private TodoReactionRepository todoReactionRepository;
+    @Autowired private TeamChatMessageRepository teamChatMessageRepository;
+    @Autowired private TeamChatReadStatusRepository teamChatReadStatusRepository;
+    @Autowired private NotificationRepository notificationRepository;
+    @Autowired private UserConsentRepository userConsentRepository;
+    @Autowired private ReauthService reauthService;
+    @Autowired private ReauthTokenRepository reauthTokenRepository;
+    @Autowired private FileDeletionOutboxRepository fileDeletionOutboxRepository;
 
     private User withdrawing;
     private User staying;
@@ -103,20 +86,16 @@ class UserWithdrawalIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        withdrawing = userRepository.save(
-                User.create("leaving", passwordEncoder.encode(RAW_PASSWORD), "떠나는사람", "profiles/leaving.png"));
+        withdrawing = userRepository.save(User.create(
+                "leaving", passwordEncoder.encode(RAW_PASSWORD), "떠나는사람", "profiles/leaving.png"));
         withdrawing.assignEmail("leaving@example.com");
-        staying = userRepository.save(
-                User.create("staying", passwordEncoder.encode(RAW_PASSWORD), "남는사람", null));
-
+        staying = userRepository.save(User.create(
+                "staying", passwordEncoder.encode(RAW_PASSWORD), "남는사람", null));
         team = teamRepository.save(Team.create("팀", null, "INVITE01"));
         teamMemberRepository.save(TeamMember.create(team, staying, TeamMemberRole.LEADER));
         teamMemberRepository.save(TeamMember.create(team, withdrawing, TeamMemberRole.MEMBER));
     }
 
-    /**
-     * 실제 재인증을 거쳐 탈퇴한다. 토큰 발급과 소비까지 함께 검증된다.
-     */
     private void withdraw() {
         String reauthToken = reauthService
                 .reauthenticate("leaving", new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL))
@@ -135,14 +114,13 @@ class UserWithdrawalIntegrationTest {
     }
 
     @Test
-    void 탈퇴하면_프로필과_인증사진과_단독팀_이미지를_파일삭제_outbox에_적재한다() {
+    void 탈퇴하면_완료_인증사진과_단독팀_이미지를_outbox에_적재한다() {
         Team soloTeam = teamRepository.save(Team.create("단독 팀", "teams/solo.png", "SOLO0001"));
         teamMemberRepository.save(TeamMember.create(soloTeam, withdrawing, TeamMemberRole.LEADER));
-        Todo todo = todoRepository.save(
-                Todo.create(soloTeam, withdrawing, "인증 투두", null, LocalDateTime.now().plusDays(1)));
-        TodoParticipant participant = TodoParticipant.create(todo, withdrawing);
-        participant.submit("proofs/original.png", "proofs/thumb.jpg");
-        todoParticipantRepository.save(participant);
+        Todo soloTodo = todoRepository.save(todo(soloTeam, TodoMode.DIRECT, "인증 투두"));
+        TodoWorkItem completed = TodoWorkItem.createDirect(soloTodo, withdrawing);
+        completed.submit("proofs/original.png", "proofs/thumb.jpg");
+        todoWorkItemRepository.save(completed);
         entityManager.flush();
 
         withdraw();
@@ -150,118 +128,130 @@ class UserWithdrawalIntegrationTest {
         assertThat(teamRepository.findById(soloTeam.getId())).isEmpty();
         assertThat(fileDeletionOutboxRepository.findAll())
                 .extracting(outbox -> outbox.getObjectKey())
-                .contains(
-                        "profiles/leaving.png",
-                        "proofs/original.png",
-                        "proofs/thumb.jpg",
-                        "teams/solo.png"
-                );
+                .contains("profiles/leaving.png", "proofs/original.png", "proofs/thumb.jpg", "teams/solo.png");
     }
 
     @Test
-    void 알림과_동의_이력이_있어도_FK_위반으로_실패하지_않는다() {
+    void 탈퇴자의_수신알림과_동의이력은_삭제하고_다른_팀원이_받은_알림은_보존한다() {
         notificationRepository.save(Notification.create(
                 withdrawing, null, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L));
+        notificationRepository.save(Notification.create(
+                staying, withdrawing, NotificationType.TODO_CREATED, "제목",
+                NotificationActorText.PLACEHOLDER + "님이 만들었습니다.", 1L));
         userConsentRepository.save(UserConsent.create(withdrawing, ConsentType.PRIVACY, "v1"));
         entityManager.flush();
 
         withdraw();
 
-        assertThat(userRepository.findById(withdrawing.getId())).isEmpty();
-        assertThat(notificationRepository.findLatestByReceiverId(withdrawing.getId(),
-                org.springframework.data.domain.PageRequest.of(0, 10))).isEmpty();
+        assertThat(notificationRepository.findLatestByReceiverId(withdrawing.getId(), PageRequest.of(0, 10))).isEmpty();
         assertThat(userConsentRepository.findAll()).isEmpty();
+        assertThat(notificationRepository.findLatestByReceiverId(staying.getId(), PageRequest.of(0, 10)))
+                .singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.getActor()).isNull();
+                    assertThat(NotificationResponse.from(notification).content()).isEqualTo("탈퇴한 사용자님이 만들었습니다.");
+                });
     }
 
     @Test
-    void 탈퇴자가_유발한_알림은_남고_행위자만_익명화된다() {
-        notificationRepository.save(Notification.create(
-                staying,
-                withdrawing,
-                NotificationType.TODO_CREATED,
-                "새로운 투두가 생성되었습니다.",
-                NotificationActorText.PLACEHOLDER + "님이 '공동 투두'을(를) 만들었습니다.",
-                10L
-        ));
+    void 탈퇴자가_만든_투두와_채팅은_남고_작성자만_익명화된다() {
+        Todo todo = todoRepository.save(todo(team, TodoMode.DIRECT, "공동 투두"));
+        TeamChatMessage message = teamChatMessageRepository.save(TeamChatMessage.create(team, withdrawing, "안녕하세요"));
         entityManager.flush();
 
         withdraw();
 
-        List<Notification> remaining = notificationRepository.findLatestByReceiverId(
-                staying.getId(), org.springframework.data.domain.PageRequest.of(0, 10));
-        assertThat(remaining).hasSize(1);
-        assertThat(remaining.get(0).getActor()).isNull();
-        assertThat(NotificationResponse.from(remaining.get(0)).content())
-                .isEqualTo("탈퇴한 사용자님이 '공동 투두'을(를) 만들었습니다.");
+        assertThat(todoRepository.findById(todo.getId())).hasValueSatisfying(reloaded -> {
+            assertThat(reloaded.getTitle()).isEqualTo("공동 투두");
+            assertThat(reloaded.getCreator()).isNull();
+        });
+        assertThat(teamChatMessageRepository.findById(message.getId())).hasValueSatisfying(reloaded -> {
+            assertThat(reloaded.getContent()).isEqualTo("안녕하세요");
+            assertThat(reloaded.getSender()).isNull();
+        });
     }
 
     @Test
-    void 탈퇴자가_만든_투두는_남고_생성자만_익명화된다() {
-        Todo todo = todoRepository.save(
-                Todo.create(team, withdrawing, "공동 투두", null, LocalDateTime.now().plusDays(1)));
-        entityManager.flush();
-
-        withdraw();
-
-        Todo reloaded = todoRepository.findById(todo.getId()).orElseThrow();
-        assertThat(reloaded.getTitle()).isEqualTo("공동 투두");
-        assertThat(reloaded.getCreator()).isNull();
-    }
-
-    @Test
-    void 탈퇴자가_보낸_채팅은_남고_발신자만_익명화된다() {
-        TeamChatMessage message = teamChatMessageRepository.save(
-                TeamChatMessage.create(team, withdrawing, "안녕하세요"));
-        entityManager.flush();
-
-        withdraw();
-
-        TeamChatMessage reloaded = teamChatMessageRepository.findById(message.getId()).orElseThrow();
-        assertThat(reloaded.getContent()).isEqualTo("안녕하세요");
-        assertThat(reloaded.getSender()).isNull();
-    }
-
-    @Test
-    void 완료된_참가기록은_익명으로_남고_타인의_반응도_보존된다() {
-        Todo todo = todoRepository.save(
-                Todo.create(team, staying, "투두", null, LocalDateTime.now().plusDays(1)));
-        TodoParticipant finished = TodoParticipant.create(todo, withdrawing);
-        finished.submit("proofs/original.png", "proofs/thumb.png");
-        todoParticipantRepository.save(finished);
+    void 완료_WorkItem은_익명화되고_사진키는_null이며_타인의_반응은_보존된다() {
+        Todo todo = todoRepository.save(todo(team, TodoMode.DIRECT, "투두"));
+        TodoWorkItem completed = TodoWorkItem.createDirect(todo, withdrawing);
+        completed.submit("proofs/original.png", "proofs/thumb.png");
+        todoWorkItemRepository.save(completed);
         TodoReaction othersReaction = todoReactionRepository.save(
-                TodoReaction.create(finished, staying, TodoReactionType.LIKE));
+                TodoReaction.create(completed, staying, TodoReactionType.LIKE));
         entityManager.flush();
 
         withdraw();
 
-        TodoParticipant reloaded = todoParticipantRepository.findById(finished.getId()).orElseThrow();
-        assertThat(reloaded.getUser()).isNull();
-        assertThat(reloaded.getStatus()).isEqualTo(ParticipantStatus.SUCCESS);
-        assertThat(reloaded.getProofImageKey()).isNull();
+        assertThat(todoWorkItemRepository.findById(completed.getId())).hasValueSatisfying(reloaded -> {
+            assertThat(reloaded.getAssignee()).isNull();
+            assertThat(reloaded.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
+            assertThat(reloaded.getProofImageKey()).isNull();
+            assertThat(reloaded.getProofThumbnailKey()).isNull();
+        });
         assertThat(todoReactionRepository.findById(othersReaction.getId())).isPresent();
     }
 
     @Test
-    void 진행중_배정은_제거되고_남은_참가자가_없으면_투두가_FAIL된다() {
-        Todo todo = todoRepository.save(
-                Todo.create(team, staying, "투두", null, LocalDateTime.now().plusDays(1)));
-        TodoParticipant inProgress = todoParticipantRepository.save(TodoParticipant.create(todo, withdrawing));
+    void TASK_진행중_WorkItem은_탈퇴후에도_미배정으로_보존되고_알림도_익명화된다() {
+        Todo todo = todoRepository.save(todo(team, TodoMode.TASK, "기말 발표"));
+        TodoWorkItem task = todoWorkItemRepository.save(TodoWorkItem.createTask(
+                todo, withdrawing, "PPT 만들기", null, LocalDateTime.now().plusHours(2), 0));
         entityManager.flush();
 
         withdraw();
 
-        assertThat(todoParticipantRepository.findById(inProgress.getId())).isEmpty();
-        assertThat(todoRepository.findById(todo.getId()).orElseThrow().getStatus())
-                .isEqualTo(com.todo.domain.todo.entity.TodoStatus.FAIL);
+        assertThat(todoWorkItemRepository.findById(task.getId())).hasValueSatisfying(reloaded -> {
+            assertThat(reloaded.getType()).isEqualTo(WorkItemType.TASK);
+            assertThat(reloaded.getAssignee()).isNull();
+            assertThat(reloaded.getStatus()).isEqualTo(WorkItemStatus.IN_PROGRESS);
+        });
+        assertThat(notificationRepository.findLatestByReceiverId(staying.getId(), PageRequest.of(0, 10)))
+                .anySatisfy(notification -> {
+                    assertThat(notification.getType()).isEqualTo(NotificationType.TODO_UNASSIGNED);
+                    assertThat(notification.getActor()).isNull();
+                    assertThat(notification.getReferenceId()).isEqualTo(todo.getId());
+                });
+    }
+
+    @Test
+    void 다른_담당자가_남은_DIRECT_진행중_WorkItem은_삭제되고_미배정_알림을_남기지_않는다() {
+        Todo todo = todoRepository.save(todo(team, TodoMode.DIRECT, "공동 인증"));
+        TodoWorkItem leavingItem = todoWorkItemRepository.save(TodoWorkItem.createDirect(todo, withdrawing));
+        TodoWorkItem stayingItem = todoWorkItemRepository.save(TodoWorkItem.createDirect(todo, staying));
+        entityManager.flush();
+
+        withdraw();
+
+        assertThat(todoWorkItemRepository.findById(leavingItem.getId())).isEmpty();
+        assertThat(todoWorkItemRepository.findById(stayingItem.getId())).hasValueSatisfying(
+                item -> assertThat(item.getAssignee().getId()).isEqualTo(staying.getId()));
+        assertThat(notificationRepository.findLatestByReceiverId(staying.getId(), PageRequest.of(0, 10)))
+                .noneMatch(notification -> notification.getType() == NotificationType.TODO_UNASSIGNED);
+    }
+
+    @Test
+    void 마지막_DIRECT_진행중_WorkItem은_삭제하지_않고_미배정으로_보존한다() {
+        Todo todo = todoRepository.save(todo(team, TodoMode.DIRECT, "혼자 인증"));
+        TodoWorkItem direct = todoWorkItemRepository.save(TodoWorkItem.createDirect(todo, withdrawing));
+        entityManager.flush();
+
+        withdraw();
+
+        assertThat(todoWorkItemRepository.findById(direct.getId())).hasValueSatisfying(reloaded -> {
+            assertThat(reloaded.getAssignee()).isNull();
+            assertThat(reloaded.getStatus()).isEqualTo(WorkItemStatus.IN_PROGRESS);
+        });
+        assertThat(todoRepository.findById(todo.getId())).hasValueSatisfying(
+                reloaded -> assertThat(reloaded.getStatus()).isEqualTo(TodoStatus.IN_PROGRESS));
     }
 
     @Test
     void 탈퇴자가_남긴_반응과_읽음상태는_삭제된다() {
-        Todo todo = todoRepository.save(
-                Todo.create(team, staying, "투두", null, LocalDateTime.now().plusDays(1)));
-        TodoParticipant others = TodoParticipant.create(todo, staying);
+        Todo todo = todoRepository.save(todo(team, TodoMode.DIRECT, "투두"));
+        TodoWorkItem others = TodoWorkItem.createDirect(todo, staying);
         others.submit("proofs/other.png", "proofs/other-thumb.png");
-        todoParticipantRepository.save(others);
+        todoWorkItemRepository.save(others);
         TodoReaction myReaction = todoReactionRepository.save(
                 TodoReaction.create(others, withdrawing, TodoReactionType.HEART));
         teamChatReadStatusRepository.save(TeamChatReadStatus.create(team, withdrawing));
@@ -271,24 +261,22 @@ class UserWithdrawalIntegrationTest {
 
         assertThat(todoReactionRepository.findById(myReaction.getId())).isEmpty();
         assertThat(teamChatReadStatusRepository.findByUserIdAndTeamId(withdrawing.getId(), team.getId())).isEmpty();
-        // 익명화 대상이 아닌 타인의 참가 기록은 그대로 남는다.
-        assertThat(todoParticipantRepository.findById(others.getId()).orElseThrow().getUser()).isNotNull();
+        assertThat(todoWorkItemRepository.findById(others.getId())).hasValueSatisfying(
+                reloaded -> assertThat(reloaded.getAssignee()).isNotNull());
     }
 
     @Test
     void 팀장이_탈퇴하면_잔여_팀원에게_권한이_넘어가고_팀은_유지된다() {
-        List<TeamMember> members = teamMemberRepository.findByTeamIdExcludingUser(team.getId(), staying.getId());
-        members.get(0).updateRole(TeamMemberRole.LEADER);
-        teamMemberRepository.findByTeamIdExcludingUser(team.getId(), withdrawing.getId())
-                .get(0).updateRole(TeamMemberRole.MEMBER);
+        teamMemberRepository.findByTeamIdExcludingUser(team.getId(), staying.getId()).get(0).updateRole(TeamMemberRole.LEADER);
+        teamMemberRepository.findByTeamIdExcludingUser(team.getId(), withdrawing.getId()).get(0).updateRole(TeamMemberRole.MEMBER);
         entityManager.flush();
 
         withdraw();
 
         assertThat(teamRepository.findById(team.getId())).isPresent();
-        List<TeamMember> remaining = teamMemberRepository.findByTeamIdExcludingUser(team.getId(), withdrawing.getId());
-        assertThat(remaining).hasSize(1);
-        assertThat(remaining.get(0).getRole()).isEqualTo(TeamMemberRole.LEADER);
+        assertThat(teamMemberRepository.findByTeamIdExcludingUser(team.getId(), withdrawing.getId()))
+                .singleElement()
+                .satisfies(member -> assertThat(member.getRole()).isEqualTo(TeamMemberRole.LEADER));
     }
 
     @Test
@@ -296,14 +284,11 @@ class UserWithdrawalIntegrationTest {
         notificationRepository.save(Notification.create(
                 withdrawing, null, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L));
         entityManager.flush();
-        // 영속성 컨텍스트를 비워 Hibernate의 TransientObjectException이 아니라
-        // 실제 DB의 RESTRICT FK가 막는지 확인한다.
         entityManager.clear();
 
         User reloaded = userRepository.findById(withdrawing.getId()).orElseThrow();
         userRepository.delete(reloaded);
 
-        // 이 안전망이 있어야 정리 단계 누락이 조용한 데이터 손실이 아니라 즉시 오류로 드러난다.
         assertThatThrownBy(() -> entityManager.flush())
                 .isInstanceOf(ConstraintViolationException.class)
                 .hasMessageContaining("notifications");
@@ -313,8 +298,8 @@ class UserWithdrawalIntegrationTest {
     void 탈퇴한_아이디와_이메일로_다시_가입할_수_있다() {
         withdraw();
 
-        User rejoined = userRepository.save(
-                User.create("leaving", passwordEncoder.encode(RAW_PASSWORD), "돌아온사람", null));
+        User rejoined = userRepository.save(User.create(
+                "leaving", passwordEncoder.encode(RAW_PASSWORD), "돌아온사람", null));
         rejoined.assignEmail("leaving@example.com");
         entityManager.flush();
 
@@ -327,7 +312,6 @@ class UserWithdrawalIntegrationTest {
         assertThatThrownBy(() -> userService.deleteUser("leaving", new DeleteUserRequest("없는토큰")))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
-
         entityManager.clear();
         assertThat(userRepository.findByLoginId("leaving")).isPresent();
     }
@@ -340,11 +324,10 @@ class UserWithdrawalIntegrationTest {
         userService.deleteUser("leaving", new DeleteUserRequest(reauthToken));
         entityManager.flush();
 
-        User rejoined = userRepository.save(
-                User.create("leaving", passwordEncoder.encode(RAW_PASSWORD), "돌아온사람", null));
+        User rejoined = userRepository.save(User.create(
+                "leaving", passwordEncoder.encode(RAW_PASSWORD), "돌아온사람", null));
         entityManager.flush();
 
-        // 1회용이므로 재가입한 계정에도 같은 토큰을 재사용할 수 없다.
         assertThatThrownBy(() -> userService.deleteUser("leaving", new DeleteUserRequest(reauthToken)))
                 .isInstanceOf(BusinessException.class);
         entityManager.clear();
@@ -358,7 +341,10 @@ class UserWithdrawalIntegrationTest {
 
         withdraw();
 
-        // reauth_tokens.user_id FK가 RESTRICT라 이 정리를 빠뜨리면 탈퇴가 실패한다.
         assertThat(reauthTokenRepository.findAll()).isEmpty();
+    }
+
+    private Todo todo(Team targetTeam, TodoMode mode, String title) {
+        return Todo.create(targetTeam, withdrawing, title, null, LocalDateTime.now().plusDays(1), mode);
     }
 }

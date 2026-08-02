@@ -17,9 +17,8 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     @Modifying
     @Query("""
             UPDATE Team t
-            SET t.successCount = t.successCount + 1,
-                t.consecutiveTodoCount = t.consecutiveTodoCount + 1
+            SET t.successCount = t.successCount + 1
             WHERE t.id = :teamId
             """)
-    void incrementSuccessCount(@Param("teamId") Long teamId);
+    int incrementSuccessCount(@Param("teamId") Long teamId);
 }

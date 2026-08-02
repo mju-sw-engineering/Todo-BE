@@ -1,5 +1,6 @@
 package com.todo.domain.todo.dto.response;
 
+import com.todo.domain.todo.entity.TodoReaction;
 import com.todo.domain.todo.entity.TodoReactionType;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -15,6 +16,10 @@ public record TodoReactionResponse(
         @Schema(description = "반응 수", example = "3")
         long count
 ) {
+    public static TodoReactionResponse from(TodoReaction reaction, long count) {
+        return from(reaction.getReactionType(), count);
+    }
+
     public static TodoReactionResponse from(TodoReactionType type, long count) {
         return new TodoReactionResponse(type, type.getEmoji(), count);
     }

@@ -65,14 +65,27 @@ public interface AuthControllerDocs {
     })
     ResponseEntity<com.todo.global.response.ApiResponse<LoginResponse>> login(LoginRequest request);
 
-    @Operation(summary = "로그아웃", description = "로그인된 사용자를 로그아웃합니다. 클라이언트에서 토큰을 삭제해야 합니다.")
+    @Operation(
+            summary = "토큰 재발급",
+            description = "refreshToken 쿠키를 이용해 액세스 토큰과 리프레시 토큰을 재발급합니다. "
+                    + "리프레시 토큰은 1회용이며, 재사용이 감지되면 해당 사용자의 모든 토큰이 무효화됩니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "재발급 성공",
+                    content = @Content(schema = @Schema(implementation = LoginResponse.class))),
+            @ApiResponse(responseCode = "401", description = "리프레시 토큰 없음 / 만료 / 재사용 감지",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<com.todo.global.response.ApiResponse<LoginResponse>> refresh(String refreshToken);
+
+    @Operation(summary = "로그아웃", description = "refreshToken 쿠키를 삭제하고 해당 토큰을 무효화합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그아웃 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
                     content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(hidden = true)))
     })
     @SecurityRequirement(name = "bearerAuth")
-    ResponseEntity<com.todo.global.response.ApiResponse<Void>> logout();
+    ResponseEntity<com.todo.global.response.ApiResponse<Void>> logout(String refreshToken);
 
 
     @Operation(

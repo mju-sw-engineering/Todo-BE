@@ -3,6 +3,7 @@ package com.todo.domain.user.service;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
+import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
@@ -13,12 +14,13 @@ import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.service.TeamService;
-import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.todo.repository.TodoWorkItemRepository;
+import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
+import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
-import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -28,6 +30,7 @@ import com.todo.global.service.FileService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -63,9 +66,11 @@ class UserServiceTest {
     @Mock
     private TeamService teamService;
     @Mock
-    private TodoParticipantRepository todoParticipantRepository;
+    private TodoWorkItemRepository todoWorkItemRepository;
     @Mock
     private TodoReactionRepository todoReactionRepository;
+    @Mock
+    private TodoWorkItemLifecycleService todoWorkItemLifecycleService;
     @Mock
     private TeamChatMessageRepository teamChatMessageRepository;
     @Mock
@@ -83,15 +88,15 @@ class UserServiceTest {
     @Mock
     private ReauthTokenRepository reauthTokenRepository;
     @Mock
+    private RefreshTokenRepository refreshTokenRepository;
+    @Mock
     private ReauthService reauthService;
     @Mock
     private FileDeletionOutboxService fileDeletionOutboxService;
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {
-        User user = User.create("user1", "encodedPwd", "닉네임", "profiles/user1.png");
-        ReflectionTestUtils.setField(user, "id", 1L);
-
+        User user = user(1L, "user1", "닉네임", "profiles/user1.png");
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of());
         given(fileService.resolveImageUrl("profiles/user1.png")).willReturn("https://example.com/profiles/user1.png");
@@ -107,29 +112,25 @@ class UserServiceTest {
 
     @Test
     void 마이페이지_조회_성공_소속팀있음() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        ReflectionTestUtils.setField(user, "id", 1L);
+        User user = user(1L, "user1", "닉네임", null);
         Team team = Team.create("스터디 팀", "teams/study.png", "ABCDEFGH");
         ReflectionTestUtils.setField(team, "id", 10L);
-
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of(team));
         given(fileService.resolveImageUrl("teams/study.png")).willReturn("https://example.com/teams/study.png");
 
         MyPageResponse response = userService.getMyPage("user1");
 
-        assertThat(response.nickname()).isEqualTo("닉네임");
-        assertThat(response.teams()).hasSize(1);
-        assertThat(response.teams().get(0).teamId()).isEqualTo(10L);
-        assertThat(response.teams().get(0).teamName()).isEqualTo("스터디 팀");
-        assertThat(response.teams().get(0).teamImageUrl()).isEqualTo("https://example.com/teams/study.png");
+        assertThat(response.teams()).singleElement().satisfies(summary -> {
+            assertThat(summary.teamId()).isEqualTo(10L);
+            assertThat(summary.teamName()).isEqualTo("스터디 팀");
+            assertThat(summary.teamImageUrl()).isEqualTo("https://example.com/teams/study.png");
+        });
     }
 
     @Test
     void 닉네임_수정_성공() {
-        User user = User.create("user1", "encodedPwd", "기존닉네임", null);
-        ReflectionTestUtils.setField(user, "id", 1L);
-
+        User user = user(1L, "user1", "기존닉네임", null);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of());
 
@@ -159,207 +160,159 @@ class UserServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 
-    private User withdrawingUser() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        ReflectionTestUtils.setField(user, "id", 1L);
-        return user;
-    }
+    @Test
+    void 회원탈퇴는_팀별_진행중_WorkItem_정리와_완료기록_익명화를_위임한다() {
+        User withdrawing = withdrawingUser();
+        Team firstTeam = team(10L);
+        Team secondTeam = team(20L);
+        givenWithdrawalUser(withdrawing);
+        given(teamMemberRepository.findTeamsByUserId(withdrawing.getId())).willReturn(List.of(firstTeam, secondTeam));
 
-    private void givenWithdrawingUserFound(User user) {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+
+        InOrder order = inOrder(todoWorkItemLifecycleService);
+        order.verify(todoWorkItemLifecycleService).handleTeamDeparture(10L, withdrawing);
+        order.verify(todoWorkItemLifecycleService).handleTeamDeparture(20L, withdrawing);
+        order.verify(todoWorkItemLifecycleService).anonymizeFinishedForWithdrawal(1L);
     }
 
     @Test
-    void 회원탈퇴_성공_생성한_투두와_채팅은_삭제하지_않고_작성자만_익명화한다() {
-        User user = withdrawingUser();
-        givenWithdrawingUserFound(user);
-        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
+    void 회원탈퇴는_공동_투두와_채팅을_지우지_않고_작성자만_익명화한다() {
+        User withdrawing = withdrawingUser();
+        givenWithdrawalUser(withdrawing);
 
         userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verify(todoRepository).clearCreatorByUserId(1L);
         verify(teamChatMessageRepository).clearSenderByUserId(1L);
+        verify(todoWorkItemLifecycleService).anonymizeFinishedForWithdrawal(1L);
         verify(todoRepository, never()).deleteByIdIn(anyList());
     }
 
     @Test
-    void 회원탈퇴_성공_완료_참가기록은_익명화하고_진행중_배정만_삭제한다() {
-        User user = withdrawingUser();
-        givenWithdrawingUserFound(user);
-        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of(100L));
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of(1000L));
+    void 회원탈퇴는_완료사진_키를_outbox에_넣은_뒤_완료기록을_익명화한다() {
+        User withdrawing = user(1L, "user1", "닉네임", "profiles/1/profile.png");
+        givenWithdrawalUser(withdrawing);
+        given(todoWorkItemRepository.findProofImageKeysByAssigneeId(1L)).willReturn(List.of("proofs/1/original.png"));
+        given(todoWorkItemRepository.findProofThumbnailKeysByAssigneeId(1L)).willReturn(List.of("proofs/1/thumb.jpg"));
 
         userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
-        // 삭제 대상 참가 기록의 반응을 먼저 지워야 todo_reactions FK(RESTRICT)에 걸리지 않는다.
-        var inOrder = inOrder(todoReactionRepository, todoParticipantRepository);
-        inOrder.verify(todoReactionRepository).deleteByTodoParticipantIdIn(List.of(1000L));
-        inOrder.verify(todoParticipantRepository).anonymizeFinishedByUserId(1L);
-        inOrder.verify(todoParticipantRepository).deleteInProgressByUserId(1L);
+        verify(fileDeletionOutboxService).enqueueAll(List.of(
+                "profiles/1/profile.png", "proofs/1/original.png", "proofs/1/thumb.jpg"
+        ));
+        verify(todoWorkItemLifecycleService).anonymizeFinishedForWithdrawal(1L);
     }
 
     @Test
-    void 회원탈퇴_성공_진행중_배정이_없으면_반응_삭제와_재평가를_건너뛴다() {
-        User user = withdrawingUser();
-        givenWithdrawingUserFound(user);
-        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
+    void 회원탈퇴는_수신알림을_삭제하고_다른_팀원이_받은_알림의_actor를_익명화한다() {
+        User withdrawing = withdrawingUser();
+        givenWithdrawalUser(withdrawing);
 
         userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
-        verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
-        verify(todoRepository, never()).markAsFailWhenNoParticipantsRemain(anyList());
-        verify(todoRepository, never()).markAsSuccessWhenRemainingAllSucceeded(anyList());
+        InOrder order = inOrder(notificationRepository);
+        order.verify(notificationRepository).deleteByReceiverId(1L);
+        order.verify(notificationRepository).clearActorByUserId(1L);
     }
 
     @Test
-    void 회원탈퇴_성공_참가자가_빠진_투두의_상태를_재평가한다() {
-        User user = withdrawingUser();
-        givenWithdrawingUserFound(user);
-        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of(100L, 101L));
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of(1000L));
+    void 회원탈퇴는_개인정보와_FK_참조를_모두_정리한다() {
+        User withdrawing = withdrawingUser();
+        withdrawing.assignEmail("user1@example.com");
+        givenWithdrawalUser(withdrawing);
 
         userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
-        // 잔여 0명 → FAIL, 잔여 전원 성공 → SUCCESS. 참가자 제거가 끝난 뒤에 평가해야 한다.
-        var inOrder = inOrder(todoParticipantRepository, todoRepository);
-        inOrder.verify(todoParticipantRepository).deleteInProgressByUserId(1L);
-        inOrder.verify(todoRepository).markAsFailWhenNoParticipantsRemain(List.of(100L, 101L));
-        inOrder.verify(todoRepository).markAsSuccessWhenRemainingAllSucceeded(List.of(100L, 101L));
-    }
-
-    @Test
-    void 회원탈퇴_성공_개인정보와_FK_참조를_모두_정리한다() {
-        User user = withdrawingUser();
-        user.assignEmail("user1@example.com");
-        givenWithdrawingUserFound(user);
-        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
-
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
-
-        verify(notificationRepository).deleteByReceiverId(1L);
+        verify(reauthService).consume("user1", REAUTH_TOKEN, ReauthPurpose.WITHDRAWAL);
         verify(teamChatReadStatusRepository).deleteByUserId(1L);
         verify(todoReactionRepository).deleteByUserId(1L);
         verify(userConsentRepository).deleteByUserId(1L);
+        verify(reauthTokenRepository).deleteByUserId(1L);
         verify(emailVerificationRepository).deleteByEmail("user1@example.com");
         verify(mailOutboxRepository).deleteByRecipient("user1@example.com");
         verify(teamMemberRepository).deleteByUserId(1L);
     }
 
     @Test
-    void 회원탈퇴시_프로필과_인증사진을_파일삭제_outbox에_적재한다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", "profiles/1/profile.png");
-        ReflectionTestUtils.setField(user, "id", 1L);
-        givenWithdrawingUserFound(user);
-        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
-        given(todoParticipantRepository.findProofImageKeysByUserId(1L))
-                .willReturn(List.of("proofs/1/original.png"));
-        given(todoParticipantRepository.findProofThumbnailKeysByUserId(1L))
-                .willReturn(List.of("proofs/1/thumbs/original.jpg"));
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
+    void 회원탈퇴는_모든_참조_정리_이후에_사용자를_삭제하고_flush한다() {
+        User withdrawing = withdrawingUser();
+        givenWithdrawalUser(withdrawing);
 
         userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
-        verify(fileDeletionOutboxService).enqueueAll(List.of(
-                "profiles/1/profile.png",
-                "proofs/1/original.png",
-                "proofs/1/thumbs/original.jpg"
-        ));
+        InOrder order = inOrder(notificationRepository, userConsentRepository, teamChatMessageRepository,
+                todoRepository, todoWorkItemLifecycleService, teamMemberRepository, userRepository);
+        order.verify(notificationRepository).deleteByReceiverId(1L);
+        order.verify(userConsentRepository).deleteByUserId(1L);
+        order.verify(todoWorkItemLifecycleService).anonymizeFinishedForWithdrawal(1L);
+        order.verify(teamChatMessageRepository).clearSenderByUserId(1L);
+        order.verify(todoRepository).clearCreatorByUserId(1L);
+        order.verify(notificationRepository).clearActorByUserId(1L);
+        order.verify(teamMemberRepository).deleteByUserId(1L);
+        order.verify(userRepository).delete(withdrawing);
+        order.verify(userRepository).flush();
     }
 
     @Test
-    void 회원탈퇴_성공_이메일이_없으면_이메일_기준_정리를_건너뛴다() {
-        User user = withdrawingUser();
-        givenWithdrawingUserFound(user);
-        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
-
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
-
-        verifyNoInteractions(emailVerificationRepository, mailOutboxRepository);
-        verify(userRepository).delete(user);
-    }
-
-    @Test
-    void 회원탈퇴_성공_사용자_삭제는_모든_참조_정리_이후에_flush한다() {
-        User user = withdrawingUser();
-        givenWithdrawingUserFound(user);
-        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
-
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
-
-        // flush까지 해야 정리를 빠뜨린 참조가 FK 위반으로 이 트랜잭션 안에서 드러난다.
-        var inOrder = inOrder(notificationRepository, userConsentRepository, teamChatMessageRepository,
-                todoRepository, todoParticipantRepository, teamMemberRepository, userRepository);
-        inOrder.verify(notificationRepository).deleteByReceiverId(1L);
-        inOrder.verify(userConsentRepository).deleteByUserId(1L);
-        inOrder.verify(teamChatMessageRepository).clearSenderByUserId(1L);
-        inOrder.verify(todoRepository).clearCreatorByUserId(1L);
-        inOrder.verify(todoParticipantRepository).anonymizeFinishedByUserId(1L);
-        inOrder.verify(teamMemberRepository).deleteByUserId(1L);
-        inOrder.verify(userRepository).delete(user);
-        inOrder.verify(userRepository).flush();
-    }
-
-    @Test
-    void 회원탈퇴_성공_혼자_있는_리더팀은_팀데이터까지_삭제한다() {
-        User user = withdrawingUser();
-        givenWithdrawingUserFound(user);
+    void 회원탈퇴는_혼자_있는_리더팀을_팀데이터와_함께_삭제한다() {
+        User withdrawing = withdrawingUser();
+        givenWithdrawalUser(withdrawing);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of(10L));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
         userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verify(teamService).deleteTeamWithAllData(10L);
-        verify(userRepository).delete(user);
+        verify(userRepository).delete(withdrawing);
     }
 
     @Test
-    void 회원탈퇴_성공_잔여_멤버가_있는_리더팀은_가장_먼저_가입한_멤버에게_권한을_넘긴다() {
-        User user = withdrawingUser();
-        User remaining = User.create("user2", "encodedPwd", "남은사람", null);
-        ReflectionTestUtils.setField(remaining, "id", 2L);
-        Team team = Team.create("스터디 팀", null, "ABCDEFGH");
-        ReflectionTestUtils.setField(team, "id", 10L);
-        TeamMember remainingMember = TeamMember.create(team, remaining, TeamMemberRole.MEMBER);
-
-        givenWithdrawingUserFound(user);
+    void 회원탈퇴는_남은_리더팀의_가장_먼저_가입한_멤버에게_권한을_넘긴다() {
+        User withdrawing = withdrawingUser();
+        User remaining = user(2L, "user2", "남은사람", null);
+        TeamMember remainingMember = TeamMember.create(team(10L), remaining, TeamMemberRole.MEMBER);
+        givenWithdrawalUser(withdrawing);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of(10L));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of(remainingMember));
-        given(todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(1L)).willReturn(List.of());
-        given(todoParticipantRepository.findInProgressIdsByUserId(1L)).willReturn(List.of());
 
         userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
 
         assertThat(remainingMember.getRole()).isEqualTo(TeamMemberRole.LEADER);
         verify(teamService, never()).deleteTeamWithAllData(10L);
-        verify(teamMemberRepository).deleteByUserId(1L);
     }
 
     @Test
-    void 회원탈퇴_실패_중간_정리에서_예외가_나면_사용자를_삭제하지_않는다() {
-        User user = withdrawingUser();
-        givenWithdrawingUserFound(user);
-        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
+    void 회원탈퇴_중간_정리에서_예외가_나면_사용자를_삭제하지_않는다() {
+        User withdrawing = withdrawingUser();
+        givenWithdrawalUser(withdrawing);
         willThrow(new RuntimeException("DB 오류")).given(userConsentRepository).deleteByUserId(1L);
 
         assertThatThrownBy(() -> userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN)))
                 .isInstanceOf(RuntimeException.class);
 
-        verify(userRepository, never()).delete(user);
+        verify(userRepository, never()).delete(withdrawing);
         verify(userRepository, never()).flush();
+    }
+
+    private User withdrawingUser() {
+        return user(1L, "user1", "닉네임", null);
+    }
+
+    private User user(Long id, String loginId, String nickname, String profileImageUrl) {
+        User user = User.create(loginId, "encodedPwd", nickname, profileImageUrl);
+        ReflectionTestUtils.setField(user, "id", id);
+        return user;
+    }
+
+    private Team team(Long id) {
+        Team team = Team.create("스터디 팀", null, "ABCDEFGH");
+        ReflectionTestUtils.setField(team, "id", id);
+        return team;
+    }
+
+    private void givenWithdrawalUser(User user) {
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
     }
 }

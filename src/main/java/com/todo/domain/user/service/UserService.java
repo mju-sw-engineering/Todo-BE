@@ -3,6 +3,7 @@ package com.todo.domain.user.service;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
+import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
@@ -13,9 +14,10 @@ import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.service.TeamService;
-import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.todo.repository.TodoWorkItemRepository;
+import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
@@ -43,8 +45,9 @@ public class UserService {
     private final TeamMemberRepository teamMemberRepository;
     private final FileService fileService;
     private final TeamService teamService;
-    private final TodoParticipantRepository todoParticipantRepository;
+    private final TodoWorkItemRepository todoWorkItemRepository;
     private final TodoReactionRepository todoReactionRepository;
+    private final TodoWorkItemLifecycleService todoWorkItemLifecycleService;
     private final TeamChatMessageRepository teamChatMessageRepository;
     private final TeamChatReadStatusRepository teamChatReadStatusRepository;
     private final TodoRepository todoRepository;
@@ -53,6 +56,7 @@ public class UserService {
     private final EmailVerificationRepository emailVerificationRepository;
     private final MailOutboxRepository mailOutboxRepository;
     private final ReauthTokenRepository reauthTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final ReauthService reauthService;
     private final FileDeletionOutboxService fileDeletionOutboxService;
 
@@ -101,19 +105,22 @@ public class UserService {
         todoReactionRepository.deleteByUserId(userId);
         userConsentRepository.deleteByUserId(userId);
         reauthTokenRepository.deleteByUserId(userId);
+        refreshTokenRepository.deleteByUserId(userId);
         if (email != null) {
             emailVerificationRepository.deleteByEmail(email);
             mailOutboxRepository.deleteByRecipient(email);
         }
 
-        // 3. 공동 기록 익명화 — 삭제하지 않고 작성자 관계만 끊는다.
+        // 3. 남은 팀의 진행 중 WorkItem을 정리하고, 미배정 알림을 탈퇴 트랜잭션에 함께 저장한다.
+        teamMemberRepository.findTeamsByUserId(userId)
+                .forEach(team -> todoWorkItemLifecycleService.handleTeamDeparture(team.getId(), user));
+        todoWorkItemLifecycleService.anonymizeFinishedForWithdrawal(userId);
+
+        // 4. 공동 기록 익명화 — 삭제하지 않고 작성자 관계만 끊는다.
         teamChatMessageRepository.clearSenderByUserId(userId);
         todoRepository.clearCreatorByUserId(userId);
-        // 탈퇴자가 받은 알림은 2번에서 지웠고, 탈퇴자가 유발해 남에게 간 알림은 여기서 익명화한다.
+        // 방금 생성한 미배정 알림까지 포함해 actor를 익명화한다.
         notificationRepository.clearActorByUserId(userId);
-
-        // 4. 참가 기록: 완료·실패는 익명화해 남기고, 진행 중 배정만 제거한다.
-        anonymizeAndRemoveParticipations(userId);
 
         teamMemberRepository.deleteByUserId(userId);
 
@@ -125,8 +132,8 @@ public class UserService {
     private void enqueueUserFilesForDeletion(User user) {
         List<String> objectKeys = new ArrayList<>();
         objectKeys.add(user.getProfileImageUrl());
-        objectKeys.addAll(todoParticipantRepository.findProofImageKeysByUserId(user.getId()));
-        objectKeys.addAll(todoParticipantRepository.findProofThumbnailKeysByUserId(user.getId()));
+        objectKeys.addAll(todoWorkItemRepository.findProofImageKeysByAssigneeId(user.getId()));
+        objectKeys.addAll(todoWorkItemRepository.findProofThumbnailKeysByAssigneeId(user.getId()));
         fileDeletionOutboxService.enqueueAll(objectKeys);
     }
 
@@ -145,40 +152,6 @@ public class UserService {
                 }
             }
         }
-    }
-
-    /**
-     * 완료·실패 참가 기록은 팀 달성 이력이므로 상태와 시각만 남기고 익명화한다.
-     * 다른 팀원이 그 기록에 남긴 반응도 함께 보존된다.
-     *
-     * <p>진행 중 배정은 실적이 아니므로 제거하고, 참가자 구성이 바뀐 Todo의 상태를 재평가한다.
-     */
-    private void anonymizeAndRemoveParticipations(Long userId) {
-        List<Long> affectedTodoIds = todoParticipantRepository.findTodoIdsByUserIdAndStatusInProgress(userId);
-        List<Long> inProgressParticipantIds = todoParticipantRepository.findInProgressIdsByUserId(userId);
-
-        // 삭제 대상 참가 기록에 달린 반응을 먼저 정리한다(todo_reactions FK는 RESTRICT).
-        if (!inProgressParticipantIds.isEmpty()) {
-            todoReactionRepository.deleteByTodoParticipantIdIn(inProgressParticipantIds);
-        }
-
-        todoParticipantRepository.anonymizeFinishedByUserId(userId);
-        todoParticipantRepository.deleteInProgressByUserId(userId);
-
-        reevaluateTodoStatuses(affectedTodoIds);
-    }
-
-    /**
-     * 참가자가 빠진 Todo의 상태를 제출 경로와 같은 기준으로 재평가한다.
-     * 잔여 0명이면 FAIL, 잔여 전원 성공이면 SUCCESS, 그 외에는 IN_PROGRESS를 유지한다.
-     */
-    private void reevaluateTodoStatuses(List<Long> todoIds) {
-        if (todoIds.isEmpty()) {
-            return;
-        }
-
-        todoRepository.markAsFailWhenNoParticipantsRemain(todoIds);
-        todoRepository.markAsSuccessWhenRemainingAllSucceeded(todoIds);
     }
 
     private MyPageResponse buildMyPageResponse(User user) {

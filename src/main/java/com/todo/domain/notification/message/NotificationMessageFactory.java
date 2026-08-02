@@ -30,6 +30,26 @@ public class NotificationMessageFactory {
     }
 
     /**
+     * 한 Todo 안에서 담당자에게 할 일이 배정됨. 여러 건도 Todo당 한 알림으로 묶는다.
+     */
+    public NotificationMessage todoAssigned(String todoTitle, int taskCount) {
+        return build(NotificationType.TODO_ASSIGNED, Map.of(
+                "todoTitle", todoTitle,
+                "taskCount", String.valueOf(taskCount)
+        ));
+    }
+
+    /**
+     * 담당자 이탈로 한 Todo의 할 일이 미배정 상태가 됨. 여러 건도 Todo당 한 알림으로 묶는다.
+     */
+    public NotificationMessage todoUnassigned(String todoTitle, int taskCount) {
+        return build(NotificationType.TODO_UNASSIGNED, Map.of(
+                "todoTitle", todoTitle,
+                "taskCount", String.valueOf(taskCount)
+        ));
+    }
+
+    /**
      * 팀 채팅 메시지 도착. push 전용이라 저장되지 않으므로 발신자 닉네임을 그대로 채운다.
      */
     public NotificationMessage chatMessage(String senderNickname, String content) {

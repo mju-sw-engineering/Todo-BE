@@ -18,7 +18,10 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
@@ -41,6 +44,7 @@ public class FileService {
     );
     private static final int THUMBNAIL_MAX_SIZE = 480;
     private static final double THUMBNAIL_QUALITY = 0.8;
+    private static final long MAX_PROOF_IMAGE_SIZE = 5L * 1024 * 1024;
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
@@ -106,6 +110,40 @@ public class FileService {
         }
     }
 
+    /**
+     * Presigned URL로 업로드된 인증 사진을 제출 직전에 다시 검증한다.
+     * 업로드 요청의 fileSize는 선택값이므로 실제 객체의 크기와 MIME은 HEAD 결과가 기준이다.
+     */
+    public void validateProofImage(Long userId, String objectKey) {
+        String expectedPrefix = "proofs/" + userId + "/";
+        if (objectKey == null || objectKey.isBlank() || !objectKey.startsWith(expectedPrefix)) {
+            throw new BusinessException("본인이 업로드한 인증 사진만 제출할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+        if (objectKey.contains("/thumbs/")) {
+            throw new BusinessException("썸네일 파일은 인증 사진으로 제출할 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        HeadObjectResponse object;
+        try {
+            object = s3Client.headObject(HeadObjectRequest.builder()
+                    .bucket(props.getBucket())
+                    .key(objectKey)
+                    .build());
+        } catch (S3Exception e) {
+            if (e.statusCode() == HttpStatus.NOT_FOUND.value()) {
+                throw new BusinessException("인증 사진 파일을 찾을 수 없습니다.", HttpStatus.BAD_REQUEST);
+            }
+            throw new FileStorageException("인증 사진 파일을 확인하는 데 실패했습니다.", e);
+        } catch (SdkException e) {
+            throw new FileStorageException("인증 사진 파일을 확인하는 데 실패했습니다.", e);
+        }
+
+        validateImageContentType(object.contentType());
+        if (object.contentLength() != null && object.contentLength() > MAX_PROOF_IMAGE_SIZE) {
+            throw new BusinessException("인증 사진은 5MB 이하만 제출할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
     public String resolveImageUrl(String objectKey) {
         if (objectKey == null || objectKey.isBlank()) {
             return null;
@@ -116,6 +154,10 @@ public class FileService {
                         .getObjectRequest(r -> r.bucket(props.getBucket()).key(objectKey))
                         .build()
         ).url().toExternalForm();
+    }
+
+    public Duration getPresignedUrlExpiration() {
+        return Duration.ofSeconds(props.getPresignedUrlExpiration());
     }
 
     public void deleteObject(String objectKey) {
