@@ -2,7 +2,9 @@ package com.todo.domain.todo.repository;
 
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,6 +15,17 @@ import java.util.List;
 import java.util.Optional;
 
 public interface TodoRepository extends JpaRepository<Todo, Long> {
+
+    /**
+     * 제출 트랜잭션에서 한 Todo의 동시 제출을 직렬화하기 위한 비관적 락.
+     *
+     * <p>참가자 행만 잠그면 서로 다른 담당자의 동시 제출이 각자 다른 행을 잠가
+     * 아무것도 직렬화되지 않는다. 성공 판정이 참가자 전체를 세는 집계이므로
+     * 집계의 기준점인 부모 행을 잠가야 한다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM Todo t WHERE t.id = :todoId")
+    Optional<Todo> findByIdWithLock(@Param("todoId") Long todoId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""

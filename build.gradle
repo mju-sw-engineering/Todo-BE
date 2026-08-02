@@ -8,6 +8,11 @@ plugins {
 group = 'com.todo'
 version = '0.0.1-SNAPSHOT'
 
+// Spring Boot 3.4.5가 관리하는 Testcontainers 1.20.6은 docker-java가 낡아
+// Docker 29 API의 /info에 400을 받는다. dependency-management 플러그인이 버전을
+// 강제하므로 platform() 선언이 아니라 이 프로퍼티로 올려야 한다.
+ext['testcontainers.version'] = '1.21.3'
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
@@ -45,13 +50,41 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:mysql'
     testRuntimeOnly 'com.h2database:h2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    // MySQL 태그는 Docker가 필요해 기본 빌드에서 제외한다. ./gradlew mysqlTest로 따로 실행한다.
+    useJUnitPlatform {
+        excludeTags 'mysql'
+    }
     finalizedBy jacocoTestReport
+
+    testLogging {
+        exceptionFormat = 'full'
+    }
+}
+
+/**
+ * MySQL Testcontainers 기반 테스트.
+ *
+ * <p>H2 + ddl-auto로는 검증할 수 없는 것만 여기에 둔다 — Flyway 마이그레이션 실제 적용,
+ * 생성 컬럼·복합 FK 같은 MySQL 전용 제약, 그리고 REPEATABLE READ 아래의 동시성.
+ */
+tasks.register('mysqlTest', Test) {
+    description = 'MySQL Testcontainers 기반 테스트 (마이그레이션·동시성). Docker가 필요하다.'
+    group = 'verification'
+
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+
+    useJUnitPlatform {
+        includeTags 'mysql'
+    }
 
     testLogging {
         exceptionFormat = 'full'
