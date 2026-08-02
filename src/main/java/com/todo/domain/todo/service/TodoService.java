@@ -1,6 +1,6 @@
 package com.todo.domain.todo.service;
 
-import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -75,6 +75,7 @@ public class TodoService {
     private final TodoReactionRepository todoReactionRepository;
     private final TransactionTemplate transactionTemplate;
     private final NotificationService notificationService;
+    private final NotificationMessageFactory notificationMessageFactory;
 
     @Transactional
     public CreateTodoResponse createTodo(String loginId, Long teamId, CreateTodoRequest request) {
@@ -115,13 +116,10 @@ public class TodoService {
         List<TeamMember> receivers = teamMemberRepository.findByTeamIdExcludingUser(
                 todo.getTeam().getId(), creator.getId()
         );
-        String title = "새로운 투두가 생성되었습니다.";
-        String content = creator.getNickname() + "님이 '" + todo.getTitle() + "'을(를) 만들었습니다.";
         notificationService.sendAll(
                 receivers.stream().map(TeamMember::getUser).toList(),
-                NotificationType.TODO_CREATED,
-                title,
-                content,
+                creator,
+                notificationMessageFactory.todoCreated(todo.getTitle()),
                 todo.getId()
         );
     }

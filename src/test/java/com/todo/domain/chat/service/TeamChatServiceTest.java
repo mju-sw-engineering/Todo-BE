@@ -12,6 +12,8 @@ import com.todo.domain.chat.entity.TeamChatReadStatus;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessage;
+import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -54,6 +56,7 @@ class TeamChatServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private TeamMemberRepository teamMemberRepository;
     @Mock private NotificationService notificationService;
+    @Mock private NotificationMessageFactory notificationMessageFactory;
 
     @Test
     void 메시지_저장_성공() {
@@ -119,11 +122,14 @@ class TeamChatServiceTest {
             return message;
         });
 
+        NotificationMessage message = new NotificationMessage(
+                NotificationType.CHAT_MESSAGE, "닉네임1님이 메시지를 보냈습니다.", "안녕");
+        given(notificationMessageFactory.chatMessage(sender.getNickname(), "안녕")).willReturn(message);
+
         teamChatService.saveMessage(100L, "user1", new ChatMessageRequest("안녕"));
 
-        then(notificationService).should().pushAll(
-                eq(List.of(receiver)), eq(NotificationType.CHAT_MESSAGE), any(), any(), eq(100L));
-        then(notificationService).should(never()).sendAll(any(), any(), any(), any(), any());
+        then(notificationService).should().pushAll(eq(List.of(receiver)), eq(message), eq(100L));
+        then(notificationService).should(never()).sendAll(any(), any(), any(), any());
     }
 
     @Test

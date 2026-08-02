@@ -1,6 +1,9 @@
 spring:
   profiles:
     default: local
+  # 알림 문구는 코드가 아니라 이 파일에서 관리한다. 문구 수정에 재컴파일이 필요 없다.
+  config:
+    import: classpath:notification-messages.yml
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:

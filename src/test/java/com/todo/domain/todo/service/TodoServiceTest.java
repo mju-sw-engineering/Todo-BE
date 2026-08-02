@@ -1,6 +1,8 @@
 package com.todo.domain.todo.service;
 
 import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessage;
+import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -82,6 +84,9 @@ class TodoServiceTest {
     private TransactionTemplate transactionTemplate;
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private NotificationMessageFactory notificationMessageFactory;
 
     @BeforeEach
     void setUp() {
@@ -555,11 +560,14 @@ class TodoServiceTest {
         });
         given(teamMemberRepository.findByTeamIdExcludingUser(100L, 1L))
                 .willReturn(List.of(TeamMember.create(team, other, TeamMemberRole.MEMBER)));
+        NotificationMessage message = new NotificationMessage(
+                NotificationType.TODO_CREATED, "새로운 투두가 생성되었습니다.", "{actor}님이 '투두'을(를) 만들었습니다.");
+        given(notificationMessageFactory.todoCreated("투두")).willReturn(message);
 
         todoService.createTodo("user1", 100L, request);
 
         then(notificationService).should().sendAll(
-                eq(List.of(other)), eq(NotificationType.TODO_CREATED), any(), any(), eq(10L));
+                eq(List.of(other)), eq(creator), eq(message), eq(10L));
     }
 
     @Test
