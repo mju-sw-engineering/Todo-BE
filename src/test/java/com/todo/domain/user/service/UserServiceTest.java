@@ -66,9 +66,11 @@ class UserServiceTest {
     @Mock
     private TeamService teamService;
     @Mock
-    private TodoParticipantRepository todoParticipantRepository;
+    private TodoWorkItemRepository todoWorkItemRepository;
     @Mock
     private TodoReactionRepository todoReactionRepository;
+    @Mock
+    private TodoWorkItemLifecycleService todoWorkItemLifecycleService;
     @Mock
     private TeamChatMessageRepository teamChatMessageRepository;
     @Mock
