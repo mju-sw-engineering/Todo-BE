@@ -11,9 +11,11 @@ import com.todo.domain.chat.entity.TeamChatMessage;
 import com.todo.domain.chat.entity.TeamChatReadStatus;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
+import com.todo.domain.notification.dto.response.NotificationResponse;
 import com.todo.domain.notification.entity.Notification;
 import com.todo.domain.notification.entity.NotificationType;
 import com.todo.domain.notification.repository.NotificationRepository;
+import com.todo.domain.notification.message.NotificationActorText;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
@@ -159,7 +161,7 @@ class UserWithdrawalIntegrationTest {
     @Test
     void 알림과_동의_이력이_있어도_FK_위반으로_실패하지_않는다() {
         notificationRepository.save(Notification.create(
-                withdrawing, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L));
+                withdrawing, null, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L));
         userConsentRepository.save(UserConsent.create(withdrawing, ConsentType.PRIVACY, "v1"));
         entityManager.flush();
 
@@ -169,6 +171,28 @@ class UserWithdrawalIntegrationTest {
         assertThat(notificationRepository.findLatestByReceiverId(withdrawing.getId(),
                 org.springframework.data.domain.PageRequest.of(0, 10))).isEmpty();
         assertThat(userConsentRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void 탈퇴자가_유발한_알림은_남고_행위자만_익명화된다() {
+        notificationRepository.save(Notification.create(
+                staying,
+                withdrawing,
+                NotificationType.TODO_CREATED,
+                "새로운 투두가 생성되었습니다.",
+                NotificationActorText.PLACEHOLDER + "님이 '공동 투두'을(를) 만들었습니다.",
+                10L
+        ));
+        entityManager.flush();
+
+        withdraw();
+
+        List<Notification> remaining = notificationRepository.findLatestByReceiverId(
+                staying.getId(), org.springframework.data.domain.PageRequest.of(0, 10));
+        assertThat(remaining).hasSize(1);
+        assertThat(remaining.get(0).getActor()).isNull();
+        assertThat(NotificationResponse.from(remaining.get(0)).content())
+                .isEqualTo("탈퇴한 사용자님이 '공동 투두'을(를) 만들었습니다.");
     }
 
     @Test
@@ -270,7 +294,7 @@ class UserWithdrawalIntegrationTest {
     @Test
     void 참조_정리를_빠뜨리면_사용자_삭제가_DB_제약으로_실패한다() {
         notificationRepository.save(Notification.create(
-                withdrawing, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L));
+                withdrawing, null, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L));
         entityManager.flush();
         // 영속성 컨텍스트를 비워 Hibernate의 TransientObjectException이 아니라
         // 실제 DB의 RESTRICT FK가 막는지 확인한다.

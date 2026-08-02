@@ -4,7 +4,8 @@ import com.todo.domain.notification.dto.response.NotificationPageResponse;
 import com.todo.domain.notification.dto.response.NotificationResponse;
 import com.todo.domain.notification.dto.response.UnreadNotificationCountResponse;
 import com.todo.domain.notification.entity.Notification;
-import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessage;
+import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.event.NotificationDelivery;
 import com.todo.domain.notification.event.NotificationDispatchEvent;
 import com.todo.domain.notification.repository.NotificationRepository;
@@ -35,23 +36,30 @@ public class NotificationService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
-    public void send(User receiver, NotificationType type, String title, String content, Long referenceId) {
-        sendAll(List.of(receiver), type, title, content, referenceId);
+    public void send(User receiver, User actor, NotificationMessage message, Long referenceId) {
+        sendAll(List.of(receiver), actor, message, referenceId);
     }
 
     /**
      * 여러 수신자에게 같은 알림을 한 번의 batch insert로 저장한다.
      * 저장은 호출자 트랜잭션에 포함되고, WebSocket 발송은 커밋 후로 미룬다.
+     *
+     * <p>문구는 {@link NotificationMessageFactory}로 만든다. 행위자 이름은 문구에 직접
+     * 넣지 않고 자리표시자로 두며, 여기 넘긴 actor로 조회 시점에 치환된다. 이름을 박아
+     * 저장하면 닉네임 변경·탈퇴 후 과거 알림이 옛 이름을 계속 보여준다.
+     *
+     * @param actor 알림을 유발한 사람. 행위자가 없는 시스템 알림이면 null
      */
     @Transactional
-    public void sendAll(List<User> receivers, NotificationType type, String title, String content, Long referenceId) {
+    public void sendAll(List<User> receivers, User actor, NotificationMessage message, Long referenceId) {
         if (receivers.isEmpty()) {
             return;
         }
 
         List<Notification> notifications = notificationRepository.saveAll(
                 receivers.stream()
-                        .map(receiver -> Notification.create(receiver, type, title, content, referenceId))
+                        .map(receiver -> Notification.create(
+                                receiver, actor, message.type(), message.title(), message.content(), referenceId))
                         .toList()
         );
 
@@ -74,13 +82,17 @@ public class NotificationService {
      * 알림 행을 남기지 않고 WebSocket 푸시만 한다. 채팅처럼 건수가 많고 보관 가치가 낮은 알림에 쓴다.
      * 미읽음 개수는 도메인 테이블(team_chat_read_statuses)로 계산하므로 알림 테이블에 쌓을 이유가 없다.
      * 수신자는 notificationId가 null인 payload를 받고, 이 알림은 읽음 처리 대상이 아니다.
+     *
+     * <p>저장하지 않으므로 actor를 받지 않는다. 발송 시점의 닉네임이 곧 현재 닉네임이라
+     * 문구가 낡을 수 없다. 문구에 이름을 그대로 넣어도 된다.
      */
-    public void pushAll(List<User> receivers, NotificationType type, String title, String content, Long referenceId) {
+    public void pushAll(List<User> receivers, NotificationMessage message, Long referenceId) {
         if (receivers.isEmpty()) {
             return;
         }
 
-        NotificationResponse payload = NotificationResponse.pushOnly(type, title, content, referenceId);
+        NotificationResponse payload = NotificationResponse.pushOnly(
+                message.type(), message.title(), message.content(), referenceId);
         List<NotificationDelivery> deliveries = receivers.stream()
                 .map(receiver -> new NotificationDelivery(receiver.getLoginId(), payload))
                 .toList();
