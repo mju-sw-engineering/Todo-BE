@@ -34,21 +34,20 @@ class TeamControllerTest {
     @Test
     void 팀_달성_통계_응답을_반환한다() {
         TeamController controller = new TeamController(teamService);
-        TeamAchievementResponse serviceResponse = new TeamAchievementResponse(1L, 5, 3);
+        TeamAchievementResponse serviceResponse = new TeamAchievementResponse(1L, 5);
         given(teamService.getTeamAchievement(1L, "user1")).willReturn(serviceResponse);
 
         ResponseEntity<ApiResponse<TeamAchievementResponse>> response = controller.getTeamAchievement(1L, auth());
 
         assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
         assertThat(response.getBody().getData().successCount()).isEqualTo(5);
-        assertThat(response.getBody().getData().consecutiveTodoCount()).isEqualTo(3);
     }
 
     @Test
     void 팀_상세_응답을_반환한다() {
         TeamController controller = new TeamController(teamService);
         TeamDetailResponse serviceResponse = new TeamDetailResponse(
-                1L, "팀", null, "ABCDEFGH", 0, 0, 0, List.of()
+                1L, "팀", null, "ABCDEFGH", 0, 0, List.of()
         );
         given(teamService.getTeamDetail(1L, "user1")).willReturn(serviceResponse);
 
@@ -101,7 +100,7 @@ class TeamControllerTest {
         TeamController controller = new TeamController(teamService);
         CreateTeamRequest request = new CreateTeamRequest("팀", null);
         CreateTeamResponse serviceResponse = new CreateTeamResponse(
-                1L, "팀", null, "ABCDEFGH", 1L, 0, null
+                1L, "팀", null, "ABCDEFGH", 1L, null
         );
         given(teamService.createTeam("user1", request)).willReturn(serviceResponse);
 

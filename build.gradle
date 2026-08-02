@@ -8,10 +8,10 @@ plugins {
 group = 'com.todo'
 version = '0.0.1-SNAPSHOT'
 
-// Spring Boot 3.4.5가 관리하는 Testcontainers 1.20.6은 docker-java가 낡아
-// Docker 29 API의 /info에 400을 받는다. dependency-management 플러그인이 버전을
-// 강제하므로 platform() 선언이 아니라 이 프로퍼티로 올려야 한다.
-ext['testcontainers.version'] = '1.21.3'
+// Spring Boot 3.4.5가 관리하는 Testcontainers 1.20.6과 1.21.3은
+// Docker 29의 최소 API 1.44보다 낡은 1.32를 사용해 /info 호출이 실패한다.
+// 1.21.x 호환 수정이 들어간 1.21.4를 dependency-management 프로퍼티로 고정한다.
+ext['testcontainers.version'] = '1.21.4'
 
 java {
     toolchain {
