@@ -30,7 +30,7 @@ public class ReauthTokenCleanupScheduler {
         int deleted = reauthTokenRepository.deleteByExpiresAtBefore(LocalDateTime.now(clock));
 
         if (deleted > 0) {
-            log.info("만료된 재인증 토큰 {}건 정리", deleted);
+            log.info("만료된 재인증 토큰 정리 완료. deletedCount={}", deleted);
         }
     }
 }

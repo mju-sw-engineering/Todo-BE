@@ -18,9 +18,9 @@ public class FileDeletionAsyncDispatcher {
             fileDeletionOutboxService.dispatch(outboxId);
         } catch (RuntimeException e) {
             log.warn(
-                    "FILE_DELETE_ASYNC_DISPATCH_FAILED outboxId={}, exceptionType={}",
+                    "파일 삭제 비동기 처리 실패. outboxId={}",
                     outboxId,
-                    e.getClass().getSimpleName()
+                    e
             );
         }
     }

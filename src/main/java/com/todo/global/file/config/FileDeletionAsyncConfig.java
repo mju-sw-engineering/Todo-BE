@@ -1,10 +1,12 @@
 package com.todo.global.file.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+@Slf4j
 @Configuration
 public class FileDeletionAsyncConfig {
 
@@ -22,6 +24,13 @@ public class FileDeletionAsyncConfig {
         executor.setThreadNamePrefix("file-delete-");
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(awaitTerminationSeconds);
+        log.info(
+                "파일 삭제 비동기 스레드 풀 설정. corePoolSize={}, maxPoolSize={}, queueCapacity={}, awaitTerminationSeconds={}",
+                corePoolSize,
+                maxPoolSize,
+                queueCapacity,
+                awaitTerminationSeconds
+        );
         return executor;
     }
 }
