@@ -43,6 +43,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
     implementation 'net.coobird:thumbnailator:0.4.20'
+    // JDK ImageIO에는 WebP 리더가 없어 WebP 인증 사진의 썸네일 생성이 항상 실패한다.
+    // Thumbnailator가 ImageIO를 쓰므로 리더만 추가하면 된다. 출력은 jpg라 writer는 불필요하다.
+    runtimeOnly 'com.twelvemonkeys.imageio:imageio-webp:3.12.0'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.3'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.3'
     runtimeOnly 'com.mysql:mysql-connector-j'

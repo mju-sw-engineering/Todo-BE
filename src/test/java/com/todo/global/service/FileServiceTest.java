@@ -14,10 +14,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
@@ -28,6 +30,9 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.http.SdkHttpMethod;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.InputStream;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
@@ -230,6 +235,37 @@ class FileServiceTest {
                 .willReturn(ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), new byte[]{1, 2, 3}));
 
         assertThat(fileService.createProofThumbnail("proofs/1/a.png")).isNull();
+    }
+
+    @Test
+    void webp_인증사진도_썸네일을_생성한다() throws Exception {
+        byte[] source = readFixture("fixtures/proof-sample.webp");
+        given(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
+                .willReturn(ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), source));
+
+        String thumbnailKey = fileService.createProofThumbnail("proofs/1/a.webp");
+
+        assertThat(thumbnailKey).isNotNull();
+
+        ArgumentCaptor<RequestBody> body = ArgumentCaptor.forClass(RequestBody.class);
+        then(s3Client).should().putObject(any(PutObjectRequest.class), body.capture());
+        BufferedImage thumbnail = ImageIO.read(body.getValue().contentStreamProvider().newStream());
+        assertThat(thumbnail).isNotNull();
+        assertThat(Math.max(thumbnail.getWidth(), thumbnail.getHeight())).isLessThanOrEqualTo(480);
+    }
+
+    @Test
+    void imageio에_webp_리더가_등록되어_있다() {
+        assertThat(ImageIO.getImageReadersByMIMEType("image/webp").hasNext())
+                .describedAs("허용 MIME에 image/webp가 있으므로 리더가 없으면 썸네일이 항상 실패한다")
+                .isTrue();
+    }
+
+    private byte[] readFixture(String path) throws Exception {
+        try (InputStream in = getClass().getClassLoader().getResourceAsStream(path)) {
+            assertThat(in).describedAs("테스트 픽스처 없음: %s", path).isNotNull();
+            return in.readAllBytes();
+        }
     }
 
     private SdkHttpFullRequest httpRequest(String url, SdkHttpMethod method) {
