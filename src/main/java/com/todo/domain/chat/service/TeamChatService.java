@@ -11,7 +11,7 @@ import com.todo.domain.chat.entity.TeamChatMessage;
 import com.todo.domain.chat.entity.TeamChatReadStatus;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
-import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -39,6 +39,7 @@ public class TeamChatService {
     private final UserRepository userRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final NotificationService notificationService;
+    private final NotificationMessageFactory notificationMessageFactory;
 
     @Transactional
     public TeamChatMessageResponse saveMessage(Long teamId, String loginId, ChatMessageRequest request) {
@@ -139,12 +140,9 @@ public class TeamChatService {
      */
     private void pushChatNotifications(Long teamId, User sender, String content) {
         List<TeamMember> receivers = teamMemberRepository.findByTeamIdExcludingUser(teamId, sender.getId());
-        String title = sender.getNickname() + "님이 메시지를 보냈습니다.";
         notificationService.pushAll(
                 receivers.stream().map(TeamMember::getUser).toList(),
-                NotificationType.CHAT_MESSAGE,
-                title,
-                content,
+                notificationMessageFactory.chatMessage(sender.getNickname(), content),
                 teamId
         );
     }

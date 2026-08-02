@@ -109,6 +109,8 @@ public class UserService {
         // 3. 공동 기록 익명화 — 삭제하지 않고 작성자 관계만 끊는다.
         teamChatMessageRepository.clearSenderByUserId(userId);
         todoRepository.clearCreatorByUserId(userId);
+        // 탈퇴자가 받은 알림은 2번에서 지웠고, 탈퇴자가 유발해 남에게 간 알림은 여기서 익명화한다.
+        notificationRepository.clearActorByUserId(userId);
 
         // 4. 참가 기록: 완료·실패는 익명화해 남기고, 진행 중 배정만 제거한다.
         anonymizeAndRemoveParticipations(userId);

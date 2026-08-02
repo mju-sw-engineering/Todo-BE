@@ -2,6 +2,8 @@ package com.todo.domain.notification.dto.response;
 
 import com.todo.domain.notification.entity.Notification;
 import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationActorText;
+import com.todo.domain.user.entity.User;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -15,12 +17,17 @@ public record NotificationResponse(
         Long referenceId,
         OffsetDateTime createdAt
 ) {
+    /**
+     * 저장된 문구의 행위자 자리표시자를 현재 닉네임으로 치환해 내려보낸다.
+     * 규칙은 {@link NotificationActorText} 참조.
+     */
     public static NotificationResponse from(Notification notification) {
+        User actor = notification.getActor();
         return new NotificationResponse(
                 notification.getId(),
                 notification.getType(),
-                notification.getTitle(),
-                notification.getContent(),
+                NotificationActorText.render(notification.getTitle(), actor),
+                NotificationActorText.render(notification.getContent(), actor),
                 notification.isRead(),
                 notification.getReferenceId(),
                 notification.getCreatedAt().atOffset(ZoneOffset.ofHours(9))
