@@ -1,6 +1,7 @@
 package com.todo.domain.todo.controller;
 
 import com.todo.domain.todo.dto.request.CreateTodoRequest;
+import com.todo.domain.todo.dto.request.AssignTodoWorkItemRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
@@ -8,6 +9,8 @@ import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
+import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
+import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
 import com.todo.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -24,7 +27,7 @@ import java.util.List;
 @Tag(name = "Todo", description = "투두 API")
 public interface TodoControllerDocs {
 
-    @Operation(summary = "투두 생성", description = "팀 멤버가 팀 내 공통 투두를 생성하고 배정할 팀원을 지정합니다.")
+    @Operation(summary = "투두 생성", description = "assigneeIds를 전달하면 DIRECT Todo, tasks를 전달하면 TASK Todo를 생성합니다. 두 필드는 함께 전달할 수 없습니다.")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "투두 생성 성공",
@@ -89,7 +92,7 @@ public interface TodoControllerDocs {
             Authentication authentication
     );
 
-    @Operation(summary = "투두 상세 조회", description = "특정 투두의 상세 정보와 배정된 팀원들의 인증 현황을 조회합니다.")
+    @Operation(summary = "투두 상세 조회", description = "특정 투두의 상세 정보와 DIRECT 담당자 또는 TASK WorkItem 현황을 조회합니다.")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
@@ -106,8 +109,8 @@ public interface TodoControllerDocs {
 
     @Operation(
             summary = "인증 사진 제출",
-            description = "배정된 팀원이 투두 완료 후 인증 사진을 제출하면 즉시 완료 처리됩니다. " +
-                    "마감 시간이 지난 경우 상태를 FAIL로 변경 후 400을 반환합니다."
+            description = "DIRECT Todo의 로그인 담당자가 인증 사진을 제출합니다. TASK는 /todo-work-items/{workItemId}/submission 경로를 사용합니다. " +
+                    "마감 시간이 지난 경우 대상 WorkItem과 Todo를 FAIL로 변경 후 400을 반환합니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
@@ -126,9 +129,32 @@ public interface TodoControllerDocs {
     );
 
     @Operation(
-            summary = "인증 사진 이모지 반응",
-            description = "팀원의 인증 사진에 이모지 반응을 남깁니다. " +
-                    "이미 같은 이모지를 눌렀으면 취소하고, 다른 이모지를 누르면 변경됩니다."
+            summary = "인증 사진 이모지 반응 (deprecated)",
+            description = "deprecated: Todo-FE와 제거 시점을 합의할 때까지 호환용으로 유지합니다. 새 연동은 /api/todo-work-items/{workItemId}/reactions를 사용합니다. 팀원의 인증 사진에 이모지 반응을 남깁니다. " +
+                    "이미 같은 이모지를 눌렀으면 취소하고, 다른 이모지를 누르면 변경됩니다.",
+            deprecated = true
+    )
+    @Deprecated(since = "2026-08-02", forRemoval = false)
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "이모지 반응 반영 성공",
+                    content = @Content(schema = @Schema(implementation = TodoReactionResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "인증 사진 미제출",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "WorkItem을 찾을 수 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<ApiResponse<TodoReactionResponse>> reactTodoParticipant(
+            @Parameter(description = "투두 참여자 ID", example = "1") Long participantId,
+            ReactTodoRequest request,
+            Authentication authentication
+    );
+
+    @Operation(
+            summary = "WorkItem 인증 사진 이모지 반응",
+            description = "팀원의 WorkItem 인증 사진에 이모지 반응을 남깁니다. 이미 같은 이모지를 눌렀으면 취소하고, 다른 이모지를 누르면 변경됩니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
@@ -138,12 +164,69 @@ public interface TodoControllerDocs {
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
                     content = @Content(schema = @Schema(hidden = true))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "투두 참여자를 찾을 수 없음",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "WorkItem을 찾을 수 없음",
                     content = @Content(schema = @Schema(hidden = true)))
     })
-    ResponseEntity<ApiResponse<TodoReactionResponse>> reactTodoParticipant(
-            @Parameter(description = "투두 참여자 ID", example = "1") Long participantId,
+    ResponseEntity<ApiResponse<TodoReactionResponse>> reactTodoWorkItem(
+            @Parameter(description = "WorkItem ID", example = "1") Long workItemId,
             ReactTodoRequest request,
+            Authentication authentication
+    );
+
+    @Operation(
+            summary = "TASK WorkItem 인증 사진 제출",
+            description = "로그인한 TASK 담당자가 WorkItem 인증 사진을 제출합니다."
+    )
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 사진 제출 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "마감 초과 또는 유효하지 않은 사진 key",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "담당자가 아님",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "WorkItem을 찾을 수 없음",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이미 제출함",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<ApiResponse<Void>> submitTodoWorkItem(
+            @Parameter(description = "WorkItem ID", example = "1") Long workItemId,
+            SubmitTodoRequest request,
+            Authentication authentication
+    );
+
+    @Operation(summary = "WorkItem 제출 사진 조회", description = "팀 멤버에게 제출 사진의 원본·썸네일 Presigned URL을 발급합니다.")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
+                    content = @Content(schema = @Schema(implementation = TodoWorkItemSubmissionResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "WorkItem이 없거나 미제출",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<ApiResponse<TodoWorkItemSubmissionResponse>> getTodoWorkItemSubmission(
+            @Parameter(description = "WorkItem ID", example = "1") Long workItemId,
+            Authentication authentication
+    );
+
+    @Operation(summary = "미배정 WorkItem 재배정", description = "팀 멤버가 진행 중이며 미배정인 DIRECT 또는 TASK WorkItem을 재배정합니다.")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "재배정 성공",
+                    content = @Content(schema = @Schema(implementation = TodoWorkItemAssigneeResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "이미 배정됨, 새 담당자가 비팀원 또는 마감 경과",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "WorkItem을 찾을 수 없음",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "동시 재배정 충돌",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<ApiResponse<TodoWorkItemAssigneeResponse>> reassignTodoWorkItem(
+            @Parameter(description = "WorkItem ID", example = "1") Long workItemId,
+            AssignTodoWorkItemRequest request,
             Authentication authentication
     );
 }

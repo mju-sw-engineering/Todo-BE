@@ -27,9 +27,6 @@ public class Team extends BaseTimeEntity {
     @Column(nullable = false)
     private int successCount = 0;
 
-    @Column(nullable = false)
-    private int consecutiveTodoCount = 0;
-
     public void updateTeamImage(String imageKey) {
         this.teamImage = imageKey;
     }

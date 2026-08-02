@@ -15,9 +15,10 @@ import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
-import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.todo.repository.TodoWorkItemRepository;
+import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -67,9 +68,11 @@ class TeamServiceTest {
     @Mock
     private TodoRepository todoRepository;
     @Mock
-    private TodoParticipantRepository todoParticipantRepository;
+    private TodoWorkItemRepository todoWorkItemRepository;
     @Mock
     private TodoReactionRepository todoReactionRepository;
+    @Mock
+    private TodoWorkItemLifecycleService todoWorkItemLifecycleService;
     @Mock
     private TeamChatMessageRepository teamChatMessageRepository;
     @Mock
@@ -90,7 +93,6 @@ class TeamServiceTest {
         assertThat(response.teamName()).isEqualTo("우리팀");
         assertThat(response.teamImage()).isNull();
         assertThat(response.inviteCode()).hasSize(8);
-        assertThat(response.consecutiveTodoCount()).isZero();
     }
 
     @Test
@@ -451,7 +453,30 @@ class TeamServiceTest {
 
         teamService.leaveTeam("user1", 10L);
 
+        then(todoWorkItemLifecycleService).should().handleTeamDeparture(10L, user);
         then(teamMemberRepository).should().delete(member);
+    }
+
+    @Test
+    void 팀장_강퇴_시_대상_멤버의_진행중_WorkItem을_정리한_후_멤버를_삭제한다() {
+        User leader = User.create("leader", "encodedPwd", "팀장", null);
+        ReflectionTestUtils.setField(leader, "id", 1L);
+        User targetUser = User.create("member", "encodedPwd", "팀원", null);
+        ReflectionTestUtils.setField(targetUser, "id", 2L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        TeamMember leaderMember = TeamMember.create(team, leader, TeamMemberRole.LEADER);
+        TeamMember targetMember = TeamMember.create(team, targetUser, TeamMemberRole.MEMBER);
+
+        given(userRepository.findByLoginId("leader")).willReturn(Optional.of(leader));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(leaderMember));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 2L)).willReturn(Optional.of(targetMember));
+
+        teamService.removeMember("leader", 10L, 2L);
+
+        var inOrder = inOrder(todoWorkItemLifecycleService, teamMemberRepository);
+        inOrder.verify(todoWorkItemLifecycleService).handleTeamDeparture(10L, targetUser);
+        inOrder.verify(teamMemberRepository).delete(targetMember);
     }
 
     @Test
@@ -467,14 +492,14 @@ class TeamServiceTest {
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of(100L));
-        given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of(1000L));
+        given(todoWorkItemRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of(1000L));
 
         teamService.leaveTeam("user1", 10L);
 
-        var inOrder = inOrder(todoReactionRepository, todoParticipantRepository, todoRepository,
+        var inOrder = inOrder(todoReactionRepository, todoWorkItemRepository, todoRepository,
                 teamChatReadStatusRepository, teamChatMessageRepository, teamMemberRepository, teamRepository);
-        inOrder.verify(todoReactionRepository).deleteByTodoParticipantIdIn(List.of(1000L));
-        inOrder.verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L));
+        inOrder.verify(todoReactionRepository).deleteByTodoWorkItemIdIn(List.of(1000L));
+        inOrder.verify(todoWorkItemRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoRepository).deleteByIdIn(List.of(100L));
         inOrder.verify(teamChatReadStatusRepository).deleteByTeamId(10L);
         inOrder.verify(teamChatMessageRepository).deleteByTeamId(10L);
@@ -503,14 +528,14 @@ class TeamServiceTest {
         inOrder.verify(teamChatMessageRepository).deleteByTeamId(10L);
         inOrder.verify(teamMemberRepository).deleteByTeamId(10L);
         inOrder.verify(teamRepository).deleteById(10L);
-        verify(todoParticipantRepository, never()).findIdsByTodoIdIn(anyList());
-        verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
-        verify(todoParticipantRepository, never()).deleteByTodoIdIn(anyList());
+        verify(todoWorkItemRepository, never()).findIdsByTodoIdIn(anyList());
+        verify(todoReactionRepository, never()).deleteByTodoWorkItemIdIn(anyList());
+        verify(todoWorkItemRepository, never()).deleteByTodoIdIn(anyList());
         verify(todoRepository, never()).deleteByIdIn(anyList());
     }
 
     @Test
-    void 팀_나가기_성공_마지막_리더이고_투두_참가자가_없으면_리액션_삭제를_건너뛴다() {
+    void 팀_나가기_성공_마지막_리더이고_WorkItem이_없으면_리액션_삭제를_건너뛴다() {
         User user = User.create("user1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
@@ -522,19 +547,19 @@ class TeamServiceTest {
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of(100L));
-        given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of());
+        given(todoWorkItemRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of());
 
         teamService.leaveTeam("user1", 10L);
 
-        var inOrder = inOrder(todoParticipantRepository, todoRepository,
+        var inOrder = inOrder(todoWorkItemRepository, todoRepository,
                 teamChatReadStatusRepository, teamChatMessageRepository, teamMemberRepository, teamRepository);
-        inOrder.verify(todoParticipantRepository).deleteByTodoIdIn(List.of(100L));
+        inOrder.verify(todoWorkItemRepository).deleteByTodoIdIn(List.of(100L));
         inOrder.verify(todoRepository).deleteByIdIn(List.of(100L));
         inOrder.verify(teamChatReadStatusRepository).deleteByTeamId(10L);
         inOrder.verify(teamChatMessageRepository).deleteByTeamId(10L);
         inOrder.verify(teamMemberRepository).deleteByTeamId(10L);
         inOrder.verify(teamRepository).deleteById(10L);
-        verify(todoReactionRepository, never()).deleteByTodoParticipantIdIn(anyList());
+        verify(todoReactionRepository, never()).deleteByTodoWorkItemIdIn(anyList());
     }
 
     @Test
@@ -543,11 +568,11 @@ class TeamServiceTest {
         ReflectionTestUtils.setField(team, "id", 10L);
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of(100L, 101L));
-        given(todoParticipantRepository.findProofImageKeysByTodoIdIn(List.of(100L, 101L)))
+        given(todoWorkItemRepository.findProofImageKeysByTodoIdIn(List.of(100L, 101L)))
                 .willReturn(List.of("proofs/1/a.png", "proofs/2/b.png"));
-        given(todoParticipantRepository.findProofThumbnailKeysByTodoIdIn(List.of(100L, 101L)))
+        given(todoWorkItemRepository.findProofThumbnailKeysByTodoIdIn(List.of(100L, 101L)))
                 .willReturn(List.of("proofs/1/thumbs/a.jpg", "proofs/2/thumbs/b.jpg"));
-        given(todoParticipantRepository.findIdsByTodoIdIn(List.of(100L, 101L))).willReturn(List.of());
+        given(todoWorkItemRepository.findIdsByTodoIdIn(List.of(100L, 101L))).willReturn(List.of());
 
         teamService.deleteTeamWithAllData(10L);
 

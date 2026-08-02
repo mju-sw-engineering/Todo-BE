@@ -13,7 +13,6 @@ public record CreateTeamResponse(
         @Schema(description = "팀 이미지 URL") String teamImage,
         @Schema(description = "초대 코드") String inviteCode,
         @Schema(description = "팀장 ID") Long leaderId,
-        @Schema(description = "연속 todo 횟수") int consecutiveTodoCount,
         @Schema(description = "생성 시각", example = "2026-05-21T12:34:56+09:00") OffsetDateTime createdAt
 ) {
     public static CreateTeamResponse from(Team team, Long leaderId) {
@@ -23,13 +22,12 @@ public record CreateTeamResponse(
                 team.getTeamImage(),
                 team.getInviteCode(),
                 leaderId,
-                team.getConsecutiveTodoCount(),
                 toKstOffset(team.getCreatedAt())
         );
     }
 
     public CreateTeamResponse withImageUrl(String resolvedImageUrl) {
-        return new CreateTeamResponse(teamId, teamName, resolvedImageUrl, inviteCode, leaderId, consecutiveTodoCount, createdAt);
+        return new CreateTeamResponse(teamId, teamName, resolvedImageUrl, inviteCode, leaderId, createdAt);
     }
 
     private static OffsetDateTime toKstOffset(LocalDateTime dateTime) {

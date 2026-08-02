@@ -18,9 +18,10 @@ import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
-import com.todo.domain.todo.repository.TodoParticipantRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.todo.repository.TodoWorkItemRepository;
+import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -53,8 +54,9 @@ public class TeamService {
     private final FileService fileService;
     private final TeamInviteMailService teamInviteMailService;
     private final TodoRepository todoRepository;
-    private final TodoParticipantRepository todoParticipantRepository;
+    private final TodoWorkItemRepository todoWorkItemRepository;
     private final TodoReactionRepository todoReactionRepository;
+    private final TodoWorkItemLifecycleService todoWorkItemLifecycleService;
     private final TeamChatMessageRepository teamChatMessageRepository;
     private final TeamChatReadStatusRepository teamChatReadStatusRepository;
     private final FileDeletionOutboxService fileDeletionOutboxService;
@@ -177,6 +179,7 @@ public class TeamService {
         TeamMember target = teamMemberRepository.findByTeamIdAndUserId(teamId, targetUserId)
                 .orElseThrow(() -> new BusinessException("팀 멤버를 찾을 수 없습니다", HttpStatus.NOT_FOUND));
 
+        todoWorkItemLifecycleService.handleTeamDeparture(teamId, target.getUser());
         teamMemberRepository.delete(target);
     }
 
@@ -202,6 +205,7 @@ public class TeamService {
             }
         }
 
+        todoWorkItemLifecycleService.handleTeamDeparture(teamId, user);
         teamMemberRepository.delete(member);
     }
 
@@ -222,8 +226,8 @@ public class TeamService {
         List<String> objectKeys = new ArrayList<>();
         objectKeys.add(team.getTeamImage());
         if (!todoIds.isEmpty()) {
-            objectKeys.addAll(todoParticipantRepository.findProofImageKeysByTodoIdIn(todoIds));
-            objectKeys.addAll(todoParticipantRepository.findProofThumbnailKeysByTodoIdIn(todoIds));
+            objectKeys.addAll(todoWorkItemRepository.findProofImageKeysByTodoIdIn(todoIds));
+            objectKeys.addAll(todoWorkItemRepository.findProofThumbnailKeysByTodoIdIn(todoIds));
         }
         fileDeletionOutboxService.enqueueAll(objectKeys);
     }
@@ -233,11 +237,11 @@ public class TeamService {
             return;
         }
 
-        List<Long> participantIds = todoParticipantRepository.findIdsByTodoIdIn(todoIds);
-        if (!participantIds.isEmpty()) {
-            todoReactionRepository.deleteByTodoParticipantIdIn(participantIds);
+        List<Long> workItemIds = todoWorkItemRepository.findIdsByTodoIdIn(todoIds);
+        if (!workItemIds.isEmpty()) {
+            todoReactionRepository.deleteByTodoWorkItemIdIn(workItemIds);
         }
-        todoParticipantRepository.deleteByTodoIdIn(todoIds);
+        todoWorkItemRepository.deleteByTodoIdIn(todoIds);
         todoRepository.deleteByIdIn(todoIds);
     }
 
