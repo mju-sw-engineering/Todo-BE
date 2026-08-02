@@ -370,6 +370,7 @@ class TodoServiceTest {
         TodoParticipant participant = todoParticipantWithId(20L, todo, user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
+        given(todoRepository.findByIdWithLock(10L)).willReturn(Optional.of(todo));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L)).willReturn(Optional.of(participant));
         given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
         given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
@@ -393,6 +394,7 @@ class TodoServiceTest {
         TodoParticipant participant = todoParticipantWithId(20L, todo, user);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L)).willReturn(Optional.of(participant));
+        given(todoRepository.findByIdWithLock(10L)).willReturn(Optional.of(todo));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L)).willReturn(Optional.of(participant));
         given(fileService.createProofThumbnail("proof-key")).willReturn(null);
         given(todoParticipantRepository.countByTodoId(10L)).willReturn(1L);
@@ -416,6 +418,7 @@ class TodoServiceTest {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
                 .willReturn(Optional.of(participantForCheck));
+        given(todoRepository.findByIdWithLock(10L)).willReturn(Optional.of(todo));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L))
                 .willReturn(Optional.of(alreadySubmittedParticipant));
         given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");
@@ -439,6 +442,7 @@ class TodoServiceTest {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithTodo(10L, 1L))
                 .willReturn(Optional.of(participantForCheck));
+        given(todoRepository.findByIdWithLock(10L)).willReturn(Optional.of(todo));
         given(todoParticipantRepository.findByTodoIdAndUserIdWithLock(10L, 1L))
                 .willReturn(Optional.of(alreadySubmittedParticipant));
         given(fileService.createProofThumbnail("proof-key")).willReturn("proof-thumb-key");

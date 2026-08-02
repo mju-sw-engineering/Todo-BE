@@ -282,11 +282,18 @@ public class TodoService {
             String proofThumbnailKey
     ) {
         markExpiredTodosAsFail();
-        // 더블클릭·동시 제출을 직렬화하기 위해 참가자 행에 비관적 락을 건다.
+
+        // 락 순서는 반드시 Todo -> 참가자다. 반대로 잡으면 데드락이 난다.
+        //
+        // 참가자 행만 잠그면 서로 다른 담당자의 동시 제출이 각자 다른 행을 잠가 아무것도
+        // 직렬화되지 않는다. MySQL 기본 REPEATABLE READ에서 두 트랜잭션은 상대의 미커밋
+        // 제출을 보지 못하므로 아래 집계에서 둘 다 "아직 전부 성공이 아니다"로 판정하고,
+        // 참가자는 전부 SUCCESS인데 Todo만 IN_PROGRESS로 남는다.
+        Todo todo = todoRepository.findByIdWithLock(todoId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
         TodoParticipant participant = todoParticipantRepository
                 .findByTodoIdAndUserIdWithLock(todoId, userId)
                 .orElseThrow(() -> new BusinessException("해당 투두의 배정자가 아닙니다.", HttpStatus.FORBIDDEN));
-        Todo todo = participant.getTodo();
 
         if (LocalDateTime.now(KST).isAfter(todo.getDeadline())) {
             participant.markAsFail();
