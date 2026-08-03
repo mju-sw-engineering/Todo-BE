@@ -4,7 +4,6 @@ import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.repository.TeamMemberRepository;
-import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoWorkItem;
 import com.todo.domain.todo.entity.WorkItemStatus;
@@ -31,10 +30,10 @@ public class TodoWorkItemLifecycleService {
     private final TodoRepository todoRepository;
     private final TodoWorkItemRepository todoWorkItemRepository;
     private final TodoReactionRepository todoReactionRepository;
-    private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final NotificationService notificationService;
     private final NotificationMessageFactory notificationMessageFactory;
+    private final TodoStatusTransitionService todoStatusTransitionService;
 
     /**
      * 강퇴, 팀 나가기, 회원 탈퇴에서 공통으로 쓰는 진행 중 배정 정리 정책이다.
@@ -105,26 +104,9 @@ public class TodoWorkItemLifecycleService {
             }
         }
 
-        reevaluateTodo(todo);
+        todoStatusTransitionService.reevaluate(todo);
         if (unassignedCount > 0) {
             sendUnassignedNotification(todo, departingUser, unassignedCount);
-        }
-    }
-
-    private void reevaluateTodo(Todo todo) {
-        long totalCount = todoWorkItemRepository.countByTodoId(todo.getId());
-        if (totalCount == 0) {
-            todo.markAsFail();
-            return;
-        }
-        long failCount = todoWorkItemRepository.countByTodoIdAndStatus(todo.getId(), WorkItemStatus.FAIL);
-        if (failCount > 0) {
-            todo.markAsFail();
-            return;
-        }
-        long successCount = todoWorkItemRepository.countByTodoIdAndStatus(todo.getId(), WorkItemStatus.SUCCESS);
-        if (successCount == totalCount && todo.markAsSuccess()) {
-            teamRepository.incrementSuccessCount(todo.getTeam().getId());
         }
     }
 

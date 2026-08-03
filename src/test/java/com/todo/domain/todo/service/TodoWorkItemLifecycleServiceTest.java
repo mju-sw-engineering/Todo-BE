@@ -19,7 +19,9 @@ import com.todo.domain.todo.repository.TodoWorkItemRepository;
 import com.todo.domain.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.InjectMocks;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -55,6 +57,17 @@ class TodoWorkItemLifecycleServiceTest {
     private NotificationService notificationService;
     @Mock
     private NotificationMessageFactory notificationMessageFactory;
+
+    @BeforeEach
+    void setUp() {
+        // 상태 전이는 목이 아니라 실제 구현을 주입한다.
+        // 이탈 경로가 공통 서비스와 합쳐진 뒤에도 같은 상태·카운터 결과를 내는지가 이 테스트의 검증 대상이다.
+        ReflectionTestUtils.setField(
+                lifecycleService,
+                "todoStatusTransitionService",
+                new TodoStatusTransitionService(todoWorkItemRepository, teamRepository)
+        );
+    }
 
     @Test
     void 진행중_TASK_담당자가_이탈하면_업무를_미배정으로_보존하고_팀에_알린다() {

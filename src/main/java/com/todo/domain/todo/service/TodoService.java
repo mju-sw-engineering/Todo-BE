@@ -88,6 +88,7 @@ public class TodoService {
     private final TransactionTemplate transactionTemplate;
     private final NotificationService notificationService;
     private final NotificationMessageFactory notificationMessageFactory;
+    private final TodoStatusTransitionService todoStatusTransitionService;
 
     @Transactional
     public CreateTodoResponse createTodo(String loginId, Long teamId, CreateTodoRequest request) {
@@ -508,11 +509,7 @@ public class TodoService {
         }
 
         workItem.submit(proofImageKey, proofThumbnailKey);
-        long totalCount = todoWorkItemRepository.countByTodoId(todoId);
-        long successCount = todoWorkItemRepository.countByTodoIdAndStatus(todoId, WorkItemStatus.SUCCESS);
-        if (totalCount > 0 && totalCount == successCount && todo.markAsSuccess()) {
-            teamRepository.incrementSuccessCount(todo.getTeam().getId());
-        }
+        todoStatusTransitionService.reevaluate(todo);
         return OperationResult.success();
     }
 
@@ -527,8 +524,7 @@ public class TodoService {
             return OperationResult.failed("이미 제출했거나 종료된 WorkItem입니다.", HttpStatus.CONFLICT);
         }
         if (LocalDateTime.now(KST).isAfter(workItem.getEffectiveDeadline())) {
-            workItem.markAsFail();
-            todo.markAsFail();
+            todoStatusTransitionService.failOnDeadlinePassed(todo, workItem);
             return OperationResult.failed("마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
         }
         return OperationResult.success();
@@ -546,8 +542,7 @@ public class TodoService {
             return AssignmentResult.failed("진행 중인 WorkItem만 재배정할 수 있습니다.", HttpStatus.BAD_REQUEST);
         }
         if (LocalDateTime.now(KST).isAfter(workItem.getEffectiveDeadline())) {
-            workItem.markAsFail();
-            todo.markAsFail();
+            todoStatusTransitionService.failOnDeadlinePassed(todo, workItem);
             return AssignmentResult.failed("마감이 지난 WorkItem은 재배정할 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
         if (workItem.getType() == WorkItemType.DIRECT

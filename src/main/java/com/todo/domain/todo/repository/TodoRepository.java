@@ -107,36 +107,4 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
     @Query("UPDATE Todo t SET t.creator = null WHERE t.creator.id = :userId")
     int clearCreatorByUserId(@Param("userId") Long userId);
 
-    /**
-     * 진행 중 WorkItem이 제거되어 실행 항목이 0개가 된 Todo를 FAIL로 확정한다.
-     * 마감 스케줄러가 이미 확정한 Todo를 되돌리지 않도록 IN_PROGRESS만 대상으로 한다.
-     */
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("""
-            UPDATE Todo t
-            SET t.status = com.todo.domain.todo.entity.TodoStatus.FAIL
-            WHERE t.id IN :todoIds
-              AND t.status = com.todo.domain.todo.entity.TodoStatus.IN_PROGRESS
-              AND NOT EXISTS (SELECT 1 FROM TodoWorkItem wi WHERE wi.todo.id = t.id)
-            """)
-    int markAsFailWhenNoWorkItemsRemain(@Param("todoIds") List<Long> todoIds);
-
-    /**
-     * 진행 중 WorkItem이 제거된 뒤 남은 WorkItem이 전원 SUCCESS면 Todo를 SUCCESS로 확정한다.
-     * WorkItem이 0개인 Todo가 "미완료 0건"으로 성공 처리되지 않도록 EXISTS를 요구한다.
-     */
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("""
-            UPDATE Todo t
-            SET t.status = com.todo.domain.todo.entity.TodoStatus.SUCCESS
-            WHERE t.id IN :todoIds
-              AND t.status = com.todo.domain.todo.entity.TodoStatus.IN_PROGRESS
-              AND EXISTS (SELECT 1 FROM TodoWorkItem wi WHERE wi.todo.id = t.id)
-              AND NOT EXISTS (
-                  SELECT 1 FROM TodoWorkItem wi
-                  WHERE wi.todo.id = t.id
-                    AND wi.status <> com.todo.domain.todo.entity.WorkItemStatus.SUCCESS
-              )
-            """)
-    int markAsSuccessWhenRemainingAllSucceeded(@Param("todoIds") List<Long> todoIds);
 }
