@@ -31,6 +31,11 @@ spring:
 jwt:
   secret: ${JWT_SECRET}
 
+# 운영은 HTTPS 전용이므로 환경변수로도 내릴 수 없게 고정한다.
+# 이 값이 false가 되면 2주짜리 리프레시 토큰이 평문으로 전송된다.
+cookie:
+  secure: true
+
 minio:
   endpoint: ${MINIO_ENDPOINT}
   access-key: ${MINIO_ACCESS_KEY}

@@ -63,7 +63,10 @@ jwt:
   refresh-expiration: 1209600000
 
 cookie:
-  secure: true
+  # 리프레시 토큰 쿠키의 Secure 속성. 기본값은 항상 안전한 쪽(true)이며,
+  # HTTPS가 아닌 로컬 HTTP 환경에서만 application-local.yml이나 COOKIE_SECURE로 false로 내린다.
+  # 운영은 application-prod.yml에서 true로 고정돼 이 값의 영향을 받지 않는다.
+  secure: ${COOKIE_SECURE:true}
 
 ai:
   server:
