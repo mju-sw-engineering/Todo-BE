@@ -6,10 +6,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -94,6 +96,18 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody().getMessage()).isEqualTo("이름은 필수입니다.");
+    }
+
+    @Test
+    void 지원하지_않는_HTTP_메서드_예외를_405로_변환한다() {
+        HttpRequestMethodNotSupportedException exception =
+                new HttpRequestMethodNotSupportedException("GET", List.of("POST"));
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleMethodNotSupported(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+        assertThat(response.getHeaders().getAllow()).containsExactly(org.springframework.http.HttpMethod.POST);
+        assertThat(response.getBody().getMessage()).isEqualTo("지원하지 않는 HTTP 메서드입니다.");
     }
 
     @Test

@@ -50,3 +50,7 @@ app:
 ai:
   server:
     base-url: ${AI_SERVER_BASE_URL:https://ai.swe.bluerack.org}
+
+logging:
+  level:
+    org.springframework.web.socket.config.WebSocketMessageBrokerStats: WARN
