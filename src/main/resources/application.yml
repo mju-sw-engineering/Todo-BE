@@ -37,6 +37,12 @@ server:
   port: 8080
   shutdown: graceful
 
+cors:
+  allowed-origins:
+    - http://localhost:3000
+    - http://localhost:3001
+    - https://todo.bluerack.org
+
 management:
   endpoints:
     web:
