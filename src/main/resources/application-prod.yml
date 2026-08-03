@@ -51,6 +51,13 @@ ai:
   server:
     base-url: ${AI_SERVER_BASE_URL:https://ai.swe.bluerack.org}
 
+websocket:
+  stats:
+    logging:
+      enabled: true
+      interval-ms: 600000
+      initial-delay-ms: 60000
+
 logging:
   level:
     org.springframework.web.socket.config.WebSocketMessageBrokerStats: WARN
