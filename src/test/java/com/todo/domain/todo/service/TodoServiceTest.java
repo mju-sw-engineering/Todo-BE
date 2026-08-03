@@ -38,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -93,6 +94,13 @@ class TodoServiceTest {
 
     @BeforeEach
     void setUp() {
+        // 상태 전이는 목이 아니라 실제 구현을 주입한다.
+        // 제출 경로가 공통 서비스와 합쳐진 뒤에도 같은 상태·카운터 결과를 내는지가 이 테스트의 검증 대상이다.
+        ReflectionTestUtils.setField(
+                todoService,
+                "todoStatusTransitionService",
+                new TodoStatusTransitionService(todoWorkItemRepository, teamRepository)
+        );
         lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<?> callback = invocation.getArgument(0);
             return callback.doInTransaction(null);
@@ -225,7 +233,8 @@ class TodoServiceTest {
         given(todoWorkItemRepository.findByIdWithLock(21L)).willReturn(Optional.of(remaining));
         given(fileService.createProofThumbnail("remaining-proof")).willReturn("remaining-thumb");
         given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(2L);
-        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
+        // 실패한 TASK가 하나 남아 있으므로 재평가는 FAIL 단계에서 끝나고 성공 개수는 보지 않는다.
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(1L);
 
         assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("expired-proof")))
                 .isInstanceOf(BusinessException.class)
@@ -289,6 +298,7 @@ class TodoServiceTest {
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
         given(fileService.createProofThumbnail("proof")).willReturn("thumb");
         given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(1L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
 
         todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("proof"));
