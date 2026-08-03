@@ -75,7 +75,9 @@ bash scripts/setup-hooks.sh
 | `swagger.auth.username` / `password` | **`application.yml`이 환경변수를 참조하는데 기본값이 없다.** 환경변수도 로컬 설정도 없으면 기동이 실패한다 |
 | `spring.jpa.hibernate.ddl-auto` | 아래 참조 |
 
-기본값이 있어 생략 가능한 것: `app.frontend-base-url`, `todo.scheduling.enabled`, `chat.cleanup.*`, `mail.async.*`, `file-deletion.*`
+기본값이 있어 생략 가능한 것: `app.frontend-base-url`, `todo.scheduling.enabled`, `chat.cleanup.*`, `mail.async.*`, `file-deletion.*`, `cookie.secure`
+
+**`cookie.secure`는 기본값이 `true`다.** 리프레시 토큰 쿠키에 `Secure`가 붙어 HTTPS에서만 오간다. 백엔드를 `http://localhost`로 직접 띄우고 브라우저에서 로그인·갱신·로그아웃을 확인하려면 `application-local.yml`에 `cookie.secure: false`를 넣는다. Chrome과 Firefox는 `localhost`를 신뢰 가능한 출처로 취급해 `true`인 채로도 대체로 동작하지만 Safari는 쿠키를 거부한다. 운영은 `application-prod.yml`에서 `true`로 고정돼 있어 환경변수로도 내려가지 않는다.
 
 **`ddl-auto`는 운영과 같은 `validate`를 쓴다.** 스키마는 Flyway가 만들고 Hibernate는 대조만 한다. `update`로 두면 엔티티와 마이그레이션이 어긋나도 Hibernate가 조용히 `ALTER`로 고쳐버려, 로컬에서는 멀쩡한데 운영 배포에서 기동이 막힌다. 실제로 `availability_polls.end_hour`가 `TINYINT`로 생성된 문제가 그렇게 드러났고, 로컬에서 재현하려 했을 때도 `update` 때문에 그냥 통과했다.
 

@@ -112,4 +112,68 @@ class AuthControllerTest {
         assertThat(cookie).contains("Max-Age=0");
         then(authService).should().logout("my-uuid");
     }
+
+    @Test
+    void 로그인_쿠키는_보안_속성을_모두_포함한다() {
+        LoginRequest request = new LoginRequest("user1", "password");
+        given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
+
+        String cookie = controller.login(request).getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+
+        assertThat(cookie)
+                .contains("refreshToken=refresh-uuid")
+                .contains("HttpOnly")
+                .contains("Path=/api/auth")
+                .contains("SameSite=Strict")
+                .contains("Max-Age=1209600");
+    }
+
+    @Test
+    void 재발급_쿠키는_보안_속성을_모두_포함한다() {
+        given(authService.refresh("old-uuid")).willReturn(new LoginResult("new-access", "new-uuid"));
+
+        String cookie = controller.refresh("old-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+
+        assertThat(cookie)
+                .contains("refreshToken=new-uuid")
+                .contains("HttpOnly")
+                .contains("Path=/api/auth")
+                .contains("SameSite=Strict")
+                .contains("Max-Age=1209600");
+    }
+
+    @Test
+    void 로그아웃_쿠키는_같은_속성으로_즉시_만료된다() {
+        String cookie = controller.logout("my-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+
+        assertThat(cookie)
+                .contains("refreshToken=;")
+                .contains("HttpOnly")
+                .contains("Path=/api/auth")
+                .contains("SameSite=Strict")
+                .contains("Max-Age=0");
+    }
+
+    @Test
+    void cookieSecure가_true면_세_경로의_쿠키에_모두_Secure가_붙는다() {
+        ReflectionTestUtils.setField(controller, "cookieSecure", true);
+        LoginRequest request = new LoginRequest("user1", "password");
+        given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
+        given(authService.refresh("old-uuid")).willReturn(new LoginResult("new-access", "new-uuid"));
+
+        assertThat(controller.login(request).getHeaders().getFirst(HttpHeaders.SET_COOKIE)).contains("; Secure");
+        assertThat(controller.refresh("old-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE)).contains("; Secure");
+        assertThat(controller.logout("my-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE)).contains("; Secure");
+    }
+
+    @Test
+    void cookieSecure가_false면_세_경로의_쿠키에_Secure가_붙지_않는다() {
+        LoginRequest request = new LoginRequest("user1", "password");
+        given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
+        given(authService.refresh("old-uuid")).willReturn(new LoginResult("new-access", "new-uuid"));
+
+        assertThat(controller.login(request).getHeaders().getFirst(HttpHeaders.SET_COOKIE)).doesNotContain("; Secure");
+        assertThat(controller.refresh("old-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE)).doesNotContain("; Secure");
+        assertThat(controller.logout("my-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE)).doesNotContain("; Secure");
+    }
 }
