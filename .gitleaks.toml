@@ -7,4 +7,5 @@ description = "테스트 더미 값과 검사 스크립트 자체의 패턴 문�
 paths = [
   '''src/test/resources/application-test\.yml''',
   '''\.githooks/.*''',
+  '''src/test/java/.*''',
 ]
