@@ -15,6 +15,8 @@ import java.util.UUID;
 @Component
 public class JwtUtil {
 
+    private static final long SETUP_TOKEN_EXPIRATION = 5 * 60 * 1000L;
+
     private final SecretKey secretKey;
     private final long expiration;
     private final long refreshExpiration;
@@ -27,17 +29,36 @@ public class JwtUtil {
         this.refreshExpiration = refreshExpiration;
     }
 
-    public String generateToken(String loginId) {
+    public String generateToken(Long userId) {
         return Jwts.builder()
-                .subject(loginId)
+                .subject(userId.toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(secretKey)
                 .compact();
     }
 
-    public String extractLoginId(String token) {
-        return getClaims(token).getSubject();
+    public Long extractUserId(String token) {
+        return Long.parseLong(getClaims(token).getSubject());
+    }
+
+    public String generateSetupToken(String socialId, String authorizationCode) {
+        return Jwts.builder()
+                .subject(socialId)
+                .claim("authCode", authorizationCode)
+                .claim("type", "SETUP")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + SETUP_TOKEN_EXPIRATION))
+                .signWith(secretKey)
+                .compact();
+    }
+
+    public Claims parseSetupToken(String token) {
+        Claims claims = getClaims(token);
+        if (!"SETUP".equals(claims.get("type", String.class))) {
+            throw new IllegalArgumentException("유효하지 않은 setup token입니다.");
+        }
+        return claims;
     }
 
     public String generateRefreshToken() {

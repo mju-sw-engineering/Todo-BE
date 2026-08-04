@@ -151,9 +151,10 @@ class AuthServiceTest {
     @Test
     void 로그인_성공() {
         User user = User.create("user1", "encoded", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(passwordEncoder.matches("password123!", "encoded")).willReturn(true);
-        given(jwtUtil.generateToken("user1")).willReturn("access-token");
+        given(jwtUtil.generateToken(1L)).willReturn("access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
         given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
 
@@ -193,7 +194,7 @@ class AuthServiceTest {
 
         RefreshToken token = RefreshToken.create(user, "old-uuid", LocalDateTime.now().plusDays(14));
         given(refreshTokenRepository.findByToken("old-uuid")).willReturn(Optional.of(token));
-        given(jwtUtil.generateToken("user1")).willReturn("new-access-token");
+        given(jwtUtil.generateToken(1L)).willReturn("new-access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("new-uuid");
         given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
 
@@ -274,20 +275,20 @@ class AuthServiceTest {
     @Test
     void 사용자_상세정보를_로드한다() {
         User user = User.create("user1", "encoded", "닉네임", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
 
-        UserDetails userDetails = authService.loadUserByUsername("user1");
+        UserDetails userDetails = authService.loadUserByUsername("1");
 
-        assertThat(userDetails.getUsername()).isEqualTo("user1");
+        assertThat(userDetails.getUsername()).isEqualTo("1");
         assertThat(userDetails.getPassword()).isEqualTo("encoded");
         assertThat(userDetails.getAuthorities()).extracting("authority").containsExactly("ROLE_USER");
     }
 
     @Test
     void 사용자_상세정보는_사용자가_없으면_예외를_던진다() {
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.loadUserByUsername("unknown"))
+        assertThatThrownBy(() -> authService.loadUserByUsername("999"))
                 .isInstanceOf(UsernameNotFoundException.class)
                 .hasMessage("사용자를 찾을 수 없습니다.");
     }

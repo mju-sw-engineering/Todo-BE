@@ -45,8 +45,8 @@ class JwtAuthenticationFilterTest {
         request.addHeader("Authorization", "Bearer valid-token");
         UserDetails userDetails = new User("user1", "password", List.of());
         given(jwtUtil.isValid("valid-token")).willReturn(true);
-        given(jwtUtil.extractLoginId("valid-token")).willReturn("user1");
-        given(authService.loadUserByUsername("user1")).willReturn(userDetails);
+        given(jwtUtil.extractUserId("valid-token")).willReturn(1L);
+        given(authService.loadUserByUsername("1")).willReturn(userDetails);
 
         filter.doFilter(request, response, filterChain);
 
@@ -91,8 +91,8 @@ class JwtAuthenticationFilterTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         request.addHeader("Authorization", "Bearer deleted-user-token");
         given(jwtUtil.isValid("deleted-user-token")).willReturn(true);
-        given(jwtUtil.extractLoginId("deleted-user-token")).willReturn("deleted-user");
-        given(authService.loadUserByUsername("deleted-user"))
+        given(jwtUtil.extractUserId("deleted-user-token")).willReturn(999L);
+        given(authService.loadUserByUsername("999"))
                 .willThrow(new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
 
         filter.doFilter(request, response, filterChain);

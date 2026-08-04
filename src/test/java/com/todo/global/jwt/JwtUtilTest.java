@@ -13,11 +13,11 @@ class JwtUtilTest {
     );
 
     @Test
-    void 토큰을_생성하고_loginId를_추출한다() {
-        String token = jwtUtil.generateToken("user1");
+    void 토큰을_생성하고_userId를_추출한다() {
+        String token = jwtUtil.generateToken(1L);
 
         assertThat(token).isNotBlank();
-        assertThat(jwtUtil.extractLoginId(token)).isEqualTo("user1");
+        assertThat(jwtUtil.extractUserId(token)).isEqualTo(1L);
         assertThat(jwtUtil.isValid(token)).isTrue();
     }
 

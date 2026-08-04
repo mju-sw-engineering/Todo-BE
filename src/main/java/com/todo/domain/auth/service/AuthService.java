@@ -82,7 +82,7 @@ public class AuthService implements UserDetailsService {
             throw new BusinessException("아이디 또는 비밀번호가 올바르지 않습니다.", HttpStatus.UNAUTHORIZED);
         }
 
-        String accessToken = jwtUtil.generateToken(user.getLoginId());
+        String accessToken = jwtUtil.generateToken(user.getId());
         String rawRefreshToken = jwtUtil.generateRefreshToken();
         refreshTokenRepository.save(
                 RefreshToken.create(user, rawRefreshToken, jwtUtil.refreshTokenExpiresAt())
@@ -118,7 +118,7 @@ public class AuthService implements UserDetailsService {
                 RefreshToken.create(user, newRawToken, jwtUtil.refreshTokenExpiresAt())
         );
 
-        return new LoginResult(jwtUtil.generateToken(user.getLoginId()), newRawToken);
+        return new LoginResult(jwtUtil.generateToken(user.getId()), newRawToken);
     }
 
     @Transactional
@@ -134,12 +134,12 @@ public class AuthService implements UserDetailsService {
     }
 
     @Override
-    public UserDetails loadUserByUsername(String loginId) throws UsernameNotFoundException {
-        User user = userRepository.findByLoginId(loginId)
+    public UserDetails loadUserByUsername(String userId) throws UsernameNotFoundException {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
         return org.springframework.security.core.userdetails.User.builder()
-                .username(user.getLoginId())
-                .password(user.getPassword())
+                .username(userId)
+                .password(user.getPassword() != null ? user.getPassword() : "")
                 .roles("USER")
                 .build();
     }
