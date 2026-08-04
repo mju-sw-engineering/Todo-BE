@@ -26,7 +26,8 @@ import static org.mockito.Mockito.mock;
 @ExtendWith(MockitoExtension.class)
 class AppleIdentityTokenServiceTest {
 
-    private static final String CLIENT_ID = "com.test.app";
+    private static final String WEB_CLIENT_ID = "com.test.app.web";
+    private static final String IOS_CLIENT_ID = "com.test.app";
     private static final String SOCIAL_ID = "apple-user-001";
     private static final String PUBLIC_KEY_URL = "https://appleid.apple.com/auth/keys";
 
@@ -45,16 +46,32 @@ class AppleIdentityTokenServiceTest {
     }
 
     @Test
-    void 유효한_identity_token_검증_성공() throws Exception {
-        given(appleProperties.clientId()).willReturn(CLIENT_ID);
+    void 유효한_web_identity_token_검증_성공() throws Exception {
+        given(appleProperties.webClientId()).willReturn(WEB_CLIENT_ID);
         mockPublicKeyFetch("test-kid", rsaKeyPair.getPublic());
 
         String nonce = "test-nonce";
-        String token = buildToken(SOCIAL_ID, sha256Hex(nonce), new Date(System.currentTimeMillis() + 600_000));
+        String token = buildToken(WEB_CLIENT_ID, SOCIAL_ID, sha256Hex(nonce), new Date(System.currentTimeMillis() + 600_000));
 
-        String socialId = service.verify(token, nonce);
+        AppleIdentityTokenService.VerifyResult result = service.verify(token, nonce);
 
-        assertThat(socialId).isEqualTo(SOCIAL_ID);
+        assertThat(result.socialId()).isEqualTo(SOCIAL_ID);
+        assertThat(result.matchedClientId()).isEqualTo(WEB_CLIENT_ID);
+    }
+
+    @Test
+    void 유효한_ios_identity_token_검증_성공() throws Exception {
+        given(appleProperties.webClientId()).willReturn(WEB_CLIENT_ID);
+        given(appleProperties.iosClientId()).willReturn(IOS_CLIENT_ID);
+        mockPublicKeyFetch("test-kid", rsaKeyPair.getPublic());
+
+        String nonce = "test-nonce";
+        String token = buildToken(IOS_CLIENT_ID, SOCIAL_ID, sha256Hex(nonce), new Date(System.currentTimeMillis() + 600_000));
+
+        AppleIdentityTokenService.VerifyResult result = service.verify(token, nonce);
+
+        assertThat(result.socialId()).isEqualTo(SOCIAL_ID);
+        assertThat(result.matchedClientId()).isEqualTo(IOS_CLIENT_ID);
     }
 
     @Test
@@ -62,7 +79,7 @@ class AppleIdentityTokenServiceTest {
         mockPublicKeyFetch("test-kid", rsaKeyPair.getPublic());
 
         String nonce = "test-nonce";
-        String token = buildToken(SOCIAL_ID, sha256Hex(nonce), new Date(System.currentTimeMillis() - 1000));
+        String token = buildToken(IOS_CLIENT_ID, SOCIAL_ID, sha256Hex(nonce), new Date(System.currentTimeMillis() - 1000));
 
         assertThatThrownBy(() -> service.verify(token, nonce))
                 .isInstanceOf(BusinessException.class)
@@ -72,10 +89,11 @@ class AppleIdentityTokenServiceTest {
 
     @Test
     void nonce가_불일치하면_검증에_실패한다() throws Exception {
-        given(appleProperties.clientId()).willReturn(CLIENT_ID);
+        given(appleProperties.webClientId()).willReturn(WEB_CLIENT_ID);
+        given(appleProperties.iosClientId()).willReturn(IOS_CLIENT_ID);
         mockPublicKeyFetch("test-kid", rsaKeyPair.getPublic());
 
-        String token = buildToken(SOCIAL_ID, sha256Hex("original-nonce"), new Date(System.currentTimeMillis() + 600_000));
+        String token = buildToken(IOS_CLIENT_ID, SOCIAL_ID, sha256Hex("original-nonce"), new Date(System.currentTimeMillis() + 600_000));
 
         assertThatThrownBy(() -> service.verify(token, "tampered-nonce"))
                 .isInstanceOf(BusinessException.class)
@@ -90,11 +108,11 @@ class AppleIdentityTokenServiceTest {
 
     // ── 헬퍼 ──
 
-    private String buildToken(String sub, String nonce, Date expiration) {
+    private String buildToken(String audience, String sub, String nonce, Date expiration) {
         return Jwts.builder()
                 .subject(sub)
                 .issuer("https://appleid.apple.com")
-                .audience().add(CLIENT_ID).and()
+                .audience().add(audience).and()
                 .claim("nonce", nonce)
                 .issuedAt(new Date())
                 .expiration(expiration)

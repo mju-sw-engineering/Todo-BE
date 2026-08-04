@@ -39,7 +39,9 @@ public class AppleIdentityTokenService {
         this.objectMapper = objectMapper;
     }
 
-    public String verify(String identityToken, String nonce) {
+    public record VerifyResult(String socialId, String matchedClientId) {}
+
+    public VerifyResult verify(String identityToken, String nonce) {
         String kid = extractKid(identityToken);
         PublicKey publicKey = publicKeyCache.computeIfAbsent(kid, this::fetchPublicKey);
 
@@ -60,7 +62,7 @@ public class AppleIdentityTokenService {
         }
     }
 
-    private String parseAndValidate(String identityToken, String nonce, PublicKey publicKey) {
+    private VerifyResult parseAndValidate(String identityToken, String nonce, PublicKey publicKey) {
         Claims claims = Jwts.parser()
                 .verifyWith(publicKey)
                 .build()
@@ -70,12 +72,20 @@ public class AppleIdentityTokenService {
         if (!APPLE_ISS.equals(claims.getIssuer())) {
             throw new BusinessException("Apple identity token의 issuer가 올바르지 않습니다.", HttpStatus.UNAUTHORIZED);
         }
-        if (!appleProperties.clientId().equals(claims.getAudience().iterator().next())) {
+
+        java.util.Set<String> audience = claims.getAudience();
+        String matchedClientId;
+        if (audience.contains(appleProperties.webClientId())) {
+            matchedClientId = appleProperties.webClientId();
+        } else if (audience.contains(appleProperties.iosClientId())) {
+            matchedClientId = appleProperties.iosClientId();
+        } else {
             throw new BusinessException("Apple identity token의 audience가 올바르지 않습니다.", HttpStatus.UNAUTHORIZED);
         }
+
         validateNonce(nonce, claims.get("nonce", String.class));
 
-        return claims.getSubject();
+        return new VerifyResult(claims.getSubject(), matchedClientId);
     }
 
     private void validateNonce(String rawNonce, String tokenNonce) {

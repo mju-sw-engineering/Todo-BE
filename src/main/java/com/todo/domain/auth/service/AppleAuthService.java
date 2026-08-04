@@ -6,6 +6,7 @@ import com.todo.domain.auth.dto.response.LoginResult;
 import com.todo.domain.auth.entity.RefreshToken;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.service.apple.AppleIdentityTokenService;
+import com.todo.domain.auth.service.apple.AppleIdentityTokenService.VerifyResult;
 import com.todo.domain.auth.service.apple.AppleTokenClient;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -35,16 +36,18 @@ public class AppleAuthService {
 
     @Transactional
     public AppleLoginResult appleLogin(AppleLoginRequest request) {
-        String socialId = identityTokenService.verify(request.identityToken(), request.nonce());
+        VerifyResult verifyResult = identityTokenService.verify(request.identityToken(), request.nonce());
+        String socialId = verifyResult.socialId();
+        String clientId = verifyResult.matchedClientId();
 
         return userRepository.findBySocialId(socialId)
                 .map(user -> {
-                    String appleRefreshToken = appleTokenClient.exchangeForAppleRefreshToken(request.authorizationCode());
+                    String appleRefreshToken = appleTokenClient.exchangeForAppleRefreshToken(request.authorizationCode(), clientId);
                     user.saveAppleRefreshToken(appleRefreshToken);
                     return (AppleLoginResult) new AppleLoginResult.LoggedIn(issueTokens(user));
                 })
                 .orElseGet(() -> {
-                    String setupToken = jwtUtil.generateSetupToken(socialId, request.authorizationCode());
+                    String setupToken = jwtUtil.generateSetupToken(socialId, request.authorizationCode(), clientId);
                     return new AppleLoginResult.SetupRequired(setupToken);
                 });
     }
@@ -60,6 +63,7 @@ public class AppleAuthService {
 
         String socialId = claims.getSubject();
         String authorizationCode = claims.get("authCode", String.class);
+        String clientId = claims.get("clientId", String.class);
 
         if (userRepository.findBySocialId(socialId).isPresent()) {
             throw new BusinessException("이미 가입된 Apple 계정입니다.", HttpStatus.CONFLICT);
@@ -67,7 +71,7 @@ public class AppleAuthService {
 
         User user = userRepository.save(User.createAppleUser(socialId, request.nickname()));
 
-        String appleRefreshToken = appleTokenClient.exchangeForAppleRefreshToken(authorizationCode);
+        String appleRefreshToken = appleTokenClient.exchangeForAppleRefreshToken(authorizationCode, clientId);
         user.saveAppleRefreshToken(appleRefreshToken);
 
         return issueTokens(user);

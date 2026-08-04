@@ -6,6 +6,7 @@ import com.todo.domain.auth.dto.response.LoginResult;
 import com.todo.domain.auth.entity.RefreshToken;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.service.apple.AppleIdentityTokenService;
+import com.todo.domain.auth.service.apple.AppleIdentityTokenService.VerifyResult;
 import com.todo.domain.auth.service.apple.AppleTokenClient;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -44,15 +45,16 @@ class AppleAuthServiceTest {
     private static final String SOCIAL_ID = "apple-user-001";
     private static final String AUTH_CODE = "auth-code-xyz";
     private static final String NONCE = "random-nonce";
+    private static final String CLIENT_ID = "com.test.app";
 
     @Test
     void 기존_Apple_유저_로그인_성공() {
         User user = User.createAppleUser(SOCIAL_ID, "기존닉네임");
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        given(identityTokenService.verify(any(), any())).willReturn(SOCIAL_ID);
+        given(identityTokenService.verify(any(), any())).willReturn(new VerifyResult(SOCIAL_ID, CLIENT_ID));
         given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.of(user));
-        given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE)).willReturn("apple-rt");
+        given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
         given(jwtUtil.generateToken(1L)).willReturn("access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
         given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
@@ -67,9 +69,9 @@ class AppleAuthServiceTest {
 
     @Test
     void 신규_Apple_유저_로그인시_setup_token을_반환한다() {
-        given(identityTokenService.verify(any(), any())).willReturn(SOCIAL_ID);
+        given(identityTokenService.verify(any(), any())).willReturn(new VerifyResult(SOCIAL_ID, CLIENT_ID));
         given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.empty());
-        given(jwtUtil.generateSetupToken(SOCIAL_ID, AUTH_CODE)).willReturn("setup-token-abc");
+        given(jwtUtil.generateSetupToken(SOCIAL_ID, AUTH_CODE, CLIENT_ID)).willReturn("setup-token-abc");
 
         AppleAuthService.AppleLoginResult result = appleAuthService.appleLogin(loginRequest());
 
@@ -83,6 +85,7 @@ class AppleAuthServiceTest {
         Claims claims = mock(Claims.class);
         given(claims.getSubject()).willReturn(SOCIAL_ID);
         given(claims.get("authCode", String.class)).willReturn(AUTH_CODE);
+        given(claims.get("clientId", String.class)).willReturn(CLIENT_ID);
 
         given(jwtUtil.parseSetupToken("setup-token")).willReturn(claims);
         given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.empty());
@@ -90,7 +93,7 @@ class AppleAuthServiceTest {
         User saved = User.createAppleUser(SOCIAL_ID, "새닉네임");
         ReflectionTestUtils.setField(saved, "id", 2L);
         given(userRepository.save(any(User.class))).willReturn(saved);
-        given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE)).willReturn("apple-rt");
+        given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
         given(jwtUtil.generateToken(2L)).willReturn("access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
         given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
@@ -115,6 +118,7 @@ class AppleAuthServiceTest {
         Claims claims = mock(Claims.class);
         given(claims.getSubject()).willReturn(SOCIAL_ID);
         given(claims.get("authCode", String.class)).willReturn(AUTH_CODE);
+        given(claims.get("clientId", String.class)).willReturn(CLIENT_ID);
 
         given(jwtUtil.parseSetupToken("setup-token")).willReturn(claims);
         given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.of(User.createAppleUser(SOCIAL_ID, "기존")));

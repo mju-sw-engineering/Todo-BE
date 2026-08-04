@@ -8,7 +8,8 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "apple")
 public record AppleProperties(
         @NotBlank String teamId,
-        @NotBlank String clientId,
+        @NotBlank String webClientId,
+        @NotBlank String iosClientId,
         @NotBlank String keyId,
         @NotBlank String privateKey,
         @NotBlank String publicKeyUrl,

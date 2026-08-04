@@ -34,7 +34,7 @@ public class AppleTokenClient {
         this.restClient = restClient;
     }
 
-    public String exchangeForAppleRefreshToken(String authorizationCode) {
+    public String exchangeForAppleRefreshToken(String authorizationCode, String clientId) {
         if (privateKey == null) {
             synchronized (this) {
                 if (privateKey == null) {
@@ -42,10 +42,10 @@ public class AppleTokenClient {
                 }
             }
         }
-        String clientSecret = generateClientSecret();
+        String clientSecret = generateClientSecret(clientId);
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("client_id", appleProperties.clientId());
+        body.add("client_id", clientId);
         body.add("client_secret", clientSecret);
         body.add("code", authorizationCode);
         body.add("grant_type", "authorization_code");
@@ -69,12 +69,12 @@ public class AppleTokenClient {
         }
     }
 
-    private String generateClientSecret() {
+    private String generateClientSecret(String clientId) {
         Date now = new Date();
         return Jwts.builder()
                 .header().add("kid", appleProperties.keyId()).and()
                 .issuer(appleProperties.teamId())
-                .subject(appleProperties.clientId())
+                .subject(clientId)
                 .audience().add(APPLE_AUD).and()
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + CLIENT_SECRET_EXPIRY))

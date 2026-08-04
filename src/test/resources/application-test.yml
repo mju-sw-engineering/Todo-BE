@@ -25,7 +25,8 @@ jwt:
 
 apple:
   team-id: TEST_TEAM_ID
-  client-id: com.test.app
+  web-client-id: com.test.app.web
+  ios-client-id: com.test.app
   key-id: TEST_KEY_ID
   private-key: MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgtest-private-key-placeholder-for-testing
   public-key-url: https://appleid.apple.com/auth/keys

@@ -42,10 +42,11 @@ public class JwtUtil {
         return Long.parseLong(getClaims(token).getSubject());
     }
 
-    public String generateSetupToken(String socialId, String authorizationCode) {
+    public String generateSetupToken(String socialId, String authorizationCode, String clientId) {
         return Jwts.builder()
                 .subject(socialId)
                 .claim("authCode", authorizationCode)
+                .claim("clientId", clientId)
                 .claim("type", "SETUP")
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + SETUP_TOKEN_EXPIRATION))
