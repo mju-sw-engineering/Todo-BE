@@ -46,6 +46,8 @@ public class FeedService {
     private static final int MY_STREAK_WEEKS = 16;
     /** 연속 일수 계산에 쓰는 조회 범위. 이보다 긴 연속은 이 값에서 멈춘다. */
     private static final int STREAK_LOOKBACK_DAYS = 365;
+    /** 잔디 조회 기간 상한 (53주). 무제한 범위 조회를 막는다. */
+    private static final int MAX_STREAK_RANGE_DAYS = 53 * 7;
 
     private final TeamMemberRepository teamMemberRepository;
     private final TodoRepository todoRepository;
@@ -63,10 +65,36 @@ public class FeedService {
                 .toList();
     }
 
-    public MyStreakResponse getMyStreak(String loginId) {
+    /**
+     * 기간을 생략하면 이번 주를 마지막 줄로 하는 최근 16주를 반환한다.
+     * 기간을 주면 시작일은 그 주 월요일로, 종료일은 그 주 일요일로 넓혀
+     * 항상 완전한 주 단위 그리드가 되게 한다. 미래 날짜는 count 0으로 내려간다.
+     */
+    public MyStreakResponse getMyStreak(String loginId, String startDate, String endDate) {
         User user = findAuthenticatedUser(loginId);
         LocalDate today = LocalDate.now(KST);
-        LocalDate from = today.minusDays(STREAK_LOOKBACK_DAYS);
+
+        LocalDate gridStart;
+        LocalDate gridEnd;
+        if (startDate == null && endDate == null) {
+            LocalDate thisMonday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            gridStart = thisMonday.minusWeeks(MY_STREAK_WEEKS - 1);
+            gridEnd = thisMonday.plusDays(6);
+        } else {
+            LocalDate start = parseRequiredDate("startDate", startDate);
+            LocalDate end = parseRequiredDate("endDate", endDate);
+            if (start.isAfter(end)) {
+                throw new BusinessException("startDate는 endDate보다 늦을 수 없습니다.", HttpStatus.BAD_REQUEST);
+            }
+            gridStart = start.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            gridEnd = end.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY));
+            if (gridStart.plusDays(MAX_STREAK_RANGE_DAYS).isBefore(gridEnd)) {
+                throw new BusinessException("조회 기간은 최대 53주까지 가능합니다.", HttpStatus.BAD_REQUEST);
+            }
+        }
+
+        // 연속 일수는 조회 기간과 무관하게 오늘 기준이므로 항상 최근 1년을 함께 본다.
+        LocalDate from = min(gridStart, today.minusDays(STREAK_LOOKBACK_DAYS));
 
         Map<LocalDate, Set<Long>> todosByDate = new HashMap<>();
         todoRepository.findCreationActivityByCreatorId(user.getId(), from.atStartOfDay())
@@ -76,11 +104,8 @@ public class FeedService {
         workItemCheckInRepository.findActivityByUserId(user.getId(), from)
                 .forEach(r -> add(todosByDate, r.getOccurredOn(), r.getTodoId()));
 
-        LocalDate thisMonday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        LocalDate gridStart = thisMonday.minusWeeks(MY_STREAK_WEEKS - 1);
         List<MyStreakDayResponse> days = new ArrayList<>();
-        for (int i = 0; i < MY_STREAK_WEEKS * 7; i++) {
-            LocalDate date = gridStart.plusDays(i);
+        for (LocalDate date = gridStart; !date.isAfter(gridEnd); date = date.plusDays(1)) {
             int count = date.isAfter(today) ? 0 : todosByDate.getOrDefault(date, Set.of()).size();
             days.add(MyStreakDayResponse.from(date, count));
         }
@@ -145,6 +170,21 @@ public class FeedService {
 
     private void add(Map<LocalDate, Set<Long>> byDate, LocalDate date, Long id) {
         byDate.computeIfAbsent(date, key -> new HashSet<>()).add(id);
+    }
+
+    private LocalDate min(LocalDate a, LocalDate b) {
+        return a.isBefore(b) ? a : b;
+    }
+
+    private LocalDate parseRequiredDate(String parameterName, String date) {
+        if (date == null || date.isBlank()) {
+            throw new BusinessException(parameterName + "는 필수입니다.", HttpStatus.BAD_REQUEST);
+        }
+        try {
+            return LocalDate.parse(date);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new BusinessException(parameterName + " 형식이 올바르지 않습니다. (yyyy-MM-dd)", HttpStatus.BAD_REQUEST);
+        }
     }
 
     private User findAuthenticatedUser(String loginId) {

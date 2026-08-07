@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -27,8 +28,12 @@ public class FeedController implements FeedControllerDocs {
     }
 
     @GetMapping("/my-streak")
-    public ResponseEntity<ApiResponse<MyStreakResponse>> getMyStreak(Authentication authentication) {
+    public ResponseEntity<ApiResponse<MyStreakResponse>> getMyStreak(
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            Authentication authentication
+    ) {
         String loginId = authentication.getName();
-        return ResponseEntity.ok(ApiResponse.success(feedService.getMyStreak(loginId)));
+        return ResponseEntity.ok(ApiResponse.success(feedService.getMyStreak(loginId, startDate, endDate)));
     }
 }
