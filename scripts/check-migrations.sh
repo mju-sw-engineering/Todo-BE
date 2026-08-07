@@ -32,14 +32,17 @@ if [ -n "${BASE_REF:-}" ]; then
       "origin/${BASE_REF}"...HEAD -- "$MIGRATION_DIR" || true)
 
     for file in $added; do
-      version=$(basename "$file" | grep -oE '^V[0-9]+' | grep -oE '[0-9]+' || true)
-      if [ -z "$version" ]; then
-        echo "::error::마이그레이션 파일명 형식이 올바르지 않습니다: $file (V<숫자>__<설명>.sql)"
+      name=$(basename "$file")
+      # 새 마이그레이션은 타임스탬프 버전(V<yyyyMMddHHmmss>__)만 허용한다.
+      # 순번 방식은 두 브랜치가 같은 다음 번호를 고르면 충돌한다. AGENTS.md 참조.
+      if ! echo "$name" | grep -qE '^V[0-9]{14}__.+\.sql$'; then
+        echo "::error::$file — 새 마이그레이션은 V<yyyyMMddHHmmss>__<설명>.sql 형식이어야 합니다. scripts/new-migration.sh로 생성하세요."
         fail=1
         continue
       fi
+      version=$(echo "$name" | grep -oE '^V[0-9]+' | grep -oE '[0-9]+')
       if [ "$version" -le "$base_max" ]; then
-        echo "::error::$file 의 버전(V$version)이 ${BASE_REF}의 최대 버전(V$base_max)보다 뒤여야 합니다. V$((base_max + 1)) 이상으로 리네임하세요."
+        echo "::error::$file 의 버전(V$version)이 ${BASE_REF}의 최대 버전(V$base_max)보다 뒤여야 합니다. 타임스탬프를 현재 시각으로 갱신해 리네임하세요."
         fail=1
       fi
     done
