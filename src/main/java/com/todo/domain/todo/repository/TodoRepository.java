@@ -107,4 +107,27 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
     @Query("UPDATE Todo t SET t.creator = null WHERE t.creator.id = :userId")
     int clearCreatorByUserId(@Param("userId") Long userId);
 
+    @Query("""
+            SELECT t.createdAt AS occurredAt, t.creator.id AS userId, t.id AS todoId
+            FROM Todo t
+            WHERE t.team.id = :teamId
+              AND t.creator IS NOT NULL
+              AND t.createdAt >= :from
+            """)
+    List<UserActivityRecord> findCreationActivityByTeamId(
+            @Param("teamId") Long teamId,
+            @Param("from") LocalDateTime from
+    );
+
+    @Query("""
+            SELECT t.createdAt AS occurredAt, t.creator.id AS userId, t.id AS todoId
+            FROM Todo t
+            WHERE t.creator.id = :userId
+              AND t.createdAt >= :from
+            """)
+    List<UserActivityRecord> findCreationActivityByCreatorId(
+            @Param("userId") Long userId,
+            @Param("from") LocalDateTime from
+    );
+
 }
