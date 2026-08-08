@@ -21,7 +21,7 @@ import java.util.List;
 public interface FeedControllerDocs {
 
     @Operation(summary = "월간 벌집 조회",
-            description = "하루 = 1칸, 그날 완료한 작업 수에 따라 꿀 진하기(0~3)를 반환합니다. "
+            description = "하루 = 1칸, 그날 손댄(생성·체크인·제출) 서로 다른 투두 수에 따라 꿀 진하기(0~3)를 반환합니다. "
                     + "이번 달은 오늘 이후 날이 null이며, 미래 달은 조회할 수 없습니다. year/month를 생략하면 이번 달입니다.")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({

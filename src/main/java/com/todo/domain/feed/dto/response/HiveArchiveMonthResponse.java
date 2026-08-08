@@ -9,7 +9,7 @@ public record HiveArchiveMonthResponse(
         @Schema(description = "월(1~12)", example = "7")
         int month,
 
-        @Schema(description = "꿀을 채운 날 수(1개 이상 완료한 날)", example = "31")
+        @Schema(description = "꿀을 채운 날 수(활동 기록이 있는 날)", example = "31")
         int filledDays,
 
         @Schema(description = "그 달의 전체 일수", example = "31")

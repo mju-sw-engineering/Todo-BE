@@ -3,9 +3,10 @@ package com.todo.domain.feed.service;
 import com.todo.domain.feed.dto.response.HiveArchiveMonthResponse;
 import com.todo.domain.feed.dto.response.MonthlyHiveResponse;
 import com.todo.domain.team.repository.TeamMemberRepository;
-import com.todo.domain.todo.repository.DailySuccessCount;
+import com.todo.domain.todo.repository.CheckInActivityRecord;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
+import com.todo.domain.todo.repository.UserActivityRecord;
 import com.todo.domain.todo.repository.WorkItemCheckInRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -20,6 +21,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -30,7 +32,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 
-/** 월간 벌집·보관함 조회 테스트. 시간 고정이 필요해 Clock을 직접 주입한다. */
+/**
+ * 월간 벌집·보관함 조회 테스트. 꿀 채움은 잔디와 같은 활동 기준
+ * (그날 투두 생성·체크인·제출 중 하나라도)이다. 시간 고정이 필요해 Clock을 직접 주입한다.
+ */
 @ExtendWith(MockitoExtension.class)
 class FeedServiceHiveTest {
 
@@ -71,43 +76,80 @@ class FeedServiceHiveTest {
         ReflectionTestUtils.setField(user, "id", 1L);
         // months 범위 검증처럼 사용자 조회 전에 끝나는 테스트도 있어 lenient로 둔다
         lenient().when(userRepository.findByLoginId("tester")).thenReturn(Optional.of(user));
+        givenActivities(List.of(), List.of(), List.of());
     }
 
-    private static DailySuccessCount dayCount(LocalDate day, long count) {
-        return new DailySuccessCount() {
-            @Override
-            public LocalDate getDay() {
-                return day;
-            }
+    private record Submission(LocalDateTime occurredAt, Long userId, Long todoId)
+            implements UserActivityRecord {
+        public LocalDateTime getOccurredAt() {
+            return occurredAt;
+        }
 
-            @Override
-            public long getCount() {
-                return count;
-            }
-        };
+        public Long getUserId() {
+            return userId;
+        }
+
+        public Long getTodoId() {
+            return todoId;
+        }
+    }
+
+    private record CheckIn(LocalDate occurredOn, Long userId, Long todoId)
+            implements CheckInActivityRecord {
+        public LocalDate getOccurredOn() {
+            return occurredOn;
+        }
+
+        public Long getUserId() {
+            return userId;
+        }
+
+        public Long getTodoId() {
+            return todoId;
+        }
+    }
+
+    private static UserActivityRecord submitted(LocalDate day, long todoId) {
+        return new Submission(day.atTime(15, 0), 1L, todoId);
+    }
+
+    private static CheckInActivityRecord checkedIn(LocalDate day, long todoId) {
+        return new CheckIn(day, 1L, todoId);
+    }
+
+    private void givenActivities(
+            List<UserActivityRecord> creations,
+            List<UserActivityRecord> submissions,
+            List<CheckInActivityRecord> checkIns
+    ) {
+        lenient().when(todoRepository.findCreationActivityByCreatorId(eq(1L), any()))
+                .thenReturn(creations);
+        lenient().when(todoWorkItemRepository.findSubmissionActivityByAssigneeId(eq(1L), any()))
+                .thenReturn(submissions);
+        lenient().when(workItemCheckInRepository.findActivityByUserId(eq(1L), any()))
+                .thenReturn(checkIns);
     }
 
     @Test
-    @DisplayName("이번 달 벌집은 완료 개수에 따라 꿀 진하기를 매기고 오늘 이후는 null이다")
-    void 이번달_벌집_레벨과_미래_null() {
-        lenient().when(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .thenReturn(List.of(
-                        dayCount(LocalDate.of(2026, 8, 1), 1),
-                        dayCount(LocalDate.of(2026, 8, 2), 2),
-                        dayCount(LocalDate.of(2026, 8, 3), 5)
-                ));
+    @DisplayName("꿀 진하기는 그날 손댄 서로 다른 투두 수이고 오늘 이후는 null이다")
+    void 활동_기준_레벨과_미래_null() {
+        LocalDate day1 = LocalDate.of(2026, 8, 1);
+        LocalDate day2 = LocalDate.of(2026, 8, 2);
+        givenActivities(
+                List.of(submitted(day2, 10L)),
+                // 8/1: 투두 3개 제출, 8/2: 같은 투두(10)를 생성·체크인해도 1개로 센다
+                List.of(submitted(day1, 1L), submitted(day1, 2L), submitted(day1, 3L)),
+                List.of(checkedIn(day2, 10L))
+        );
 
         MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
 
-        assertThat(response.year()).isEqualTo(2026);
-        assertThat(response.month()).isEqualTo(8);
         assertThat(response.dayLevels()).hasSize(31);
-        assertThat(response.dayLevels().get(0)).isEqualTo(1);
-        assertThat(response.dayLevels().get(1)).isEqualTo(2);
-        // 3개 이상은 최대 레벨 3으로 캡
-        assertThat(response.dayLevels().get(2)).isEqualTo(3);
-        // 완료 없는 지난 날은 0
-        assertThat(response.dayLevels().get(3)).isZero();
+        assertThat(response.dayLevels().get(0)).isEqualTo(3);
+        // 같은 투두를 여러 방식으로 손대도 하루 1개로 집계
+        assertThat(response.dayLevels().get(1)).isEqualTo(1);
+        // 활동 없는 지난 날은 0
+        assertThat(response.dayLevels().get(2)).isZero();
         // 오늘(8일, index 7)까지는 값, 이후는 null
         assertThat(response.dayLevels().get(7)).isNotNull();
         assertThat(response.dayLevels().get(8)).isNull();
@@ -115,16 +157,24 @@ class FeedServiceHiveTest {
     }
 
     @Test
-    @DisplayName("오늘 완료가 있으면 오늘을 포함해 연속 일수를 센다")
+    @DisplayName("체크인만 남긴 날도 꿀이 찬다 — 오래 걸리는 투두의 중간 기록 인정")
+    void 체크인만으로_꿀_채움() {
+        givenActivities(List.of(), List.of(), List.of(checkedIn(LocalDate.of(2026, 8, 5), 7L)));
+
+        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
+
+        assertThat(response.dayLevels().get(4)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("오늘 활동이 있으면 오늘을 포함해 연속 일수를 센다")
     void 스트릭_오늘_포함() {
-        lenient().when(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .thenReturn(List.of(
-                        dayCount(TODAY, 1),
-                        dayCount(TODAY.minusDays(1), 2),
-                        dayCount(TODAY.minusDays(2), 1),
-                        // 3일 전은 비어 있음 → 스트릭 끊김
-                        dayCount(TODAY.minusDays(4), 1)
-                ));
+        givenActivities(
+                List.of(),
+                List.of(submitted(TODAY, 1L), submitted(TODAY.minusDays(1), 2L)),
+                // 2일 전은 체크인으로 이어짐, 3일 전은 공백 → 스트릭 3에서 끊김
+                List.of(checkedIn(TODAY.minusDays(2), 3L), checkedIn(TODAY.minusDays(4), 4L))
+        );
 
         MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
 
@@ -132,13 +182,13 @@ class FeedServiceHiveTest {
     }
 
     @Test
-    @DisplayName("오늘 아직 완료가 없으면 어제까지 이어진 스트릭을 반환한다")
-    void 스트릭_오늘_미완료면_어제부터() {
-        lenient().when(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .thenReturn(List.of(
-                        dayCount(TODAY.minusDays(1), 1),
-                        dayCount(TODAY.minusDays(2), 3)
-                ));
+    @DisplayName("오늘 아직 활동이 없으면 어제까지 이어진 스트릭을 반환한다")
+    void 스트릭_오늘_미활동이면_어제부터() {
+        givenActivities(
+                List.of(),
+                List.of(submitted(TODAY.minusDays(1), 1L), submitted(TODAY.minusDays(2), 2L)),
+                List.of()
+        );
 
         MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
 
@@ -148,14 +198,13 @@ class FeedServiceHiveTest {
     @Test
     @DisplayName("과거 달은 모든 날에 값이 있고 null이 없다")
     void 과거달_null_없음() {
-        lenient().when(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .thenReturn(List.of(dayCount(LocalDate.of(2026, 7, 15), 2)));
+        givenActivities(List.of(), List.of(submitted(LocalDate.of(2026, 7, 15), 1L)), List.of());
 
         MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 7);
 
         assertThat(response.dayLevels()).hasSize(31);
         assertThat(response.dayLevels()).doesNotContainNull();
-        assertThat(response.dayLevels().get(14)).isEqualTo(2);
+        assertThat(response.dayLevels().get(14)).isEqualTo(1);
     }
 
     @Test
@@ -177,12 +226,11 @@ class FeedServiceHiveTest {
     @Test
     @DisplayName("보관함은 이번 달을 제외한 최근 N개월을 과거부터 순서대로 반환한다")
     void 보관함_월별_집계() {
-        lenient().when(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .thenReturn(List.of(
-                        dayCount(LocalDate.of(2026, 6, 1), 1),
-                        dayCount(LocalDate.of(2026, 6, 2), 4),
-                        dayCount(LocalDate.of(2026, 7, 10), 1)
-                ));
+        givenActivities(
+                List.of(),
+                List.of(submitted(LocalDate.of(2026, 6, 1), 1L), submitted(LocalDate.of(2026, 7, 10), 2L)),
+                List.of(checkedIn(LocalDate.of(2026, 6, 2), 3L))
+        );
 
         List<HiveArchiveMonthResponse> archive = feedService.getHiveArchive("tester", 3);
 
