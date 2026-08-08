@@ -26,7 +26,7 @@ class DeletedUserJwtSecurityTest {
 
     @Test
     void 삭제된_사용자의_유효한_토큰으로_보호된_API를_호출하면_401을_반환한다() throws Exception {
-        String token = jwtUtil.generateToken("deleted-user-for-jwt-security-test");
+        String token = jwtUtil.generateToken(99999L);
 
         mockMvc.perform(get("/api/users/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))

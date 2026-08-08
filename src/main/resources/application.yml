@@ -87,6 +87,15 @@ mail:
     queue-capacity: ${MAIL_ASYNC_QUEUE_CAPACITY:100}
     await-termination-seconds: ${MAIL_ASYNC_AWAIT_TERMINATION_SECONDS:15}
 
+apple:
+  team-id: ${APPLE_TEAM_ID}
+  web-client-id: ${APPLE_WEB_CLIENT_ID}
+  ios-client-id: ${APPLE_IOS_CLIENT_ID}
+  key-id: ${APPLE_KEY_ID}
+  private-key: ${APPLE_PRIVATE_KEY}
+  public-key-url: https://appleid.apple.com/auth/keys
+  token-url: https://appleid.apple.com/auth/token
+
 file-deletion:
   async:
     core-pool-size: ${FILE_DELETION_ASYNC_CORE_POOL_SIZE:1}
