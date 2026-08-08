@@ -69,7 +69,7 @@ class WorkItemCheckInServiceTest {
                 });
 
         CheckInResponse response = workItemCheckInService.checkIn(
-                "user1", WORK_ITEM_ID, new CheckInRequest("오늘도 진행"));
+                "1", WORK_ITEM_ID, new CheckInRequest("오늘도 진행"));
 
         assertThat(response.checkInId()).isEqualTo(100L);
         assertThat(response.memo()).isEqualTo("오늘도 진행");
@@ -83,7 +83,7 @@ class WorkItemCheckInServiceTest {
         givenAccess(user, workItem);
 
         assertThatThrownBy(() -> workItemCheckInService.checkIn(
-                "user1", WORK_ITEM_ID, new CheckInRequest("메모")))
+                "1", WORK_ITEM_ID, new CheckInRequest("메모")))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
         then(workItemCheckInRepository).should(never()).saveAndFlush(any());
@@ -97,7 +97,7 @@ class WorkItemCheckInServiceTest {
         givenAccess(user, workItem);
 
         assertThatThrownBy(() -> workItemCheckInService.checkIn(
-                "user1", WORK_ITEM_ID, new CheckInRequest("메모")))
+                "1", WORK_ITEM_ID, new CheckInRequest("메모")))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }
@@ -111,7 +111,7 @@ class WorkItemCheckInServiceTest {
                 .willReturn(true);
 
         assertThatThrownBy(() -> workItemCheckInService.checkIn(
-                "user1", WORK_ITEM_ID, new CheckInRequest("메모")))
+                "1", WORK_ITEM_ID, new CheckInRequest("메모")))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
         then(workItemCheckInRepository).should(never()).saveAndFlush(any());
@@ -128,7 +128,7 @@ class WorkItemCheckInServiceTest {
                 .willThrow(new DataIntegrityViolationException("duplicate"));
 
         assertThatThrownBy(() -> workItemCheckInService.checkIn(
-                "user1", WORK_ITEM_ID, new CheckInRequest("메모")))
+                "1", WORK_ITEM_ID, new CheckInRequest("메모")))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }
@@ -137,12 +137,12 @@ class WorkItemCheckInServiceTest {
     void 팀원이_아니면_체크인할_수_없다() {
         User user = user(1L);
         TodoWorkItem workItem = workItem(user);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(WORK_ITEM_ID)).willReturn(Optional.of(workItem));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, user.getId())).willReturn(false);
 
         assertThatThrownBy(() -> workItemCheckInService.checkIn(
-                "user1", WORK_ITEM_ID, new CheckInRequest("메모")))
+                "1", WORK_ITEM_ID, new CheckInRequest("메모")))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
     }
@@ -158,7 +158,7 @@ class WorkItemCheckInServiceTest {
         given(workItemCheckInRepository.findByWorkItemIdWithUser(WORK_ITEM_ID))
                 .willReturn(List.of(checkIn));
 
-        List<CheckInResponse> result = workItemCheckInService.getCheckIns("user1", WORK_ITEM_ID);
+        List<CheckInResponse> result = workItemCheckInService.getCheckIns("1", WORK_ITEM_ID);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).memo()).isEqualTo("진행함");
@@ -166,7 +166,7 @@ class WorkItemCheckInServiceTest {
     }
 
     private void givenAccess(User user, TodoWorkItem workItem) {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(WORK_ITEM_ID)).willReturn(Optional.of(workItem));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, user.getId())).willReturn(true);
     }

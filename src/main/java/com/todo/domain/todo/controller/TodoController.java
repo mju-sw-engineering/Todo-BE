@@ -35,8 +35,8 @@ public class TodoController implements TodoControllerDocs {
             @Valid @RequestBody CreateTodoRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        CreateTodoResponse response = todoService.createTodo(loginId, teamId, request);
+        String userId = authentication.getName();
+        CreateTodoResponse response = todoService.createTodo(userId, teamId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(response, "투두가 생성되었습니다."));
     }
@@ -48,8 +48,8 @@ public class TodoController implements TodoControllerDocs {
             @RequestParam(required = false) String date,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        List<TodoSummaryResponse> result = todoService.getTodoList(teamId, loginId, filter, date);
+        String userId = authentication.getName();
+        List<TodoSummaryResponse> result = todoService.getTodoList(teamId, userId, filter, date);
         if (result.isEmpty()) {
             String message = (date != null && !date.isBlank())
                     ? "해당 날짜의 할 일이 없습니다"
@@ -66,10 +66,10 @@ public class TodoController implements TodoControllerDocs {
             @RequestParam String endDate,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
+        String userId = authentication.getName();
         TodoPeriodReportResponse response = todoService.getTodoPeriodReport(
                 teamId,
-                loginId,
+                userId,
                 startDate,
                 endDate
         );
@@ -81,8 +81,8 @@ public class TodoController implements TodoControllerDocs {
             @PathVariable Long todoId,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        TodoDetailResponse response = todoService.getTodoDetail(todoId, loginId);
+        String userId = authentication.getName();
+        TodoDetailResponse response = todoService.getTodoDetail(todoId, userId);
         return ResponseEntity.ok(ApiResponse.success(response, "할 일 상세를 조회했습니다"));
     }
 
@@ -93,8 +93,8 @@ public class TodoController implements TodoControllerDocs {
             @Valid @RequestBody ReactTodoRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        TodoReactionResponse response = todoService.reactTodoParticipant(participantId, loginId, request);
+        String userId = authentication.getName();
+        TodoReactionResponse response = todoService.reactTodoParticipant(participantId, userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "이모지 반응이 반영되었습니다."));
     }
 
@@ -104,8 +104,8 @@ public class TodoController implements TodoControllerDocs {
             @Valid @RequestBody ReactTodoRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        TodoReactionResponse response = todoService.reactTodoWorkItem(workItemId, loginId, request);
+        String userId = authentication.getName();
+        TodoReactionResponse response = todoService.reactTodoWorkItem(workItemId, userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "이모지 반응이 반영되었습니다."));
     }
 
@@ -115,8 +115,8 @@ public class TodoController implements TodoControllerDocs {
             @Valid @RequestBody SubmitTodoRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        todoService.submitTodo(todoId, loginId, request);
+        String userId = authentication.getName();
+        todoService.submitTodo(todoId, userId, request);
         return ResponseEntity.ok(ApiResponse.success(null, "인증 사진이 제출되었습니다."));
     }
 
@@ -126,8 +126,8 @@ public class TodoController implements TodoControllerDocs {
             @Valid @RequestBody SubmitTodoRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        todoService.submitTodoWorkItem(workItemId, loginId, request);
+        String userId = authentication.getName();
+        todoService.submitTodoWorkItem(workItemId, userId, request);
         return ResponseEntity.ok(ApiResponse.success(null, "인증 사진이 제출되었습니다."));
     }
 
@@ -136,8 +136,8 @@ public class TodoController implements TodoControllerDocs {
             @PathVariable Long workItemId,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(workItemId, loginId);
+        String userId = authentication.getName();
+        TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(workItemId, userId);
         return ResponseEntity.ok(ApiResponse.success(response, "제출 내역을 조회했습니다"));
     }
 
@@ -147,8 +147,8 @@ public class TodoController implements TodoControllerDocs {
             @Valid @RequestBody AssignTodoWorkItemRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        TodoWorkItemAssigneeResponse response = todoService.reassignTodoWorkItem(workItemId, loginId, request);
+        String userId = authentication.getName();
+        TodoWorkItemAssigneeResponse response = todoService.reassignTodoWorkItem(workItemId, userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "담당자가 재배정되었습니다."));
     }
 }

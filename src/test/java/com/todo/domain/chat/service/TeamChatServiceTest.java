@@ -62,7 +62,7 @@ class TeamChatServiceTest {
     void 메시지_저장_성공() {
         User sender = userWithId(1L);
         Team team = teamWithId(100L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
+        given(userRepository.findById(1L)).willReturn(Optional.of(sender));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
         given(teamRepository.getReferenceById(100L)).willReturn(team);
         given(teamChatMessageRepository.save(any(TeamChatMessage.class))).willAnswer(invocation -> {
@@ -72,7 +72,7 @@ class TeamChatServiceTest {
             return message;
         });
 
-        TeamChatMessageResponse response = teamChatService.saveMessage(100L, "user1", new ChatMessageRequest("안녕"));
+        TeamChatMessageResponse response = teamChatService.saveMessage(100L, "1", new ChatMessageRequest("안녕"));
 
         assertThat(response.messageId()).isEqualTo(1000L);
         assertThat(response.teamId()).isEqualTo(100L);
@@ -84,9 +84,9 @@ class TeamChatServiceTest {
 
     @Test
     void 메시지_저장은_사용자가_없으면_401_예외를_던진다() {
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamChatService.saveMessage(100L, "unknown", new ChatMessageRequest("안녕")))
+        assertThatThrownBy(() -> teamChatService.saveMessage(100L, "999", new ChatMessageRequest("안녕")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("사용자를 찾을 수 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -95,10 +95,10 @@ class TeamChatServiceTest {
     @Test
     void 메시지_저장은_팀원이_아니면_403_예외를_던진다() {
         User sender = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
+        given(userRepository.findById(1L)).willReturn(Optional.of(sender));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> teamChatService.saveMessage(100L, "user1", new ChatMessageRequest("안녕")))
+        assertThatThrownBy(() -> teamChatService.saveMessage(100L, "1", new ChatMessageRequest("안녕")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("채팅에 참여할 권한이 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
@@ -111,7 +111,7 @@ class TeamChatServiceTest {
         User receiver = userWithId(2L);
         Team team = teamWithId(100L);
         TeamMember member = TeamMember.create(team, receiver, TeamMemberRole.MEMBER);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(sender));
+        given(userRepository.findById(1L)).willReturn(Optional.of(sender));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
         given(teamRepository.getReferenceById(100L)).willReturn(team);
         given(teamMemberRepository.findByTeamIdExcludingUser(100L, 1L)).willReturn(List.of(member));
@@ -126,7 +126,7 @@ class TeamChatServiceTest {
                 NotificationType.CHAT_MESSAGE, "닉네임1님이 메시지를 보냈습니다.", "안녕");
         given(notificationMessageFactory.chatMessage(sender.getNickname(), "안녕")).willReturn(message);
 
-        teamChatService.saveMessage(100L, "user1", new ChatMessageRequest("안녕"));
+        teamChatService.saveMessage(100L, "1", new ChatMessageRequest("안녕"));
 
         then(notificationService).should().pushAll(eq(List.of(receiver)), eq(message), eq(100L));
         then(notificationService).should(never()).sendAll(any(), any(), any(), any());
@@ -143,7 +143,7 @@ class TeamChatServiceTest {
         given(teamChatMessageRepository.findLatestMessages(100L, PageRequest.of(0, 3)))
                 .willReturn(List.of(first, second, extra));
 
-        TeamChatMessagePageResponse response = teamChatService.getMessages(100L, "user1", null, 2);
+        TeamChatMessagePageResponse response = teamChatService.getMessages(100L, "1", null, 2);
 
         assertThat(response.messages()).extracting(TeamChatMessageResponse::messageId).containsExactly(100L, 99L);
         assertThat(response.hasNext()).isTrue();
@@ -159,7 +159,7 @@ class TeamChatServiceTest {
         given(teamChatMessageRepository.findMessagesByCursor(100L, 99L, PageRequest.of(0, 3)))
                 .willReturn(List.of(message));
 
-        TeamChatMessagePageResponse response = teamChatService.getMessages(100L, "user1", 99L, 2);
+        TeamChatMessagePageResponse response = teamChatService.getMessages(100L, "1", 99L, 2);
 
         assertThat(response.messages()).extracting(TeamChatMessageResponse::messageId).containsExactly(90L);
         assertThat(response.hasNext()).isFalse();
@@ -169,10 +169,10 @@ class TeamChatServiceTest {
     @Test
     void 메시지_목록은_팀원이_아니면_403_예외를_던진다() {
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> teamChatService.getMessages(100L, "user1", null, 20))
+        assertThatThrownBy(() -> teamChatService.getMessages(100L, "1", null, 20))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("채팅에 참여할 권한이 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
@@ -183,7 +183,7 @@ class TeamChatServiceTest {
         User user = userWithId(1L);
         givenTeamMember(user, 100L);
 
-        TypingStatusResponse response = teamChatService.handleTyping(100L, "user1", new TypingStatusRequest(true));
+        TypingStatusResponse response = teamChatService.handleTyping(100L, "1", new TypingStatusRequest(true));
 
         assertThat(response.userId()).isEqualTo(1L);
         assertThat(response.nickname()).isEqualTo("닉네임1");
@@ -193,10 +193,10 @@ class TeamChatServiceTest {
     @Test
     void 타이핑은_팀원이_아니면_403_예외를_던진다() {
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> teamChatService.handleTyping(100L, "user1", new TypingStatusRequest(true)))
+        assertThatThrownBy(() -> teamChatService.handleTyping(100L, "1", new TypingStatusRequest(true)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("채팅에 참여할 권한이 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
@@ -210,7 +210,7 @@ class TeamChatServiceTest {
         givenTeamMemberWithTeam(user, team);
         given(teamChatReadStatusRepository.findByUserIdAndTeamId(1L, 100L)).willReturn(Optional.of(readStatus));
 
-        teamChatService.markAsRead(100L, "user1", new MarkAsReadRequest(500L));
+        teamChatService.markAsRead(100L, "1", new MarkAsReadRequest(500L));
 
         assertThat(readStatus.getLastReadMessageId()).isEqualTo(500L);
         then(teamChatReadStatusRepository).should(never()).save(any());
@@ -225,7 +225,7 @@ class TeamChatServiceTest {
         given(teamChatReadStatusRepository.save(any(TeamChatReadStatus.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
-        teamChatService.markAsRead(100L, "user1", new MarkAsReadRequest(500L));
+        teamChatService.markAsRead(100L, "1", new MarkAsReadRequest(500L));
 
         then(teamChatReadStatusRepository).should().save(any(TeamChatReadStatus.class));
     }
@@ -239,7 +239,7 @@ class TeamChatServiceTest {
         givenTeamMemberWithTeam(user, team);
         given(teamChatReadStatusRepository.findByUserIdAndTeamId(1L, 100L)).willReturn(Optional.of(readStatus));
 
-        teamChatService.markAsRead(100L, "user1", new MarkAsReadRequest(300L));
+        teamChatService.markAsRead(100L, "1", new MarkAsReadRequest(300L));
 
         assertThat(readStatus.getLastReadMessageId()).isEqualTo(500L);
     }
@@ -247,10 +247,10 @@ class TeamChatServiceTest {
     @Test
     void 읽음처리는_팀원이_아니면_403_예외를_던진다() {
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> teamChatService.markAsRead(100L, "user1", new MarkAsReadRequest(500L)))
+        assertThatThrownBy(() -> teamChatService.markAsRead(100L, "1", new MarkAsReadRequest(500L)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("채팅에 참여할 권한이 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
@@ -265,7 +265,7 @@ class TeamChatServiceTest {
         given(teamChatReadStatusRepository.findByUserIdAndTeamId(1L, 100L)).willReturn(Optional.of(readStatus));
         given(teamChatReadStatusRepository.countAllMessages(100L)).willReturn(7L);
 
-        ChatUnreadCountResponse response = teamChatService.getUnreadCount(100L, "user1");
+        ChatUnreadCountResponse response = teamChatService.getUnreadCount(100L, "1");
 
         assertThat(response.teamId()).isEqualTo(100L);
         assertThat(response.unreadCount()).isEqualTo(7L);
@@ -281,7 +281,7 @@ class TeamChatServiceTest {
         given(teamChatReadStatusRepository.findByUserIdAndTeamId(1L, 100L)).willReturn(Optional.of(readStatus));
         given(teamChatReadStatusRepository.countUnreadMessages(100L, 500L)).willReturn(3L);
 
-        ChatUnreadCountResponse response = teamChatService.getUnreadCount(100L, "user1");
+        ChatUnreadCountResponse response = teamChatService.getUnreadCount(100L, "1");
 
         assertThat(response.unreadCount()).isEqualTo(3L);
     }
@@ -293,7 +293,7 @@ class TeamChatServiceTest {
         given(teamChatReadStatusRepository.findByUserIdAndTeamId(1L, 100L)).willReturn(Optional.empty());
         given(teamChatReadStatusRepository.countAllMessages(100L)).willReturn(5L);
 
-        ChatUnreadCountResponse response = teamChatService.getUnreadCount(100L, "user1");
+        ChatUnreadCountResponse response = teamChatService.getUnreadCount(100L, "1");
 
         assertThat(response.unreadCount()).isEqualTo(5L);
     }
@@ -301,22 +301,22 @@ class TeamChatServiceTest {
     @Test
     void 안읽은_수는_팀원이_아니면_403_예외를_던진다() {
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> teamChatService.getUnreadCount(100L, "user1"))
+        assertThatThrownBy(() -> teamChatService.getUnreadCount(100L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("채팅에 참여할 권한이 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
     }
 
     private void givenTeamMember(User user, Long teamId) {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())).willReturn(true);
     }
 
     private void givenTeamMemberWithTeam(User user, Team team) {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(team.getId(), user.getId())).willReturn(true);
         given(teamRepository.getReferenceById(team.getId())).willReturn(team);
     }

@@ -50,8 +50,8 @@ public class ReauthService {
     private final Clock clock;
 
     @Transactional
-    public ReauthResponse reauthenticate(String loginId, ReauthRequest request) {
-        User user = userRepository.findByLoginId(loginId)
+    public ReauthResponse reauthenticate(String userId, ReauthRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
 
         if (!rateLimiter.tryAcquire(RATE_LIMIT_PREFIX + user.getId(), PASSWORD_ATTEMPT_LIMIT, PASSWORD_ATTEMPT_WINDOW)) {
@@ -77,7 +77,7 @@ public class ReauthService {
      * @return 재인증을 통과한 사용자 ID
      */
     @Transactional
-    public Long consume(String loginId, String rawToken, ReauthPurpose purpose) {
+    public Long consume(String userId, String rawToken, ReauthPurpose purpose) {
         if (rawToken == null || rawToken.isBlank()) {
             throw new BusinessException("재인증이 필요합니다", HttpStatus.UNAUTHORIZED);
         }
@@ -86,7 +86,7 @@ public class ReauthService {
                 .orElseThrow(() -> new BusinessException("재인증이 필요합니다", HttpStatus.UNAUTHORIZED));
 
         // 남의 토큰을 자기 요청에 쓰지 못하게 소유자를 확인한다.
-        if (!token.getUser().getLoginId().equals(loginId)) {
+        if (!token.getUser().getId().toString().equals(userId)) {
             throw new BusinessException("재인증이 필요합니다", HttpStatus.UNAUTHORIZED);
         }
         if (!token.matchesPurpose(purpose)) {
@@ -102,7 +102,7 @@ public class ReauthService {
         }
 
         // markAsUsed가 영속성 컨텍스트를 비우므로 그 전에 읽어 둔다.
-        Long userId = token.getUser().getId();
+        Long ownerId = token.getUser().getId();
 
         // 실제 1회용 보장은 여기서 이뤄진다. 위 검증과 이 UPDATE 사이에 다른 요청이 먼저
         // 소비했다면 갱신 행이 0이 되고, 그 요청만 통과한다.
@@ -110,7 +110,7 @@ public class ReauthService {
             throw new BusinessException("이미 사용된 재인증입니다", HttpStatus.UNAUTHORIZED);
         }
 
-        return userId;
+        return ownerId;
     }
 
     private String generateToken() {

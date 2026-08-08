@@ -60,16 +60,16 @@ public class UserService {
     private final ReauthService reauthService;
     private final FileDeletionOutboxService fileDeletionOutboxService;
 
-    public MyPageResponse getMyPage(String loginId) {
-        User user = userRepository.findByLoginId(loginId)
+    public MyPageResponse getMyPage(String userId) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
 
         return buildMyPageResponse(user);
     }
 
     @Transactional
-    public MyPageResponse updateNickname(String loginId, UpdateNicknameRequest request) {
-        User user = userRepository.findByLoginId(loginId)
+    public MyPageResponse updateNickname(String userId, UpdateNicknameRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
 
         user.updateNickname(request.nickname());
@@ -83,15 +83,15 @@ public class UserService {
      * 정리하고, 마지막 users 삭제를 flush해 정리를 빠뜨린 참조가 있으면 FK 위반으로 즉시 드러나게 한다.
      */
     @Transactional
-    public void deleteUser(String loginId, DeleteUserRequest request) {
-        User user = userRepository.findByLoginId(loginId)
+    public void deleteUser(String userId, DeleteUserRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
 
         // 복구 유예기간이 없어 오조작과 토큰 탈취를 되돌릴 수 없으므로 재인증을 요구한다.
         // 토큰은 여기서 소비되며 같은 토큰으로 다시 탈퇴를 시도할 수 없다.
-        reauthService.consume(loginId, request.reauthToken(), ReauthPurpose.WITHDRAWAL);
+        reauthService.consume(userId, request.reauthToken(), ReauthPurpose.WITHDRAWAL);
 
-        Long userId = user.getId();
+        Long id = user.getId();
         String email = user.getEmail();
 
         enqueueUserFilesForDeletion(user);
@@ -100,29 +100,29 @@ public class UserService {
         handleLeaderTeams(user);
 
         // 2. 개인 데이터 삭제. 여기를 빠뜨리면 아래 users 삭제가 FK 위반으로 실패한다.
-        notificationRepository.deleteByReceiverId(userId);
-        teamChatReadStatusRepository.deleteByUserId(userId);
-        todoReactionRepository.deleteByUserId(userId);
-        userConsentRepository.deleteByUserId(userId);
-        reauthTokenRepository.deleteByUserId(userId);
-        refreshTokenRepository.deleteByUserId(userId);
+        notificationRepository.deleteByReceiverId(id);
+        teamChatReadStatusRepository.deleteByUserId(id);
+        todoReactionRepository.deleteByUserId(id);
+        userConsentRepository.deleteByUserId(id);
+        reauthTokenRepository.deleteByUserId(id);
+        refreshTokenRepository.deleteByUserId(id);
         if (email != null) {
             emailVerificationRepository.deleteByEmail(email);
             mailOutboxRepository.deleteByRecipient(email);
         }
 
         // 3. 남은 팀의 진행 중 WorkItem을 정리하고, 미배정 알림을 탈퇴 트랜잭션에 함께 저장한다.
-        teamMemberRepository.findTeamsByUserId(userId)
+        teamMemberRepository.findTeamsByUserId(id)
                 .forEach(team -> todoWorkItemLifecycleService.handleTeamDeparture(team.getId(), user));
-        todoWorkItemLifecycleService.anonymizeFinishedForWithdrawal(userId);
+        todoWorkItemLifecycleService.anonymizeFinishedForWithdrawal(id);
 
         // 4. 공동 기록 익명화 — 삭제하지 않고 작성자 관계만 끊는다.
-        teamChatMessageRepository.clearSenderByUserId(userId);
-        todoRepository.clearCreatorByUserId(userId);
+        teamChatMessageRepository.clearSenderByUserId(id);
+        todoRepository.clearCreatorByUserId(id);
         // 방금 생성한 미배정 알림까지 포함해 actor를 익명화한다.
-        notificationRepository.clearActorByUserId(userId);
+        notificationRepository.clearActorByUserId(id);
 
-        teamMemberRepository.deleteByUserId(userId);
+        teamMemberRepository.deleteByUserId(id);
 
         // 5. 사용자 삭제 후 flush — 정리 누락은 여기서 FK 위반으로 검출된다.
         userRepository.delete(user);

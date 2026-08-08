@@ -46,8 +46,8 @@ public class AvailabilityService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
 
-    public List<AvailabilityPollListResponse> getPolls(Long teamId, String loginId) {
-        User user = findUser(loginId);
+    public List<AvailabilityPollListResponse> getPolls(Long teamId, String userId) {
+        User user = findUser(userId);
         validateTeamMember(teamId, user.getId());
 
         long totalMemberCount = teamMemberRepository.countByTeamId(teamId);
@@ -76,12 +76,12 @@ public class AvailabilityService {
     }
 
     @Transactional
-    public void createPoll(Long teamId, String loginId, CreateAvailabilityPollRequest request) {
+    public void createPoll(Long teamId, String userId, CreateAvailabilityPollRequest request) {
         if (request.startHour() >= request.endHour()) {
             throw new BusinessException("시작 시간은 종료 시간보다 작아야 합니다.", HttpStatus.BAD_REQUEST);
         }
 
-        User user = findUser(loginId);
+        User user = findUser(userId);
         validateTeamMember(teamId, user.getId());
         Team team = teamRepository.getReferenceById(teamId);
 
@@ -94,8 +94,8 @@ public class AvailabilityService {
     }
 
     @Transactional
-    public void submitResponse(Long pollId, String loginId, SubmitAvailabilityRequest request) {
-        User user = findUser(loginId);
+    public void submitResponse(Long pollId, String userId, SubmitAvailabilityRequest request) {
+        User user = findUser(userId);
         AvailabilityPoll poll = findPollWithDates(pollId);
         validateTeamMember(poll.getTeam().getId(), user.getId());
 
@@ -120,8 +120,8 @@ public class AvailabilityService {
         slotRepository.saveAll(newSlots);
     }
 
-    public AvailabilitySummaryResponse getSummary(Long pollId, String loginId) {
-        User user = findUser(loginId);
+    public AvailabilitySummaryResponse getSummary(Long pollId, String userId) {
+        User user = findUser(userId);
         AvailabilityPoll poll = findPollWithDates(pollId);
         validateTeamMember(poll.getTeam().getId(), user.getId());
 
@@ -182,8 +182,8 @@ public class AvailabilityService {
         );
     }
 
-    private User findUser(String loginId) {
-        return userRepository.findByLoginId(loginId)
+    private User findUser(String userId) {
+        return userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
     }
 

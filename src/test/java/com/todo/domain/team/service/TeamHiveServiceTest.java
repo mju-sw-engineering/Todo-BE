@@ -66,9 +66,9 @@ class TeamHiveServiceTest {
 
     @BeforeEach
     void setUp() {
-        User user = User.create("tester", "encoded-password", "테스터", null);
+        User user = User.create("1", "encoded-password", "테스터", null);
         ReflectionTestUtils.setField(user, "id", 1L);
-        lenient().when(userRepository.findByLoginId("tester")).thenReturn(Optional.of(user));
+        lenient().when(userRepository.findById(1L)).thenReturn(Optional.of(user));
 
         Team team = Team.create("팀", null, "invite-code");
         ReflectionTestUtils.setField(team, "id", TEAM_ID);
@@ -131,7 +131,7 @@ class TeamHiveServiceTest {
     @Test
     @DisplayName("기록이 없으면 Lv.1이고 다음 문턱값은 30이다")
     void 기록_없음_레벨1() {
-        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "tester");
+        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "1");
 
         assertThat(response.level()).isEqualTo(1);
         assertThat(response.totalRecords()).isZero();
@@ -149,7 +149,7 @@ class TeamHiveServiceTest {
                 List.of(new CheckIn(day, 1L, 100L))
         );
 
-        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "tester");
+        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "1");
 
         assertThat(response.totalRecords()).isEqualTo(1);
     }
@@ -164,7 +164,7 @@ class TeamHiveServiceTest {
                 List.of(new CheckIn(day.plusDays(1), 1L, 100L))
         );
 
-        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "tester");
+        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "1");
 
         // 다른 사람 + 같은 투두, 같은 사람 + 다른 날 모두 별도 기록
         assertThat(response.totalRecords()).isEqualTo(3);
@@ -174,10 +174,10 @@ class TeamHiveServiceTest {
     @DisplayName("문턱값 경계에서 레벨이 올라간다 — 29개는 Lv.1, 30개는 Lv.2")
     void 레벨2_경계() {
         givenTeamActivity(List.of(), List.of(), records(29));
-        assertThat(teamHiveService.getTeamHive(TEAM_ID, "tester").level()).isEqualTo(1);
+        assertThat(teamHiveService.getTeamHive(TEAM_ID, "1").level()).isEqualTo(1);
 
         givenTeamActivity(List.of(), List.of(), records(30));
-        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "tester");
+        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "1");
         assertThat(response.level()).isEqualTo(2);
         assertThat(response.currentThreshold()).isEqualTo(30);
         assertThat(response.nextThreshold()).isEqualTo(100);
@@ -188,7 +188,7 @@ class TeamHiveServiceTest {
     void 레벨3_경계() {
         givenTeamActivity(List.of(), List.of(), records(100));
 
-        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "tester");
+        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "1");
 
         assertThat(response.level()).isEqualTo(3);
         assertThat(response.nextThreshold()).isEqualTo(300);
@@ -199,7 +199,7 @@ class TeamHiveServiceTest {
     void 최고_레벨() {
         givenTeamActivity(List.of(), List.of(), records(300));
 
-        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "tester");
+        TeamHiveResponse response = teamHiveService.getTeamHive(TEAM_ID, "1");
 
         assertThat(response.level()).isEqualTo(4);
         assertThat(response.currentThreshold()).isEqualTo(300);
@@ -211,7 +211,7 @@ class TeamHiveServiceTest {
     void 없는_팀_거부() {
         lenient().when(teamRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamHiveService.getTeamHive(99L, "tester"))
+        assertThatThrownBy(() -> teamHiveService.getTeamHive(99L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
     }
@@ -221,7 +221,7 @@ class TeamHiveServiceTest {
     void 비팀원_거부() {
         lenient().when(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).thenReturn(false);
 
-        assertThatThrownBy(() -> teamHiveService.getTeamHive(TEAM_ID, "tester"))
+        assertThatThrownBy(() -> teamHiveService.getTeamHive(TEAM_ID, "1"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
     }

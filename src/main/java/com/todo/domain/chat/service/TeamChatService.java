@@ -42,8 +42,8 @@ public class TeamChatService {
     private final NotificationMessageFactory notificationMessageFactory;
 
     @Transactional
-    public TeamChatMessageResponse saveMessage(Long teamId, String loginId, ChatMessageRequest request) {
-        User sender = findUser(loginId);
+    public TeamChatMessageResponse saveMessage(Long teamId, String userId, ChatMessageRequest request) {
+        User sender = findUser(userId);
         checkTeamMember(teamId, sender.getId());
         Team team = teamReference(teamId);
 
@@ -56,8 +56,8 @@ public class TeamChatService {
         return TeamChatMessageResponse.from(message);
     }
 
-    public TeamChatMessagePageResponse getMessages(Long teamId, String loginId, Long cursorId, int size) {
-        User user = findUser(loginId);
+    public TeamChatMessagePageResponse getMessages(Long teamId, String userId, Long cursorId, int size) {
+        User user = findUser(userId);
         checkTeamMember(teamId, user.getId());
 
         List<TeamChatMessage> messages = fetchMessages(teamId, cursorId, size + 1);
@@ -73,15 +73,15 @@ public class TeamChatService {
         );
     }
 
-    public TypingStatusResponse handleTyping(Long teamId, String loginId, TypingStatusRequest request) {
-        User user = findUser(loginId);
+    public TypingStatusResponse handleTyping(Long teamId, String userId, TypingStatusRequest request) {
+        User user = findUser(userId);
         checkTeamMember(teamId, user.getId());
         return TypingStatusResponse.of(user, request.isTyping());
     }
 
     @Transactional
-    public void markAsRead(Long teamId, String loginId, MarkAsReadRequest request) {
-        User user = findUser(loginId);
+    public void markAsRead(Long teamId, String userId, MarkAsReadRequest request) {
+        User user = findUser(userId);
         checkTeamMember(teamId, user.getId());
         Team team = teamReference(teamId);
 
@@ -92,8 +92,8 @@ public class TeamChatService {
         readStatus.updateLastReadMessageId(request.lastReadMessageId());
     }
 
-    public ChatUnreadCountResponse getUnreadCount(Long teamId, String loginId) {
-        User user = findUser(loginId);
+    public ChatUnreadCountResponse getUnreadCount(Long teamId, String userId) {
+        User user = findUser(userId);
         checkTeamMember(teamId, user.getId());
 
         long unreadCount = teamChatReadStatusRepository.findByUserIdAndTeamId(user.getId(), teamId)
@@ -105,8 +105,8 @@ public class TeamChatService {
         return ChatUnreadCountResponse.of(teamId, unreadCount);
     }
 
-    private User findUser(String loginId) {
-        return userRepository.findByLoginId(loginId)
+    private User findUser(String userId) {
+        return userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
     }
 

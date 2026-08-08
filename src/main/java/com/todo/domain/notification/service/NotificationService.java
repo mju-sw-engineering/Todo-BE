@@ -65,7 +65,7 @@ public class NotificationService {
 
         List<NotificationDelivery> deliveries = notifications.stream()
                 .map(notification -> new NotificationDelivery(
-                        notification.getReceiver().getLoginId(),
+                        notification.getReceiver().getId().toString(),
                         NotificationResponse.from(notification)
                 ))
                 .toList();
@@ -94,7 +94,7 @@ public class NotificationService {
         NotificationResponse payload = NotificationResponse.pushOnly(
                 message.type(), message.title(), message.content(), referenceId);
         List<NotificationDelivery> deliveries = receivers.stream()
-                .map(receiver -> new NotificationDelivery(receiver.getLoginId(), payload))
+                .map(receiver -> new NotificationDelivery(receiver.getId().toString(), payload))
                 .toList();
 
         // 저장 트랜잭션 안에서 호출되면 롤백된 메시지의 알림이 나가지 않도록 커밋 후로 미룬다.
@@ -111,8 +111,9 @@ public class NotificationService {
     public void dispatch(List<NotificationDelivery> deliveries) {
         for (NotificationDelivery delivery : deliveries) {
             try {
+                // STOMP principal 이름이 userId이므로 개인 큐 라우팅 키도 userId여야 한다.
                 messagingTemplate.convertAndSendToUser(
-                        delivery.receiverLoginId(),
+                        delivery.receiverUserId(),
                         "/queue/notifications",
                         delivery.payload()
                 );
@@ -128,8 +129,8 @@ public class NotificationService {
         }
     }
 
-    public NotificationPageResponse getNotifications(String loginId, Long cursorId, int size) {
-        User user = userRepository.findByLoginId(loginId)
+    public NotificationPageResponse getNotifications(String userId, Long cursorId, int size) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
         List<Notification> notifications = fetchNotifications(user.getId(), cursorId, size + 1);
@@ -146,8 +147,8 @@ public class NotificationService {
     }
 
     @Transactional
-    public void markAsRead(String loginId, Long notificationId) {
-        User user = userRepository.findByLoginId(loginId)
+    public void markAsRead(String userId, Long notificationId) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
         Notification notification = notificationRepository.findById(notificationId)
@@ -161,15 +162,15 @@ public class NotificationService {
     }
 
     @Transactional
-    public void markAllAsRead(String loginId) {
-        User user = userRepository.findByLoginId(loginId)
+    public void markAllAsRead(String userId) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
         notificationRepository.markAllAsRead(user.getId());
     }
 
-    public UnreadNotificationCountResponse getUnreadCount(String loginId) {
-        User user = userRepository.findByLoginId(loginId)
+    public UnreadNotificationCountResponse getUnreadCount(String userId) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
         long count = notificationRepository.countByReceiverIdAndIsRead(user.getId(), false);

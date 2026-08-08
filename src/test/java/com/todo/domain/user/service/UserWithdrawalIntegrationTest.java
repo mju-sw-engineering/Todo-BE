@@ -98,9 +98,9 @@ class UserWithdrawalIntegrationTest {
 
     private void withdraw() {
         String reauthToken = reauthService
-                .reauthenticate("leaving", new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL))
+                .reauthenticate(withdrawing.getId().toString(), new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL))
                 .reauthToken();
-        userService.deleteUser("leaving", new DeleteUserRequest(reauthToken));
+        userService.deleteUser(withdrawing.getId().toString(), new DeleteUserRequest(reauthToken));
         entityManager.flush();
         entityManager.clear();
     }
@@ -309,7 +309,7 @@ class UserWithdrawalIntegrationTest {
 
     @Test
     void 재인증_없이는_탈퇴할_수_없다() {
-        assertThatThrownBy(() -> userService.deleteUser("leaving", new DeleteUserRequest("없는토큰")))
+        assertThatThrownBy(() -> userService.deleteUser(withdrawing.getId().toString(), new DeleteUserRequest("없는토큰")))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
         entityManager.clear();
@@ -319,16 +319,16 @@ class UserWithdrawalIntegrationTest {
     @Test
     void 같은_재인증_토큰으로_두_번_탈퇴할_수_없다() {
         String reauthToken = reauthService
-                .reauthenticate("leaving", new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL))
+                .reauthenticate(withdrawing.getId().toString(), new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL))
                 .reauthToken();
-        userService.deleteUser("leaving", new DeleteUserRequest(reauthToken));
+        userService.deleteUser(withdrawing.getId().toString(), new DeleteUserRequest(reauthToken));
         entityManager.flush();
 
         User rejoined = userRepository.save(User.create(
                 "leaving", passwordEncoder.encode(RAW_PASSWORD), "돌아온사람", null));
         entityManager.flush();
 
-        assertThatThrownBy(() -> userService.deleteUser("leaving", new DeleteUserRequest(reauthToken)))
+        assertThatThrownBy(() -> userService.deleteUser(rejoined.getId().toString(), new DeleteUserRequest(reauthToken)))
                 .isInstanceOf(BusinessException.class);
         entityManager.clear();
         assertThat(userRepository.findById(rejoined.getId())).isPresent();
@@ -336,7 +336,7 @@ class UserWithdrawalIntegrationTest {
 
     @Test
     void 탈퇴하면_남아있던_재인증_토큰도_삭제된다() {
-        reauthService.reauthenticate("leaving", new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL));
+        reauthService.reauthenticate(withdrawing.getId().toString(), new ReauthRequest(RAW_PASSWORD, ReauthPurpose.WITHDRAWAL));
         entityManager.flush();
 
         withdraw();

@@ -68,8 +68,8 @@ public class TeamService {
     private String teamInvitePath;
 
     @Transactional
-    public CreateTeamResponse createTeam(String loginId, CreateTeamRequest request) {
-        User user = userRepository.findByLoginId(loginId)
+    public CreateTeamResponse createTeam(String userId, CreateTeamRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
         String inviteCode = generateUniqueInviteCode();
@@ -81,8 +81,8 @@ public class TeamService {
                 .withImageUrl(fileService.resolveImageUrl(team.getTeamImage()));
     }
 
-    public TeamDetailResponse getTeamDetail(Long teamId, String loginId) {
-        User user = userRepository.findByLoginId(loginId)
+    public TeamDetailResponse getTeamDetail(Long teamId, String userId) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));
@@ -98,8 +98,8 @@ public class TeamService {
                 .withImageUrl(fileService.resolveImageUrl(team.getTeamImage()));
     }
 
-    public TeamAchievementResponse getTeamAchievement(Long teamId, String loginId) {
-        User user = userRepository.findByLoginId(loginId)
+    public TeamAchievementResponse getTeamAchievement(Long teamId, String userId) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));
@@ -109,8 +109,8 @@ public class TeamService {
         return TeamAchievementResponse.from(team);
     }
 
-    public TeamListResponse getMyTeams(String loginId) {
-        User user = userRepository.findByLoginId(loginId)
+    public TeamListResponse getMyTeams(String userId) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         List<Team> teams = teamMemberRepository.findTeamsByUserId(user.getId());
         List<TeamSummaryResponse> summaries = teams.stream()
@@ -121,8 +121,8 @@ public class TeamService {
     }
 
     @Transactional
-    public JoinTeamResponse joinTeam(String loginId, JoinTeamRequest request) {
-        User user = userRepository.findByLoginId(loginId)
+    public JoinTeamResponse joinTeam(String userId, JoinTeamRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
 
         Team team = teamRepository.findByInviteCode(request.inviteCode())
@@ -141,8 +141,8 @@ public class TeamService {
     }
 
     @Transactional
-    public InviteTeamResponse inviteTeamMembers(String loginId, Long teamId, InviteTeamRequest request) {
-        User user = userRepository.findByLoginId(loginId)
+    public InviteTeamResponse inviteTeamMembers(String userId, Long teamId, InviteTeamRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));
@@ -164,8 +164,8 @@ public class TeamService {
     }
 
     @Transactional
-    public void removeMember(String loginId, Long teamId, Long targetUserId) {
-        User requester = userRepository.findByLoginId(loginId)
+    public void removeMember(String userId, Long teamId, Long targetUserId) {
+        User requester = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         TeamMember requesterMember = teamMemberRepository.findByTeamIdAndUserId(teamId, requester.getId())
                 .orElseThrow(() -> new BusinessException("소속된 팀이 아닙니다", HttpStatus.NOT_FOUND));
@@ -185,8 +185,8 @@ public class TeamService {
     }
 
     @Transactional
-    public void leaveTeam(String loginId, Long teamId) {
-        User user = userRepository.findByLoginId(loginId)
+    public void leaveTeam(String userId, Long teamId) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         TeamMember member = teamMemberRepository.findByTeamIdAndUserId(teamId, user.getId())
                 .orElseThrow(() -> new BusinessException("소속된 팀이 아닙니다", HttpStatus.NOT_FOUND));

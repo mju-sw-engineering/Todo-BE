@@ -64,8 +64,8 @@ public class FeedService {
     private final UserRepository userRepository;
     private final Clock clock;
 
-    public List<TeamRhythmResponse> getTeamRhythm(String loginId) {
-        User user = findAuthenticatedUser(loginId);
+    public List<TeamRhythmResponse> getTeamRhythm(String userId) {
+        User user = findAuthenticatedUser(userId);
         LocalDate today = LocalDate.now(KST);
         LocalDate from = today.minusDays(STREAK_LOOKBACK_DAYS);
 
@@ -79,8 +79,8 @@ public class FeedService {
      * 기간을 주면 시작일은 그 주 월요일로, 종료일은 그 주 일요일로 넓혀
      * 항상 완전한 주 단위 그리드가 되게 한다. 미래 날짜는 count 0으로 내려간다.
      */
-    public MyStreakResponse getMyStreak(String loginId, String startDate, String endDate) {
-        User user = findAuthenticatedUser(loginId);
+    public MyStreakResponse getMyStreak(String userId, String startDate, String endDate) {
+        User user = findAuthenticatedUser(userId);
         LocalDate today = LocalDate.now(KST);
 
         LocalDate gridStart;
@@ -121,8 +121,8 @@ public class FeedService {
      * 손댄 서로 다른 투두 수에 따라 진하기(0~3)가 정해진다. 잔디(my-streak)와 같은 활동 기준이다.
      * 이번 달이면 오늘 이후 날은 null, 미래 달은 조회할 수 없다.
      */
-    public MonthlyHiveResponse getMonthlyHive(String loginId, int year, int month) {
-        User user = findAuthenticatedUser(loginId);
+    public MonthlyHiveResponse getMonthlyHive(String userId, int year, int month) {
+        User user = findAuthenticatedUser(userId);
         YearMonth target = toYearMonth(year, month);
         LocalDate today = LocalDate.now(clock);
         if (target.isAfter(YearMonth.from(today))) {
@@ -152,11 +152,11 @@ public class FeedService {
      * 벌집 보관함: 이번 달을 제외한 최근 N개월의 (꿀 채운 날 수 / 전체 일수).
      * 꿀 채움 판정은 월간 벌집과 같은 활동 기준이다.
      */
-    public List<HiveArchiveMonthResponse> getHiveArchive(String loginId, int months) {
+    public List<HiveArchiveMonthResponse> getHiveArchive(String userId, int months) {
         if (months < 1 || months > MAX_ARCHIVE_MONTHS) {
             throw new BusinessException("months는 1~" + MAX_ARCHIVE_MONTHS + " 사이여야 합니다.", HttpStatus.BAD_REQUEST);
         }
-        User user = findAuthenticatedUser(loginId);
+        User user = findAuthenticatedUser(userId);
         YearMonth current = YearMonth.from(LocalDate.now(clock));
         YearMonth from = current.minusMonths(months);
 
@@ -178,8 +178,8 @@ public class FeedService {
      * 조회 시점에 판정한다. 활동 기준은 잔디·벌집과 같고, 스트릭 배지는 현재 스트릭이 아니라
      * 조회 범위 안의 최장 스트릭으로 판정해 기록이 끊겨도 배지가 사라지지 않게 한다.
      */
-    public List<BadgeResponse> getBadges(String loginId) {
-        User user = findAuthenticatedUser(loginId);
+    public List<BadgeResponse> getBadges(String userId) {
+        User user = findAuthenticatedUser(userId);
         LocalDate today = LocalDate.now(clock);
         LocalDate from = today.minusDays(STREAK_LOOKBACK_DAYS);
 
@@ -357,8 +357,8 @@ public class FeedService {
         }
     }
 
-    private User findAuthenticatedUser(String loginId) {
-        return userRepository.findByLoginId(loginId)
+    private User findAuthenticatedUser(String userId) {
+        return userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
     }
 }

@@ -11,8 +11,8 @@ import java.util.Optional;
 
 public interface UserConsentRepository extends JpaRepository<UserConsent, Long> {
 
-    Optional<UserConsent> findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(
-            String loginId, ConsentType consentType);
+    Optional<UserConsent> findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(
+            Long userId, ConsentType consentType);
 
     /**
      * 동의 이력은 개인정보이므로 탈퇴 시 보존하지 않고 삭제한다.

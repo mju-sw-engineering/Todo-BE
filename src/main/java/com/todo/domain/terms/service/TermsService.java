@@ -46,21 +46,21 @@ public class TermsService {
         );
     }
 
-    public AllTermsResponse getAllAgreedTerms(String loginId) {
+    public AllTermsResponse getAllAgreedTerms(String userId) {
         return new AllTermsResponse(
-                getAgreedTerms(loginId, ConsentType.TERMS),
-                getAgreedTerms(loginId, ConsentType.PRIVACY),
-                getAgreedTerms(loginId, ConsentType.MARKETING)
+                getAgreedTerms(userId, ConsentType.TERMS),
+                getAgreedTerms(userId, ConsentType.PRIVACY),
+                getAgreedTerms(userId, ConsentType.MARKETING)
         );
     }
 
     @Transactional
-    public void saveConsent(String loginId, ConsentRequest request) {
-        User user = userRepository.findByLoginId(loginId)
+    public void saveConsent(String userId, ConsentRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
 
         boolean alreadyAgreed = userConsentRepository
-                .findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(loginId, request.consentType())
+                .findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(Long.parseLong(userId), request.consentType())
                 .map(c -> c.getConsentVersion().equals(request.version()))
                 .orElse(false);
 
@@ -71,12 +71,12 @@ public class TermsService {
         userConsentRepository.save(UserConsent.create(user, request.consentType(), request.version()));
     }
 
-    public Map<ConsentType, VersionCheckItem> getVersionCheck(String loginId) {
+    public Map<ConsentType, VersionCheckItem> getVersionCheck(String userId) {
         Map<ConsentType, VersionCheckItem> result = new LinkedHashMap<>();
         for (ConsentType type : ConsentType.values()) {
             String latestVersion = getCurrentVersion(type);
             Optional<UserConsent> consent = userConsentRepository
-                    .findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(loginId, type);
+                    .findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(Long.parseLong(userId), type);
             String agreedVersion = consent.map(UserConsent::getConsentVersion).orElse(null);
             boolean needsConsent = agreedVersion != null && !agreedVersion.equals(latestVersion);
             result.put(type, new VersionCheckItem(agreedVersion, latestVersion, needsConsent));
@@ -95,9 +95,9 @@ public class TermsService {
         return buildResponse(consentType, currentVersion, json);
     }
 
-    private TermsResponse getAgreedTerms(String loginId, ConsentType consentType) {
+    private TermsResponse getAgreedTerms(String userId, ConsentType consentType) {
         UserConsent consent = userConsentRepository
-                .findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(loginId, consentType)
+                .findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(Long.parseLong(userId), consentType)
                 .orElseThrow(() -> new BusinessException("동의 이력이 없습니다.", HttpStatus.NOT_FOUND));
 
         Map<String, Object> json = loadJson(consentType);

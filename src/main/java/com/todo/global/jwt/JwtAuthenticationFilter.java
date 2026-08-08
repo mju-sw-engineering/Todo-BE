@@ -28,14 +28,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = resolveToken(request);
 
         if (token != null && jwtUtil.isValid(token)) {
-            String userId = jwtUtil.extractUserId(token).toString();
             try {
+                String userId = jwtUtil.extractUserId(token).toString();
                 UserDetails userDetails = authService.loadUserByUsername(userId);
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-            } catch (UsernameNotFoundException ignored) {
+            } catch (UsernameNotFoundException | NumberFormatException ignored) {
+                // subject가 loginId였던 구버전 토큰은 숫자 파싱에 실패한다 — 미인증으로 흘려 401을 받게 한다.
                 SecurityContextHolder.clearContext();
             }
         }

@@ -42,8 +42,8 @@ public class TeamHiveService {
     private final TodoWorkItemRepository todoWorkItemRepository;
     private final WorkItemCheckInRepository workItemCheckInRepository;
 
-    public TeamHiveResponse getTeamHive(Long teamId, String loginId) {
-        User user = userRepository.findByLoginId(loginId)
+    public TeamHiveResponse getTeamHive(Long teamId, String userId) {
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다", HttpStatus.NOT_FOUND));

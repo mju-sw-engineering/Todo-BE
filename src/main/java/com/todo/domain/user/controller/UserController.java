@@ -25,8 +25,8 @@ public class UserController implements UserControllerDocs {
 
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<MyPageResponse>> getMyPage(Authentication authentication) {
-        String loginId = authentication.getName();
-        MyPageResponse response = userService.getMyPage(loginId);
+        String userId = authentication.getName();
+        MyPageResponse response = userService.getMyPage(userId);
         return ResponseEntity.ok(ApiResponse.success(response, "내 정보를 조회했습니다"));
     }
 
@@ -35,8 +35,8 @@ public class UserController implements UserControllerDocs {
             @Valid @RequestBody UpdateNicknameRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        MyPageResponse response = userService.updateNickname(loginId, request);
+        String userId = authentication.getName();
+        MyPageResponse response = userService.updateNickname(userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "닉네임이 변경되었습니다"));
     }
 
@@ -45,8 +45,8 @@ public class UserController implements UserControllerDocs {
             @Valid @RequestBody DeleteUserRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        userService.deleteUser(loginId, request);
+        String userId = authentication.getName();
+        userService.deleteUser(userId, request);
         return ResponseEntity.ok(ApiResponse.success(null, "회원 탈퇴가 완료되었습니다"));
     }
 }

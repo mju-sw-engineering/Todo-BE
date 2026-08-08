@@ -73,8 +73,8 @@ class NotificationServiceTest {
         ArgumentCaptor<NotificationDispatchEvent> captor = ArgumentCaptor.forClass(NotificationDispatchEvent.class);
         then(eventPublisher).should().publishEvent(captor.capture());
         assertThat(captor.getValue().deliveries())
-                .extracting(NotificationDelivery::receiverLoginId)
-                .containsExactly("user2");
+                .extracting(NotificationDelivery::receiverUserId)
+                .containsExactly("2");
     }
 
     @Test
@@ -86,7 +86,7 @@ class NotificationServiceTest {
 
         then(eventPublisher).should(never()).publishEvent(any(NotificationDispatchEvent.class));
         then(messagingTemplate).should()
-                .convertAndSendToUser(eq("user2"), eq("/queue/notifications"), any(NotificationResponse.class));
+                .convertAndSendToUser(eq("2"), eq("/queue/notifications"), any(NotificationResponse.class));
     }
 
     @Test
@@ -152,8 +152,8 @@ class NotificationServiceTest {
         ArgumentCaptor<NotificationDispatchEvent> captor = ArgumentCaptor.forClass(NotificationDispatchEvent.class);
         then(eventPublisher).should().publishEvent(captor.capture());
         assertThat(captor.getValue().deliveries())
-                .extracting(NotificationDelivery::receiverLoginId)
-                .containsExactly("user2");
+                .extracting(NotificationDelivery::receiverUserId)
+                .containsExactly("2");
     }
 
     @Test

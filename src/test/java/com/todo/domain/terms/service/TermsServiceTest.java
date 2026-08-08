@@ -73,14 +73,14 @@ class TermsServiceTest {
         given(privacyConsent.getConsentVersion()).willReturn("v1.0");
         given(marketingConsent.getConsentVersion()).willReturn("v1.0");
 
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.TERMS))
                 .willReturn(Optional.of(termsConsent));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.PRIVACY))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.PRIVACY))
                 .willReturn(Optional.of(privacyConsent));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.MARKETING))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.MARKETING))
                 .willReturn(Optional.of(marketingConsent));
 
-        AllTermsResponse response = termsService.getAllAgreedTerms("user1");
+        AllTermsResponse response = termsService.getAllAgreedTerms("1");
 
         assertThat(response.terms().version()).isEqualTo("v1.0");
         assertThat(response.terms().type()).isEqualTo("TERMS");
@@ -90,10 +90,10 @@ class TermsServiceTest {
 
     @Test
     void 이용약관_동의_이력_없으면_404_예외() {
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.TERMS))
                 .willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> termsService.getAllAgreedTerms("user1"))
+        assertThatThrownBy(() -> termsService.getAllAgreedTerms("1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("동의 이력이 없습니다");
     }
@@ -105,14 +105,14 @@ class TermsServiceTest {
         given(termsConsent.getConsentVersion()).willReturn("v1.0");
         given(privacyConsent.getConsentVersion()).willReturn("v1.0");
 
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.TERMS))
                 .willReturn(Optional.of(termsConsent));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.PRIVACY))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.PRIVACY))
                 .willReturn(Optional.of(privacyConsent));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.MARKETING))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.MARKETING))
                 .willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> termsService.getAllAgreedTerms("user1"))
+        assertThatThrownBy(() -> termsService.getAllAgreedTerms("1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("동의 이력이 없습니다");
     }
@@ -125,13 +125,13 @@ class TermsServiceTest {
 
     @Test
     void 약관_재동의_성공() {
-        User user = User.create("user1", "encoded", "닉네임", null);
+        User user = User.create("1", "encoded", "닉네임", null);
         ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v2.0");
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.TERMS))
                 .willReturn(Optional.empty());
 
-        termsService.saveConsent("user1", request);
+        termsService.saveConsent("1", request);
 
         then(userConsentRepository).should().save(any(UserConsent.class));
     }
@@ -139,24 +139,24 @@ class TermsServiceTest {
     @Test
     void 약관_재동의는_사용자가_없으면_404_예외() {
         ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v2.0");
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> termsService.saveConsent("unknown", request))
+        assertThatThrownBy(() -> termsService.saveConsent("999", request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("사용자를 찾을 수 없습니다.");
     }
 
     @Test
     void 약관_재동의는_이미_동의한_버전이면_409_예외() {
-        User user = User.create("user1", "encoded", "닉네임", null);
+        User user = User.create("1", "encoded", "닉네임", null);
         ConsentRequest request = new ConsentRequest(ConsentType.TERMS, "v1.0");
         UserConsent existing = mock(UserConsent.class);
         given(existing.getConsentVersion()).willReturn("v1.0");
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.TERMS))
                 .willReturn(Optional.of(existing));
 
-        assertThatThrownBy(() -> termsService.saveConsent("user1", request))
+        assertThatThrownBy(() -> termsService.saveConsent("1", request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("이미 해당 버전에 동의하셨습니다.");
         then(userConsentRepository).should(never()).save(any());
@@ -171,14 +171,14 @@ class TermsServiceTest {
         given(privacyConsent.getConsentVersion()).willReturn("v1.0");
         given(marketingConsent.getConsentVersion()).willReturn("v1.0");
 
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.TERMS))
                 .willReturn(Optional.of(termsConsent));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.PRIVACY))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.PRIVACY))
                 .willReturn(Optional.of(privacyConsent));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.MARKETING))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.MARKETING))
                 .willReturn(Optional.of(marketingConsent));
 
-        Map<ConsentType, VersionCheckItem> result = termsService.getVersionCheck("user1");
+        Map<ConsentType, VersionCheckItem> result = termsService.getVersionCheck("1");
 
         assertThat(result.get(ConsentType.TERMS).agreedVersion()).isEqualTo("v1.0");
         assertThat(result.get(ConsentType.TERMS).needsConsent()).isFalse();
@@ -193,14 +193,14 @@ class TermsServiceTest {
         given(termsConsent.getConsentVersion()).willReturn("v1.0");
         given(privacyConsent.getConsentVersion()).willReturn("v1.0");
 
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.TERMS))
                 .willReturn(Optional.of(termsConsent));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.PRIVACY))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.PRIVACY))
                 .willReturn(Optional.of(privacyConsent));
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.MARKETING))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.MARKETING))
                 .willReturn(Optional.empty());
 
-        Map<ConsentType, VersionCheckItem> result = termsService.getVersionCheck("user1");
+        Map<ConsentType, VersionCheckItem> result = termsService.getVersionCheck("1");
 
         assertThat(result.get(ConsentType.MARKETING).agreedVersion()).isNull();
         assertThat(result.get(ConsentType.MARKETING).needsConsent()).isFalse();
@@ -210,10 +210,10 @@ class TermsServiceTest {
     void 존재하지_않는_버전_조회시_404_예외() {
         UserConsent consent = mock(UserConsent.class);
         given(consent.getConsentVersion()).willReturn("v999.0");
-        given(userConsentRepository.findTopByUserLoginIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc("user1", ConsentType.TERMS))
+        given(userConsentRepository.findTopByUserIdAndConsentTypeAndRevokedAtIsNullOrderByCreatedAtDesc(1L, ConsentType.TERMS))
                 .willReturn(Optional.of(consent));
 
-        assertThatThrownBy(() -> termsService.getAllAgreedTerms("user1"))
+        assertThatThrownBy(() -> termsService.getAllAgreedTerms("1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("요청한 버전의 약관이 존재하지 않습니다");
     }

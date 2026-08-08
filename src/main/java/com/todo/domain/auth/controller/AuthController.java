@@ -83,8 +83,8 @@ public class AuthController implements AuthControllerDocs {
             @Valid @RequestBody ReauthRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        return ResponseEntity.ok(ApiResponse.success(reauthService.reauthenticate(loginId, request), "재인증이 완료되었습니다"));
+        String userId = authentication.getName();
+        return ResponseEntity.ok(ApiResponse.success(reauthService.reauthenticate(userId, request), "재인증이 완료되었습니다"));
     }
 
     @PostMapping("/logout")

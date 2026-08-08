@@ -34,8 +34,8 @@ public class WorkItemCheckInService {
     private final UserRepository userRepository;
 
     @Transactional
-    public CheckInResponse checkIn(String loginId, Long workItemId, CheckInRequest request) {
-        User user = findAuthenticatedUser(loginId);
+    public CheckInResponse checkIn(String userId, Long workItemId, CheckInRequest request) {
+        User user = findAuthenticatedUser(userId);
         TodoWorkItem workItem = findWorkItemWithTeam(workItemId);
         requireTeamMember(workItem, user);
 
@@ -62,8 +62,8 @@ public class WorkItemCheckInService {
         }
     }
 
-    public List<CheckInResponse> getCheckIns(String loginId, Long workItemId) {
-        User user = findAuthenticatedUser(loginId);
+    public List<CheckInResponse> getCheckIns(String userId, Long workItemId) {
+        User user = findAuthenticatedUser(userId);
         TodoWorkItem workItem = findWorkItemWithTeam(workItemId);
         requireTeamMember(workItem, user);
 
@@ -72,8 +72,8 @@ public class WorkItemCheckInService {
                 .toList();
     }
 
-    private User findAuthenticatedUser(String loginId) {
-        return userRepository.findByLoginId(loginId)
+    private User findAuthenticatedUser(String userId) {
+        return userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
     }
 

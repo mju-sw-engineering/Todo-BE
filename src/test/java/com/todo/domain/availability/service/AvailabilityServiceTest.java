@@ -61,7 +61,7 @@ class AvailabilityServiceTest {
 
     @BeforeEach
     void setUp() {
-        user = User.create("user1", "pw", "닉네임", null);
+        user = User.create("1", "pw", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
         team = Team.create("팀A", null, "INVITE01");
@@ -79,7 +79,7 @@ class AvailabilityServiceTest {
 
     @Test
     void 투표_목록_조회_성공() {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
         given(teamMemberRepository.countByTeamId(10L)).willReturn(3L);
         given(pollRepository.findByTeamIdWithDates(10L)).willReturn(List.of(poll));
@@ -88,7 +88,7 @@ class AvailabilityServiceTest {
         given(slotRepository.countRespondedUsersByPollIds(List.of(100L))).willReturn(respondedCounts);
         given(slotRepository.findPollIdsRespondedByUser(List.of(100L), 1L)).willReturn(List.of(100L));
 
-        List<AvailabilityPollListResponse> result = availabilityService.getPolls(10L, "user1");
+        List<AvailabilityPollListResponse> result = availabilityService.getPolls(10L, "1");
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).title()).isEqualTo("일정 조율");
@@ -98,10 +98,10 @@ class AvailabilityServiceTest {
 
     @Test
     void 투표_목록_조회_팀원이_아니면_예외() {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> availabilityService.getPolls(10L, "user1"))
+        assertThatThrownBy(() -> availabilityService.getPolls(10L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("팀원");
     }
@@ -115,11 +115,11 @@ class AvailabilityServiceTest {
                 List.of(LocalDate.of(2026, 8, 4), LocalDate.of(2026, 8, 5)),
                 9, 18
         );
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
         given(teamRepository.getReferenceById(10L)).willReturn(team);
 
-        availabilityService.createPoll(10L, "user1", request);
+        availabilityService.createPoll(10L, "1", request);
 
         then(pollRepository).should().save(any(AvailabilityPoll.class));
     }
@@ -132,7 +132,7 @@ class AvailabilityServiceTest {
                 18, 9
         );
 
-        assertThatThrownBy(() -> availabilityService.createPoll(10L, "user1", request))
+        assertThatThrownBy(() -> availabilityService.createPoll(10L, "1", request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("시작 시간");
     }
@@ -144,11 +144,11 @@ class AvailabilityServiceTest {
                 List.of(LocalDate.of(2026, 8, 4), LocalDate.of(2026, 8, 4)),
                 9, 18
         );
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
         given(teamRepository.getReferenceById(10L)).willReturn(team);
 
-        availabilityService.createPoll(10L, "user1", request);
+        availabilityService.createPoll(10L, "1", request);
 
         then(pollRepository).should().save(any(AvailabilityPoll.class));
         // 중복 제거 후 1개만 저장됨을 서비스 로직에서 보장
@@ -161,11 +161,11 @@ class AvailabilityServiceTest {
         SubmitAvailabilityRequest request = new SubmitAvailabilityRequest(
                 List.of(new SlotItem(LocalDate.of(2026, 8, 4), 9))
         );
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(pollRepository.findByIdWithDates(100L)).willReturn(Optional.of(poll));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
 
-        availabilityService.submitResponse(100L, "user1", request);
+        availabilityService.submitResponse(100L, "1", request);
 
         then(slotRepository).should().deleteByPollIdAndUserId(100L, 1L);
         then(slotRepository).should().saveAll(any());
@@ -174,11 +174,11 @@ class AvailabilityServiceTest {
     @Test
     void 가능시간_제출_빈_배열이면_기존_응답_삭제() {
         SubmitAvailabilityRequest request = new SubmitAvailabilityRequest(List.of());
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(pollRepository.findByIdWithDates(100L)).willReturn(Optional.of(poll));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
 
-        availabilityService.submitResponse(100L, "user1", request);
+        availabilityService.submitResponse(100L, "1", request);
 
         then(slotRepository).should().deleteByPollIdAndUserId(100L, 1L);
         then(slotRepository).should().saveAll(List.of());
@@ -189,11 +189,11 @@ class AvailabilityServiceTest {
         SubmitAvailabilityRequest request = new SubmitAvailabilityRequest(
                 List.of(new SlotItem(LocalDate.of(2026, 9, 1), 10))
         );
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(pollRepository.findByIdWithDates(100L)).willReturn(Optional.of(poll));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
 
-        assertThatThrownBy(() -> availabilityService.submitResponse(100L, "user1", request))
+        assertThatThrownBy(() -> availabilityService.submitResponse(100L, "1", request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("날짜");
     }
@@ -203,11 +203,11 @@ class AvailabilityServiceTest {
         SubmitAvailabilityRequest request = new SubmitAvailabilityRequest(
                 List.of(new SlotItem(LocalDate.of(2026, 8, 4), 20))
         );
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(pollRepository.findByIdWithDates(100L)).willReturn(Optional.of(poll));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
 
-        assertThatThrownBy(() -> availabilityService.submitResponse(100L, "user1", request))
+        assertThatThrownBy(() -> availabilityService.submitResponse(100L, "1", request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("시간");
     }
@@ -215,10 +215,10 @@ class AvailabilityServiceTest {
     @Test
     void 가능시간_제출_투표_없으면_예외() {
         SubmitAvailabilityRequest request = new SubmitAvailabilityRequest(List.of());
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(pollRepository.findByIdWithDates(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> availabilityService.submitResponse(999L, "user1", request))
+        assertThatThrownBy(() -> availabilityService.submitResponse(999L, "1", request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("투표");
     }
@@ -227,13 +227,13 @@ class AvailabilityServiceTest {
 
     @Test
     void 요약_조회_성공() {
-        User user2 = User.create("user2", "pw", "닉네임2", null);
+        User user2 = User.create("2", "pw", "닉네임2", null);
         ReflectionTestUtils.setField(user2, "id", 2L);
 
         AvailabilitySlot mySlot = AvailabilitySlot.create(poll, user, LocalDate.of(2026, 8, 4), 9);
         AvailabilitySlot otherSlot = AvailabilitySlot.create(poll, user2, LocalDate.of(2026, 8, 4), 9);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(pollRepository.findByIdWithDates(100L)).willReturn(Optional.of(poll));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
         given(teamMemberRepository.countByTeamId(10L)).willReturn(2L);
@@ -241,7 +241,7 @@ class AvailabilityServiceTest {
         given(slotRepository.findByPollIdAndUserId(100L, 1L)).willReturn(List.of(mySlot));
         given(slotRepository.findByPollIdWithUser(100L)).willReturn(List.of(mySlot, otherSlot));
 
-        AvailabilitySummaryResponse result = availabilityService.getSummary(100L, "user1");
+        AvailabilitySummaryResponse result = availabilityService.getSummary(100L, "1");
 
         assertThat(result.pollId()).isEqualTo(100L);
         assertThat(result.allResponded()).isTrue();
@@ -254,7 +254,7 @@ class AvailabilityServiceTest {
 
     @Test
     void 요약_조회_응답_없으면_bestSlot_null() {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(pollRepository.findByIdWithDates(100L)).willReturn(Optional.of(poll));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
         given(teamMemberRepository.countByTeamId(10L)).willReturn(2L);
@@ -262,7 +262,7 @@ class AvailabilityServiceTest {
         given(slotRepository.findByPollIdAndUserId(100L, 1L)).willReturn(List.of());
         given(slotRepository.findByPollIdWithUser(100L)).willReturn(List.of());
 
-        AvailabilitySummaryResponse result = availabilityService.getSummary(100L, "user1");
+        AvailabilitySummaryResponse result = availabilityService.getSummary(100L, "1");
 
         assertThat(result.heatmap()).isEmpty();
         assertThat(result.bestSlot()).isNull();
@@ -271,11 +271,11 @@ class AvailabilityServiceTest {
 
     @Test
     void 요약_조회_팀원_아니면_예외() {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(pollRepository.findByIdWithDates(100L)).willReturn(Optional.of(poll));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> availabilityService.getSummary(100L, "user1"))
+        assertThatThrownBy(() -> availabilityService.getSummary(100L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("팀원");
     }
