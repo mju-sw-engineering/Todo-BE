@@ -8,7 +8,9 @@ import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamAchievementResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
+import com.todo.domain.team.dto.response.TeamHiveResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
+import com.todo.domain.team.service.TeamHiveService;
 import com.todo.domain.team.service.TeamService;
 import com.todo.global.response.ApiResponse;
 import org.junit.jupiter.api.Test;
@@ -31,9 +33,23 @@ class TeamControllerTest {
     @Mock
     private TeamService teamService;
 
+    @Mock
+    private TeamHiveService teamHiveService;
+
+    @Test
+    void 팀_벌집_응답을_반환한다() {
+        TeamController controller = new TeamController(teamService, teamHiveService);
+        TeamHiveResponse serviceResponse = TeamHiveResponse.of(3, 278, 100, 300);
+        given(teamHiveService.getTeamHive(1L, "user1")).willReturn(serviceResponse);
+
+        ResponseEntity<ApiResponse<TeamHiveResponse>> response = controller.getTeamHive(1L, auth());
+
+        assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
+    }
+
     @Test
     void 팀_달성_통계_응답을_반환한다() {
-        TeamController controller = new TeamController(teamService);
+        TeamController controller = new TeamController(teamService, teamHiveService);
         TeamAchievementResponse serviceResponse = new TeamAchievementResponse(1L, 5);
         given(teamService.getTeamAchievement(1L, "user1")).willReturn(serviceResponse);
 
@@ -45,7 +61,7 @@ class TeamControllerTest {
 
     @Test
     void 팀_상세_응답을_반환한다() {
-        TeamController controller = new TeamController(teamService);
+        TeamController controller = new TeamController(teamService, teamHiveService);
         TeamDetailResponse serviceResponse = new TeamDetailResponse(
                 1L, "팀", null, null, "ABCDEFGH", 0, 0, List.of()
         );
@@ -58,7 +74,7 @@ class TeamControllerTest {
 
     @Test
     void 내_팀_목록_응답을_반환한다() {
-        TeamController controller = new TeamController(teamService);
+        TeamController controller = new TeamController(teamService, teamHiveService);
         TeamListResponse serviceResponse = new TeamListResponse(List.of());
         given(teamService.getMyTeams("user1")).willReturn(serviceResponse);
 
@@ -69,7 +85,7 @@ class TeamControllerTest {
 
     @Test
     void 팀_참여_응답을_반환한다() {
-        TeamController controller = new TeamController(teamService);
+        TeamController controller = new TeamController(teamService, teamHiveService);
         JoinTeamRequest request = new JoinTeamRequest("ABCDEFGH");
         JoinTeamResponse serviceResponse = new JoinTeamResponse(1L);
         given(teamService.joinTeam("user1", request)).willReturn(serviceResponse);
@@ -82,7 +98,7 @@ class TeamControllerTest {
 
     @Test
     void 팀_초대_응답을_반환한다() {
-        TeamController controller = new TeamController(teamService);
+        TeamController controller = new TeamController(teamService, teamHiveService);
         InviteTeamRequest request = new InviteTeamRequest(List.of("member@example.com"));
         InviteTeamResponse serviceResponse = new InviteTeamResponse(
                 1L, "팀", "ABCDEFGH", "http://localhost:3000/teams/join?code=ABCDEFGH", 1, request.emails()
@@ -97,7 +113,7 @@ class TeamControllerTest {
 
     @Test
     void 팀_생성_응답을_반환한다() {
-        TeamController controller = new TeamController(teamService);
+        TeamController controller = new TeamController(teamService, teamHiveService);
         CreateTeamRequest request = new CreateTeamRequest("팀", null, null);
         CreateTeamResponse serviceResponse = new CreateTeamResponse(
                 1L, "팀", null, null, "ABCDEFGH", 1L, null
@@ -113,7 +129,7 @@ class TeamControllerTest {
 
     @Test
     void 팀원_강퇴_응답을_반환한다() {
-        TeamController controller = new TeamController(teamService);
+        TeamController controller = new TeamController(teamService, teamHiveService);
 
         ResponseEntity<ApiResponse<Void>> response = controller.removeMember(1L, 2L, auth());
 
@@ -123,7 +139,7 @@ class TeamControllerTest {
 
     @Test
     void 팀_나가기_응답을_반환한다() {
-        TeamController controller = new TeamController(teamService);
+        TeamController controller = new TeamController(teamService, teamHiveService);
 
         ResponseEntity<ApiResponse<Void>> response = controller.leaveTeam(1L, auth());
 
