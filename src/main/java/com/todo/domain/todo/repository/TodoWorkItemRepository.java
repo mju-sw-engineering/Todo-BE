@@ -239,4 +239,23 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
               AND wi.status = com.todo.domain.todo.entity.WorkItemStatus.IN_PROGRESS
             """)
     List<TodoWorkItem> findInProgressByAssigneeId(@Param("assigneeId") Long assigneeId);
+
+    /**
+     * 기간 내 사용자의 일별 완료(SUCCESS) 작업 개수. 피드 벌집 집계용.
+     * submittedAt은 Asia/Seoul 기준으로 기록되므로 DATE()로 그대로 자른다.
+     */
+    @Query(value = """
+            SELECT DATE(wi.submitted_at) AS day, COUNT(*) AS count
+            FROM todo_work_items wi
+            WHERE wi.assignee_id = :userId
+              AND wi.status = 'SUCCESS'
+              AND wi.submitted_at >= :startInclusive
+              AND wi.submitted_at < :endExclusive
+            GROUP BY DATE(wi.submitted_at)
+            """, nativeQuery = true)
+    List<DailySuccessCount> countDailySuccessByAssignee(
+            @Param("userId") Long userId,
+            @Param("startInclusive") LocalDateTime startInclusive,
+            @Param("endExclusive") LocalDateTime endExclusive
+    );
 }
