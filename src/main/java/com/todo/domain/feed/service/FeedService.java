@@ -11,7 +11,6 @@ import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.todo.repository.CheckInActivityRecord;
-import com.todo.domain.todo.repository.DailySuccessCount;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
 import com.todo.domain.todo.repository.UserActivityRecord;
@@ -27,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
@@ -37,7 +35,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * 피드 화면 집계. "그날 기록을 남겼다"는 투두 생성, 체크인, 제출 세 가지를 뜻하며
@@ -107,13 +104,7 @@ public class FeedService {
         // 연속 일수는 조회 기간과 무관하게 오늘 기준이므로 항상 최근 1년을 함께 본다.
         LocalDate from = min(gridStart, today.minusDays(STREAK_LOOKBACK_DAYS));
 
-        Map<LocalDate, Set<Long>> todosByDate = new HashMap<>();
-        todoRepository.findCreationActivityByCreatorId(user.getId(), from.atStartOfDay())
-                .forEach(r -> add(todosByDate, r.getOccurredAt().toLocalDate(), r.getTodoId()));
-        todoWorkItemRepository.findSubmissionActivityByAssigneeId(user.getId(), from.atStartOfDay())
-                .forEach(r -> add(todosByDate, r.getOccurredAt().toLocalDate(), r.getTodoId()));
-        workItemCheckInRepository.findActivityByUserId(user.getId(), from)
-                .forEach(r -> add(todosByDate, r.getOccurredOn(), r.getTodoId()));
+        Map<LocalDate, Set<Long>> todosByDate = collectDailyActivity(user.getId(), from);
 
         List<MyStreakDayResponse> days = new ArrayList<>();
         for (LocalDate date = gridStart; !date.isAfter(gridEnd); date = date.plusDays(1)) {
@@ -125,7 +116,8 @@ public class FeedService {
     }
 
     /**
-     * 월간 벌집: 하루 = 1칸, 그날 완료(SUCCESS)한 작업 수에 따라 꿀 진하기(0~3).
+     * 월간 벌집: 하루 = 1칸. 그날 투두 생성·체크인·제출 중 하나라도 있으면 꿀이 차고,
+     * 손댄 서로 다른 투두 수에 따라 진하기(0~3)가 정해진다. 잔디(my-streak)와 같은 활동 기준이다.
      * 이번 달이면 오늘 이후 날은 null, 미래 달은 조회할 수 없다.
      */
     public MonthlyHiveResponse getMonthlyHive(String loginId, int year, int month) {
@@ -136,11 +128,9 @@ public class FeedService {
             throw new BusinessException("미래 달의 벌집은 조회할 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
 
-        Map<LocalDate, Long> countByDay = countSuccessByDay(
-                user.getId(),
-                target.atDay(1).atStartOfDay(),
-                target.atEndOfMonth().plusDays(1).atStartOfDay()
-        );
+        // 스트릭은 오늘 기준 최근 1년을 보므로 조회 시작점을 함께 당긴다
+        LocalDate from = min(target.atDay(1), today.minusDays(STREAK_LOOKBACK_DAYS));
+        Map<LocalDate, Set<Long>> todosByDate = collectDailyActivity(user.getId(), from);
 
         List<Integer> dayLevels = new ArrayList<>();
         for (int day = 1; day <= target.lengthOfMonth(); day++) {
@@ -149,21 +139,17 @@ public class FeedService {
                 dayLevels.add(null);
                 continue;
             }
-            dayLevels.add((int) Math.min(countByDay.getOrDefault(date, 0L), MAX_HIVE_LEVEL));
+            int count = todosByDate.getOrDefault(date, Set.of()).size();
+            dayLevels.add(Math.min(count, MAX_HIVE_LEVEL));
         }
 
-        Set<LocalDate> successDates = countSuccessByDay(
-                user.getId(),
-                today.minusDays(STREAK_LOOKBACK_DAYS).atStartOfDay(),
-                today.plusDays(1).atStartOfDay()
-        ).keySet();
-
         return MonthlyHiveResponse.of(
-                target.getYear(), target.getMonthValue(), dayLevels, countStreak(successDates, today));
+                target.getYear(), target.getMonthValue(), dayLevels, countStreak(todosByDate.keySet(), today));
     }
 
     /**
      * 벌집 보관함: 이번 달을 제외한 최근 N개월의 (꿀 채운 날 수 / 전체 일수).
+     * 꿀 채움 판정은 월간 벌집과 같은 활동 기준이다.
      */
     public List<HiveArchiveMonthResponse> getHiveArchive(String loginId, int months) {
         if (months < 1 || months > MAX_ARCHIVE_MONTHS) {
@@ -173,16 +159,12 @@ public class FeedService {
         YearMonth current = YearMonth.from(LocalDate.now(clock));
         YearMonth from = current.minusMonths(months);
 
-        Map<LocalDate, Long> countByDay = countSuccessByDay(
-                user.getId(),
-                from.atDay(1).atStartOfDay(),
-                current.atDay(1).atStartOfDay()
-        );
+        Map<LocalDate, Set<Long>> todosByDate = collectDailyActivity(user.getId(), from.atDay(1));
 
         List<HiveArchiveMonthResponse> archive = new ArrayList<>();
         for (YearMonth ym = from; ym.isBefore(current); ym = ym.plusMonths(1)) {
             final YearMonth targetMonth = ym;
-            int filledDays = (int) countByDay.keySet().stream()
+            int filledDays = (int) todosByDate.keySet().stream()
                     .filter(day -> YearMonth.from(day).equals(targetMonth))
                     .count();
             archive.add(HiveArchiveMonthResponse.of(ym.getYear(), ym.getMonthValue(), filledDays, ym.lengthOfMonth()));
@@ -190,10 +172,19 @@ public class FeedService {
         return archive;
     }
 
-    private Map<LocalDate, Long> countSuccessByDay(Long userId, LocalDateTime startInclusive, LocalDateTime endExclusive) {
-        return todoWorkItemRepository.countDailySuccessByAssignee(userId, startInclusive, endExclusive)
-                .stream()
-                .collect(Collectors.toMap(DailySuccessCount::getDay, DailySuccessCount::getCount, Long::sum));
+    /**
+     * 사용자의 일자별 활동 투두 집합 — 투두 생성, 제출, 체크인을 "그날 손댄 투두"로 합산한다.
+     * 잔디·벌집·스트릭이 모두 이 하나의 정의를 공유한다.
+     */
+    private Map<LocalDate, Set<Long>> collectDailyActivity(Long userId, LocalDate from) {
+        Map<LocalDate, Set<Long>> todosByDate = new HashMap<>();
+        todoRepository.findCreationActivityByCreatorId(userId, from.atStartOfDay())
+                .forEach(r -> add(todosByDate, r.getOccurredAt().toLocalDate(), r.getTodoId()));
+        todoWorkItemRepository.findSubmissionActivityByAssigneeId(userId, from.atStartOfDay())
+                .forEach(r -> add(todosByDate, r.getOccurredAt().toLocalDate(), r.getTodoId()));
+        workItemCheckInRepository.findActivityByUserId(userId, from)
+                .forEach(r -> add(todosByDate, r.getOccurredOn(), r.getTodoId()));
+        return todosByDate;
     }
 
     private YearMonth toYearMonth(int year, int month) {
