@@ -51,7 +51,7 @@ public class TeamController implements TeamControllerDocs {
     ) {
         String loginId = authentication.getName();
         TeamAchievementResponse response = teamService.getTeamAchievement(teamId, loginId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "팀 달성률을 조회했습니다"));
     }
 
     @GetMapping("/{teamId}")
@@ -61,14 +61,14 @@ public class TeamController implements TeamControllerDocs {
     ) {
         String loginId = authentication.getName();
         TeamDetailResponse response = teamService.getTeamDetail(teamId, loginId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "팀 정보를 조회했습니다"));
     }
 
     @GetMapping
     public ResponseEntity<ApiResponse<TeamListResponse>> getMyTeams(Authentication authentication) {
         String loginId = authentication.getName();
         TeamListResponse response = teamService.getMyTeams(loginId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "팀 목록을 조회했습니다"));
     }
 
     @PostMapping("/join")

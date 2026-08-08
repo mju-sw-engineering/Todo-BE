@@ -27,12 +27,12 @@ public class TermsController implements TermsControllerDocs {
 
     @GetMapping
     public ResponseEntity<ApiResponse<AllTermsResponse>> getAllTerms() {
-        return ResponseEntity.ok(ApiResponse.success(termsService.getAllTerms()));
+        return ResponseEntity.ok(ApiResponse.success(termsService.getAllTerms(), "약관 목록을 조회했습니다"));
     }
 
     @GetMapping("/agreed")
     public ResponseEntity<ApiResponse<AllTermsResponse>> getAllAgreedTerms(Authentication authentication) {
-        return ResponseEntity.ok(ApiResponse.success(termsService.getAllAgreedTerms(authentication.getName())));
+        return ResponseEntity.ok(ApiResponse.success(termsService.getAllAgreedTerms(authentication.getName()), "동의한 약관 목록을 조회했습니다"));
     }
 
     @PostMapping("/consents")
@@ -41,11 +41,11 @@ public class TermsController implements TermsControllerDocs {
             Authentication authentication
     ) {
         termsService.saveConsent(authentication.getName(), request);
-        return ResponseEntity.ok(ApiResponse.success(null));
+        return ResponseEntity.ok(ApiResponse.success(null, "약관 동의가 저장되었습니다"));
     }
 
     @GetMapping("/version-check")
     public ResponseEntity<ApiResponse<Map<ConsentType, VersionCheckItem>>> getVersionCheck(Authentication authentication) {
-        return ResponseEntity.ok(ApiResponse.success(termsService.getVersionCheck(authentication.getName())));
+        return ResponseEntity.ok(ApiResponse.success(termsService.getVersionCheck(authentication.getName()), "약관 버전을 확인했습니다"));
     }
 }

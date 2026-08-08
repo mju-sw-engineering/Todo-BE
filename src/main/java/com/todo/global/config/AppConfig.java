@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.client.RestClient;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -24,6 +25,11 @@ public class AppConfig {
     @Bean
     public Clock clock() {
         return Clock.systemDefaultZone();
+    }
+
+    @Bean("appleRestClient")
+    public RestClient appleRestClient() {
+        return RestClient.create();
     }
 
     @Bean

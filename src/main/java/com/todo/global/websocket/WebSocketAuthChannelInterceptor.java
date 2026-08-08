@@ -45,10 +45,10 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
                 throw new MessageDeliveryException("유효하지 않은 토큰입니다.");
             }
 
-            String loginId = jwtUtil.extractLoginId(token);
+            String userId = jwtUtil.extractUserId(token).toString();
             UserDetails userDetails;
             try {
-                userDetails = authService.loadUserByUsername(loginId);
+                userDetails = authService.loadUserByUsername(userId);
             } catch (UsernameNotFoundException e) {
                 throw new MessageDeliveryException("유효하지 않은 토큰입니다.");
             }

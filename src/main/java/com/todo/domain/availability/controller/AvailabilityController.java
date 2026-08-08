@@ -31,7 +31,7 @@ public class AvailabilityController implements AvailabilityControllerDocs {
             @PathVariable Long teamId,
             Authentication authentication
     ) {
-        return ResponseEntity.ok(ApiResponse.success(availabilityService.getPolls(teamId, authentication.getName())));
+        return ResponseEntity.ok(ApiResponse.success(availabilityService.getPolls(teamId, authentication.getName()), "가용 시간 투표 목록을 조회했습니다"));
     }
 
     @PostMapping("/api/teams/{teamId}/availability-polls")
@@ -41,7 +41,7 @@ public class AvailabilityController implements AvailabilityControllerDocs {
             Authentication authentication
     ) {
         availabilityService.createPoll(teamId, authentication.getName(), request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null, "가용 시간 투표가 생성되었습니다"));
     }
 
     @PutMapping("/api/availability-polls/{pollId}/responses/me")
@@ -51,7 +51,7 @@ public class AvailabilityController implements AvailabilityControllerDocs {
             Authentication authentication
     ) {
         availabilityService.submitResponse(pollId, authentication.getName(), request);
-        return ResponseEntity.ok(ApiResponse.success(null));
+        return ResponseEntity.ok(ApiResponse.success(null, "가용 시간이 제출되었습니다"));
     }
 
     @GetMapping("/api/availability-polls/{pollId}/summary")
@@ -59,6 +59,6 @@ public class AvailabilityController implements AvailabilityControllerDocs {
             @PathVariable Long pollId,
             Authentication authentication
     ) {
-        return ResponseEntity.ok(ApiResponse.success(availabilityService.getSummary(pollId, authentication.getName())));
+        return ResponseEntity.ok(ApiResponse.success(availabilityService.getSummary(pollId, authentication.getName()), "가용 시간 집계를 조회했습니다"));
     }
 }

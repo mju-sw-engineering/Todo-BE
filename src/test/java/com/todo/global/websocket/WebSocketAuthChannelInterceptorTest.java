@@ -43,9 +43,9 @@ class WebSocketAuthChannelInterceptorTest {
         WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
         Message<byte[]> message = stompMessage(StompCommand.CONNECT, "Bearer valid-token");
         given(jwtUtil.isValid("valid-token")).willReturn(true);
-        given(jwtUtil.extractLoginId("valid-token")).willReturn("user1");
+        given(jwtUtil.extractUserId("valid-token")).willReturn(1L);
         UserDetails userDetails = new User("user1", "password", List.of());
-        given(authService.loadUserByUsername("user1")).willReturn(userDetails);
+        given(authService.loadUserByUsername("1")).willReturn(userDetails);
 
         Message<?> result = interceptor.preSend(message, channel);
 
@@ -81,8 +81,8 @@ class WebSocketAuthChannelInterceptorTest {
         WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
         Message<byte[]> message = stompMessage(StompCommand.CONNECT, "Bearer deleted-user-token");
         given(jwtUtil.isValid("deleted-user-token")).willReturn(true);
-        given(jwtUtil.extractLoginId("deleted-user-token")).willReturn("deleted-user");
-        given(authService.loadUserByUsername("deleted-user"))
+        given(jwtUtil.extractUserId("deleted-user-token")).willReturn(999L);
+        given(authService.loadUserByUsername("999"))
                 .willThrow(new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
 
         assertThatThrownBy(() -> interceptor.preSend(message, channel))

@@ -1,5 +1,6 @@
 package com.todo.domain.user.entity;
 
+import com.todo.domain.auth.entity.AuthProvider;
 import com.todo.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -16,10 +17,9 @@ public class User extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
+    @Column(unique = true)
     private String loginId;
 
-    @Column(nullable = false)
     private String password;
 
     @Column(nullable = false)
@@ -30,12 +30,31 @@ public class User extends BaseTimeEntity {
     @Column(unique = true)
     private String email;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AuthProvider provider;
+
+    @Column(unique = true)
+    private String socialId;
+
+    @Column(columnDefinition = "TEXT")
+    private String appleRefreshToken;
+
     public static User create(String loginId, String password, String nickname, String profileImageUrl) {
         User user = new User();
         user.loginId = loginId;
         user.password = password;
         user.nickname = nickname;
         user.profileImageUrl = profileImageUrl;
+        user.provider = AuthProvider.LOCAL;
+        return user;
+    }
+
+    public static User createAppleUser(String socialId, String nickname) {
+        User user = new User();
+        user.socialId = socialId;
+        user.nickname = nickname;
+        user.provider = AuthProvider.APPLE;
         return user;
     }
 
@@ -45,5 +64,9 @@ public class User extends BaseTimeEntity {
 
     public void updateNickname(String nickname) {
         this.nickname = nickname;
+    }
+
+    public void saveAppleRefreshToken(String appleRefreshToken) {
+        this.appleRefreshToken = appleRefreshToken;
     }
 }

@@ -44,6 +44,6 @@ public class CheckInController implements CheckInControllerDocs {
     ) {
         String loginId = authentication.getName();
         List<CheckInResponse> response = workItemCheckInService.getCheckIns(loginId, workItemId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "체크인 목록을 조회했습니다"));
     }
 }

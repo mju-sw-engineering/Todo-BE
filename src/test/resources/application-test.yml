@@ -21,6 +21,16 @@ spring:
 jwt:
   secret: test-secret-key-for-jwt-signing-that-is-long-enough
   expiration: 86400000
+  refresh-expiration: 1209600000
+
+apple:
+  team-id: TEST_TEAM_ID
+  web-client-id: com.test.app.web
+  ios-client-id: com.test.app
+  key-id: TEST_KEY_ID
+  private-key: MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgtest-private-key-placeholder-for-testing
+  public-key-url: https://appleid.apple.com/auth/keys
+  token-url: https://appleid.apple.com/auth/token
 
 minio:
   endpoint: http://localhost:9000

@@ -1,10 +1,15 @@
 package com.todo.domain.auth.controller;
 
 import com.todo.domain.auth.dto.request.EmailSendRequest;
+import com.todo.domain.auth.dto.request.EmailVerifyRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
+import com.todo.domain.auth.dto.request.ReauthRequest;
+import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.dto.request.SignupRequest;
+import com.todo.domain.auth.dto.response.EmailVerifyResponse;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.LoginResult;
+import com.todo.domain.auth.dto.response.ReauthResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
 import com.todo.domain.auth.service.AuthService;
 import com.todo.domain.auth.service.ReauthService;
@@ -20,6 +25,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,6 +51,34 @@ class AuthControllerTest {
     void setUp() {
         controller = new AuthController(authService, emailVerificationService, reauthService);
         ReflectionTestUtils.setField(controller, "cookieSecure", false);
+    }
+
+    @Test
+    void 이메일_인증_코드_검증_성공시_토큰을_반환한다() {
+        EmailVerifyRequest request = new EmailVerifyRequest("user@example.com", "123456");
+        given(emailVerificationService.verifyCode("user@example.com", "123456")).willReturn("verify-token");
+
+        ResponseEntity<ApiResponse<EmailVerifyResponse>> response = controller.verifyEmailCode(request);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().getMessage()).isEqualTo("이메일 인증이 완료되었습니다");
+        assertThat(response.getBody().getData().emailVerificationToken()).isEqualTo("verify-token");
+    }
+
+    @Test
+    void 재인증_성공시_재인증_토큰을_반환한다() {
+        ReauthRequest request = new ReauthRequest("password123!", ReauthPurpose.WITHDRAWAL);
+        ReauthResponse reauthResponse = new ReauthResponse("reauth-token",
+                OffsetDateTime.of(2026, 8, 8, 12, 5, 0, 0, ZoneOffset.ofHours(9)));
+        given(reauthService.reauthenticate("user1", request)).willReturn(reauthResponse);
+        org.springframework.security.authentication.TestingAuthenticationToken auth =
+                new org.springframework.security.authentication.TestingAuthenticationToken("user1", null);
+
+        ResponseEntity<ApiResponse<ReauthResponse>> response = controller.reauthenticate(request, auth);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().getMessage()).isEqualTo("재인증이 완료되었습니다");
+        assertThat(response.getBody().getData().reauthToken()).isEqualTo("reauth-token");
     }
 
     @Test
