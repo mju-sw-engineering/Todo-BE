@@ -1,5 +1,7 @@
 package com.todo.domain.feed.service;
 
+import com.todo.domain.feed.dto.response.HiveArchiveMonthResponse;
+import com.todo.domain.feed.dto.response.MonthlyHiveResponse;
 import com.todo.domain.feed.dto.response.MyStreakDayResponse;
 import com.todo.domain.feed.dto.response.MyStreakResponse;
 import com.todo.domain.feed.dto.response.TeamRhythmMemberResponse;
@@ -9,6 +11,7 @@ import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.todo.repository.CheckInActivityRecord;
+import com.todo.domain.todo.repository.DailySuccessCount;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
 import com.todo.domain.todo.repository.UserActivityRecord;
@@ -21,8 +24,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
@@ -31,6 +37,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 피드 화면 집계. "그날 기록을 남겼다"는 투두 생성, 체크인, 제출 세 가지를 뜻하며
@@ -48,12 +55,16 @@ public class FeedService {
     private static final int STREAK_LOOKBACK_DAYS = 365;
     /** 잔디 조회 기간 상한 (53주). 무제한 범위 조회를 막는다. */
     private static final int MAX_STREAK_RANGE_DAYS = 53 * 7;
+    /** 월간 벌집의 꿀 진하기 상한 (그날 완료 3개 이상 = 3) */
+    private static final int MAX_HIVE_LEVEL = 3;
+    private static final int MAX_ARCHIVE_MONTHS = 12;
 
     private final TeamMemberRepository teamMemberRepository;
     private final TodoRepository todoRepository;
     private final TodoWorkItemRepository todoWorkItemRepository;
     private final WorkItemCheckInRepository workItemCheckInRepository;
     private final UserRepository userRepository;
+    private final Clock clock;
 
     public List<TeamRhythmResponse> getTeamRhythm(String loginId) {
         User user = findAuthenticatedUser(loginId);
@@ -111,6 +122,86 @@ public class FeedService {
         }
 
         return MyStreakResponse.from(days, countStreak(todosByDate.keySet(), today));
+    }
+
+    /**
+     * 월간 벌집: 하루 = 1칸, 그날 완료(SUCCESS)한 작업 수에 따라 꿀 진하기(0~3).
+     * 이번 달이면 오늘 이후 날은 null, 미래 달은 조회할 수 없다.
+     */
+    public MonthlyHiveResponse getMonthlyHive(String loginId, int year, int month) {
+        User user = findAuthenticatedUser(loginId);
+        YearMonth target = toYearMonth(year, month);
+        LocalDate today = LocalDate.now(clock);
+        if (target.isAfter(YearMonth.from(today))) {
+            throw new BusinessException("미래 달의 벌집은 조회할 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        Map<LocalDate, Long> countByDay = countSuccessByDay(
+                user.getId(),
+                target.atDay(1).atStartOfDay(),
+                target.atEndOfMonth().plusDays(1).atStartOfDay()
+        );
+
+        List<Integer> dayLevels = new ArrayList<>();
+        for (int day = 1; day <= target.lengthOfMonth(); day++) {
+            LocalDate date = target.atDay(day);
+            if (date.isAfter(today)) {
+                dayLevels.add(null);
+                continue;
+            }
+            dayLevels.add((int) Math.min(countByDay.getOrDefault(date, 0L), MAX_HIVE_LEVEL));
+        }
+
+        Set<LocalDate> successDates = countSuccessByDay(
+                user.getId(),
+                today.minusDays(STREAK_LOOKBACK_DAYS).atStartOfDay(),
+                today.plusDays(1).atStartOfDay()
+        ).keySet();
+
+        return MonthlyHiveResponse.of(
+                target.getYear(), target.getMonthValue(), dayLevels, countStreak(successDates, today));
+    }
+
+    /**
+     * 벌집 보관함: 이번 달을 제외한 최근 N개월의 (꿀 채운 날 수 / 전체 일수).
+     */
+    public List<HiveArchiveMonthResponse> getHiveArchive(String loginId, int months) {
+        if (months < 1 || months > MAX_ARCHIVE_MONTHS) {
+            throw new BusinessException("months는 1~" + MAX_ARCHIVE_MONTHS + " 사이여야 합니다.", HttpStatus.BAD_REQUEST);
+        }
+        User user = findAuthenticatedUser(loginId);
+        YearMonth current = YearMonth.from(LocalDate.now(clock));
+        YearMonth from = current.minusMonths(months);
+
+        Map<LocalDate, Long> countByDay = countSuccessByDay(
+                user.getId(),
+                from.atDay(1).atStartOfDay(),
+                current.atDay(1).atStartOfDay()
+        );
+
+        List<HiveArchiveMonthResponse> archive = new ArrayList<>();
+        for (YearMonth ym = from; ym.isBefore(current); ym = ym.plusMonths(1)) {
+            final YearMonth targetMonth = ym;
+            int filledDays = (int) countByDay.keySet().stream()
+                    .filter(day -> YearMonth.from(day).equals(targetMonth))
+                    .count();
+            archive.add(HiveArchiveMonthResponse.of(ym.getYear(), ym.getMonthValue(), filledDays, ym.lengthOfMonth()));
+        }
+        return archive;
+    }
+
+    private Map<LocalDate, Long> countSuccessByDay(Long userId, LocalDateTime startInclusive, LocalDateTime endExclusive) {
+        return todoWorkItemRepository.countDailySuccessByAssignee(userId, startInclusive, endExclusive)
+                .stream()
+                .collect(Collectors.toMap(DailySuccessCount::getDay, DailySuccessCount::getCount, Long::sum));
+    }
+
+    private YearMonth toYearMonth(int year, int month) {
+        try {
+            return YearMonth.of(year, month);
+        } catch (java.time.DateTimeException e) {
+            throw new BusinessException("올바르지 않은 연월입니다.", HttpStatus.BAD_REQUEST);
+        }
     }
 
     private TeamRhythmResponse buildTeamRhythm(Team team, LocalDate today, LocalDate from) {
