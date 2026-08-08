@@ -103,6 +103,23 @@ jobs:
       - name: Verify agent harness
         run: bash scripts/verify-agent-harness.sh
 
+  migration-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        if: github.event_name == 'pull_request'
+        run: git fetch origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
+      - name: Check migration versions
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+        run: bash scripts/check-migrations.sh
+
   docker-build:
     runs-on: ubuntu-latest
 

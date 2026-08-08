@@ -258,4 +258,27 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
             @Param("startInclusive") LocalDateTime startInclusive,
             @Param("endExclusive") LocalDateTime endExclusive
     );
+
+    @Query("""
+            SELECT wi.submittedAt AS occurredAt, wi.assignee.id AS userId, wi.todo.id AS todoId
+            FROM TodoWorkItem wi
+            WHERE wi.todo.team.id = :teamId
+              AND wi.assignee IS NOT NULL
+              AND wi.submittedAt >= :from
+            """)
+    List<UserActivityRecord> findSubmissionActivityByTeamId(
+            @Param("teamId") Long teamId,
+            @Param("from") LocalDateTime from
+    );
+
+    @Query("""
+            SELECT wi.submittedAt AS occurredAt, wi.assignee.id AS userId, wi.todo.id AS todoId
+            FROM TodoWorkItem wi
+            WHERE wi.assignee.id = :userId
+              AND wi.submittedAt >= :from
+            """)
+    List<UserActivityRecord> findSubmissionActivityByAssigneeId(
+            @Param("userId") Long userId,
+            @Param("from") LocalDateTime from
+    );
 }

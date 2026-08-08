@@ -2,6 +2,8 @@ package com.todo.domain.feed.controller;
 
 import com.todo.domain.feed.dto.response.HiveArchiveMonthResponse;
 import com.todo.domain.feed.dto.response.MonthlyHiveResponse;
+import com.todo.domain.feed.dto.response.MyStreakResponse;
+import com.todo.domain.feed.dto.response.TeamRhythmResponse;
 import com.todo.domain.feed.service.FeedService;
 import com.todo.global.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Clock;
 import java.time.LocalDate;
+
 import java.util.List;
 
 @RestController
@@ -46,5 +49,21 @@ public class FeedController implements FeedControllerDocs {
         List<HiveArchiveMonthResponse> response =
                 feedService.getHiveArchive(authentication.getName(), months);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @GetMapping("/team-rhythm")
+    public ResponseEntity<ApiResponse<List<TeamRhythmResponse>>> getTeamRhythm(Authentication authentication) {
+        String loginId = authentication.getName();
+        return ResponseEntity.ok(ApiResponse.success(feedService.getTeamRhythm(loginId)));
+    }
+
+    @GetMapping("/my-streak")
+    public ResponseEntity<ApiResponse<MyStreakResponse>> getMyStreak(
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        return ResponseEntity.ok(ApiResponse.success(feedService.getMyStreak(loginId, startDate, endDate)));
     }
 }

@@ -300,7 +300,25 @@ public class Task {
 
 ---
 
-#### 9. 도메인 책임 경계
+#### 9. Flyway 마이그레이션 파일 규칙
+
+새 마이그레이션은 **타임스탬프 버전**으로 작성한다. 순번(V19, V20, …)은 두 브랜치가
+같은 다음 번호를 고르면 충돌해 Flyway가 기동을 거부한다 (2026-08-07 V10 중복 운영 장애).
+
+```bash
+# 생성 헬퍼 — 규칙에 맞는 파일을 만들어준다
+bash scripts/new-migration.sh add_user_index
+# -> src/main/resources/db/migration/V20260807223000__add_user_index.sql
+```
+
+- 형식: `V<yyyyMMddHHmmss>__<설명>.sql` (KST 기준, CI가 형식·중복·역순을 검사한다)
+- 기존 순번 파일(V1~V19)은 리네임하지 않는다
+- 머지가 늦어져 base에 더 새로운 마이그레이션이 먼저 들어가면 CI 역순 검사에 걸린다.
+  이때는 타임스탬프를 현재 시각으로 갱신해 리네임한다
+
+---
+
+#### 10. 도메인 책임 경계
 
 - `AuthService`: 인증/인가만 담당 (로그인, 회원가입, 토큰 발급)
   - `UserDetailsService` 구현은 현재 허용

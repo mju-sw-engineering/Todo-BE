@@ -1,203 +1,340 @@
 package com.todo.domain.feed.service;
 
-import com.todo.domain.feed.dto.response.HiveArchiveMonthResponse;
-import com.todo.domain.feed.dto.response.MonthlyHiveResponse;
-import com.todo.domain.todo.repository.DailySuccessCount;
+import com.todo.domain.feed.dto.response.MyStreakDayResponse;
+import com.todo.domain.feed.dto.response.MyStreakResponse;
+import com.todo.domain.feed.dto.response.TeamRhythmResponse;
+import com.todo.domain.feed.dto.response.TeamWeekRhythmResponse;
+import com.todo.domain.team.entity.Team;
+import com.todo.domain.team.entity.TeamMember;
+import com.todo.domain.team.entity.TeamMemberRole;
+import com.todo.domain.team.repository.TeamMemberRepository;
+import com.todo.domain.todo.repository.CheckInActivityRecord;
+import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
+import com.todo.domain.todo.repository.UserActivityRecord;
+import com.todo.domain.todo.repository.WorkItemCheckInRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class FeedServiceTest {
 
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-    /** 테스트 기준 오늘: 2026-08-08 (8월은 31일) */
-    private static final LocalDate TODAY = LocalDate.of(2026, 8, 8);
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final Long TEAM_ID = 1L;
+
+    @InjectMocks
+    private FeedService feedService;
 
     @Mock
-    private UserRepository userRepository;
+    private TeamMemberRepository teamMemberRepository;
+
+    @Mock
+    private TodoRepository todoRepository;
 
     @Mock
     private TodoWorkItemRepository todoWorkItemRepository;
 
-    private FeedService feedService;
+    @Mock
+    private WorkItemCheckInRepository workItemCheckInRepository;
 
-    private User user;
+    @Mock
+    private UserRepository userRepository;
 
-    @BeforeEach
-    void setUp() {
-        Clock fixedClock = Clock.fixed(
-                TODAY.atTime(12, 0).atZone(SEOUL).toInstant(), SEOUL);
-        feedService = new FeedService(userRepository, todoWorkItemRepository, fixedClock);
+    private record Activity(LocalDateTime occurredAt, Long userId, Long todoId) implements UserActivityRecord {
+        public LocalDateTime getOccurredAt() {
+            return occurredAt;
+        }
 
-        user = User.create("tester", "encoded-password", "테스터", null);
-        ReflectionTestUtils.setField(user, "id", 1L);
-        // months 범위 검증처럼 사용자 조회 전에 끝나는 테스트도 있어 lenient로 둔다
-        lenient().when(userRepository.findByLoginId("tester")).thenReturn(Optional.of(user));
+        public Long getUserId() {
+            return userId;
+        }
+
+        public Long getTodoId() {
+            return todoId;
+        }
     }
 
-    private static DailySuccessCount dayCount(LocalDate day, long count) {
-        return new DailySuccessCount() {
-            @Override
-            public LocalDate getDay() {
-                return day;
+    private record CheckInActivity(LocalDate occurredOn, Long userId, Long todoId) implements CheckInActivityRecord {
+        public LocalDate getOccurredOn() {
+            return occurredOn;
+        }
+
+        public Long getUserId() {
+            return userId;
+        }
+
+        public Long getTodoId() {
+            return todoId;
+        }
+    }
+
+    @Test
+    void 팀_리듬은_8주치_주간_데이터를_반환한다() {
+        User me = user(1L);
+        givenMyTeams(me);
+        givenTeamActivity(List.of(), List.of(), List.of());
+
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).weeks()).hasSize(8);
+        LocalDate thisMonday = LocalDate.now(KST).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        assertThat(result.get(0).weeks().get(7).startDate()).isEqualTo(thisMonday);
+        assertThat(result.get(0).weeks().get(0).startDate()).isEqualTo(thisMonday.minusWeeks(7));
+    }
+
+    @Test
+    void 같은_날_여러_기록을_남긴_팀원은_한_명으로_센다() {
+        User me = user(1L);
+        givenMyTeams(me);
+        LocalDate today = LocalDate.now(KST);
+        givenTeamActivity(
+                List.of(new Activity(today.atTime(9, 0), 1L, 100L)),
+                List.of(new Activity(today.atTime(18, 0), 1L, 100L)),
+                List.of(new CheckInActivity(today, 2L, 101L))
+        );
+
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
+
+        TeamWeekRhythmResponse currentWeek = result.get(0).weeks().get(7);
+        int todayIndex = today.getDayOfWeek().getValue() - 1;
+        assertThat(currentWeek.counts().get(todayIndex)).isEqualTo(2);
+    }
+
+    @Test
+    void 아직_오지_않은_요일은_null이다() {
+        User me = user(1L);
+        givenMyTeams(me);
+        givenTeamActivity(List.of(), List.of(), List.of());
+
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
+
+        TeamWeekRhythmResponse currentWeek = result.get(0).weeks().get(7);
+        int todayIndex = LocalDate.now(KST).getDayOfWeek().getValue() - 1;
+        for (int d = 0; d < 7; d++) {
+            if (d <= todayIndex) {
+                assertThat(currentWeek.counts().get(d)).isNotNull();
+            } else {
+                assertThat(currentWeek.counts().get(d)).isNull();
             }
-
-            @Override
-            public long getCount() {
-                return count;
-            }
-        };
+        }
     }
 
     @Test
-    @DisplayName("이번 달 벌집은 완료 개수에 따라 꿀 진하기를 매기고 오늘 이후는 null이다")
-    void 이번달_벌집_레벨과_미래_null() {
-        given(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .willReturn(List.of(
-                        dayCount(LocalDate.of(2026, 8, 1), 1),
-                        dayCount(LocalDate.of(2026, 8, 2), 2),
-                        dayCount(LocalDate.of(2026, 8, 3), 5)
-                ));
+    void 오늘_기록을_남긴_팀원만_todayMembers에_담는다() {
+        User me = user(1L);
+        givenMyTeams(me);
+        LocalDate today = LocalDate.now(KST);
+        givenTeamActivity(
+                List.of(new Activity(today.atTime(9, 0), 2L, 100L)),
+                List.of(),
+                List.of()
+        );
 
-        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
 
-        assertThat(response.year()).isEqualTo(2026);
-        assertThat(response.month()).isEqualTo(8);
-        assertThat(response.dayLevels()).hasSize(31);
-        assertThat(response.dayLevels().get(0)).isEqualTo(1);
-        assertThat(response.dayLevels().get(1)).isEqualTo(2);
-        // 3개 이상은 최대 레벨 3으로 캡
-        assertThat(response.dayLevels().get(2)).isEqualTo(3);
-        // 완료 없는 지난 날은 0
-        assertThat(response.dayLevels().get(3)).isZero();
-        // 오늘(8일, index 7)까지는 값, 이후는 null
-        assertThat(response.dayLevels().get(7)).isNotNull();
-        assertThat(response.dayLevels().get(8)).isNull();
-        assertThat(response.dayLevels().get(30)).isNull();
+        assertThat(result.get(0).todayMembers())
+                .extracting(m -> m.userId())
+                .containsExactly(2L);
     }
 
     @Test
-    @DisplayName("오늘 완료가 있으면 오늘을 포함해 연속 일수를 센다")
-    void 스트릭_오늘_포함() {
-        given(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .willReturn(List.of(
-                        dayCount(TODAY, 1),
-                        dayCount(TODAY.minusDays(1), 2),
-                        dayCount(TODAY.minusDays(2), 1),
-                        // 3일 전은 비어 있음 → 스트릭 끊김
-                        dayCount(TODAY.minusDays(4), 1)
-                ));
+    void 어제까지_이어진_연속은_오늘_기록이_없어도_유지된다() {
+        User me = user(1L);
+        givenMyTeams(me);
+        LocalDate today = LocalDate.now(KST);
+        givenTeamActivity(
+                List.of(
+                        new Activity(today.minusDays(1).atTime(9, 0), 1L, 100L),
+                        new Activity(today.minusDays(2).atTime(9, 0), 1L, 101L),
+                        new Activity(today.minusDays(4).atTime(9, 0), 1L, 102L)
+                ),
+                List.of(),
+                List.of()
+        );
 
-        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
 
-        assertThat(response.currentStreak()).isEqualTo(3);
+        assertThat(result.get(0).streakDays()).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("오늘 아직 완료가 없으면 어제까지 이어진 스트릭을 반환한다")
-    void 스트릭_오늘_미완료면_어제부터() {
-        given(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .willReturn(List.of(
-                        dayCount(TODAY.minusDays(1), 1),
-                        dayCount(TODAY.minusDays(2), 3)
-                ));
+    void 나의_잔디는_월요일_시작_112일을_반환한다() {
+        givenMe(user(1L));
+        givenMyActivity(List.of(), List.of(), List.of());
 
-        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
+        MyStreakResponse result = feedService.getMyStreak("user1", null, null);
 
-        assertThat(response.currentStreak()).isEqualTo(2);
+        assertThat(result.days()).hasSize(112);
+        assertThat(result.days().get(0).date().getDayOfWeek()).isEqualTo(DayOfWeek.MONDAY);
+        LocalDate thisMonday = LocalDate.now(KST).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        assertThat(result.days().get(111).date()).isEqualTo(thisMonday.plusDays(6));
     }
 
     @Test
-    @DisplayName("과거 달은 모든 날에 값이 있고 null이 없다")
-    void 과거달_null_없음() {
-        given(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .willReturn(List.of(dayCount(LocalDate.of(2026, 7, 15), 2)));
+    void 하루의_기록_수는_손댄_서로_다른_투두_수로_센다() {
+        givenMe(user(1L));
+        LocalDate today = LocalDate.now(KST);
+        givenMyActivity(
+                List.of(new Activity(today.atTime(9, 0), 1L, 100L)),
+                List.of(new Activity(today.atTime(10, 0), 1L, 100L)),
+                List.of(new CheckInActivity(today, 1L, 101L))
+        );
 
-        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 7);
+        MyStreakResponse result = feedService.getMyStreak("user1", null, null);
 
-        assertThat(response.dayLevels()).hasSize(31);
-        assertThat(response.dayLevels()).doesNotContainNull();
-        assertThat(response.dayLevels().get(14)).isEqualTo(2);
+        MyStreakDayResponse todayEntry = result.days().stream()
+                .filter(d -> d.date().equals(today))
+                .findFirst()
+                .orElseThrow();
+        assertThat(todayEntry.count()).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("미래 달 조회는 400 예외를 던진다")
-    void 미래달_조회_거부() {
-        assertThatThrownBy(() -> feedService.getMonthlyHive("tester", 2026, 9))
+    void 나의_연속_일수를_계산한다() {
+        givenMe(user(1L));
+        LocalDate today = LocalDate.now(KST);
+        givenMyActivity(
+                List.of(
+                        new Activity(today.atTime(9, 0), 1L, 100L),
+                        new Activity(today.minusDays(1).atTime(9, 0), 1L, 101L),
+                        new Activity(today.minusDays(3).atTime(9, 0), 1L, 102L)
+                ),
+                List.of(),
+                List.of()
+        );
+
+        MyStreakResponse result = feedService.getMyStreak("user1", null, null);
+
+        assertThat(result.currentStreak()).isEqualTo(2);
+    }
+
+    @Test
+    void 기간을_지정하면_월요일에서_일요일까지_완전한_주로_넓혀_반환한다() {
+        givenMe(user(1L));
+        givenMyActivity(List.of(), List.of(), List.of());
+
+        // 2026-01-01은 목요일, 2026-06-30은 화요일
+        MyStreakResponse result = feedService.getMyStreak("user1", "2026-01-01", "2026-06-30");
+
+        assertThat(result.days().get(0).date()).isEqualTo(LocalDate.of(2025, 12, 29));
+        assertThat(result.days().get(0).date().getDayOfWeek()).isEqualTo(DayOfWeek.MONDAY);
+        assertThat(result.days().get(result.days().size() - 1).date()).isEqualTo(LocalDate.of(2026, 7, 5));
+        assertThat(result.days().get(result.days().size() - 1).date().getDayOfWeek()).isEqualTo(DayOfWeek.SUNDAY);
+        assertThat(result.days().size() % 7).isZero();
+    }
+
+    @Test
+    void 기간에_포함된_미래_날짜는_count_0으로_내려간다() {
+        givenMe(user(1L));
+        givenMyActivity(List.of(), List.of(), List.of());
+        LocalDate today = LocalDate.now(KST);
+
+        MyStreakResponse result = feedService.getMyStreak(
+                "user1", today.toString(), today.plusDays(10).toString());
+
+        assertThat(result.days())
+                .filteredOn(d -> d.date().isAfter(today))
+                .isNotEmpty()
+                .allSatisfy(d -> assertThat(d.count()).isZero());
+    }
+
+    @Test
+    void 시작일이_종료일보다_늦으면_거부한다() {
+        givenMe(user(1L));
+
+        assertThatThrownBy(() -> feedService.getMyStreak("user1", "2026-06-30", "2026-01-01"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("미래 달");
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test
-    @DisplayName("올바르지 않은 월은 400 예외를 던진다")
-    void 잘못된_연월_거부() {
-        assertThatThrownBy(() -> feedService.getMonthlyHive("tester", 2026, 13))
+    void 시작일만_주면_거부한다() {
+        givenMe(user(1L));
+
+        assertThatThrownBy(() -> feedService.getMyStreak("user1", "2026-01-01", null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("올바르지 않은 연월");
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test
-    @DisplayName("보관함은 이번 달을 제외한 최근 N개월을 과거부터 순서대로 반환한다")
-    void 보관함_월별_집계() {
-        given(todoWorkItemRepository.countDailySuccessByAssignee(eq(1L), any(), any()))
-                .willReturn(List.of(
-                        dayCount(LocalDate.of(2026, 6, 1), 1),
-                        dayCount(LocalDate.of(2026, 6, 2), 4),
-                        dayCount(LocalDate.of(2026, 7, 10), 1)
-                ));
+    void 잘못된_날짜_형식은_거부한다() {
+        givenMe(user(1L));
 
-        List<HiveArchiveMonthResponse> archive = feedService.getHiveArchive("tester", 3);
-
-        assertThat(archive).hasSize(3);
-        assertThat(archive.get(0).month()).isEqualTo(5);
-        assertThat(archive.get(0).filledDays()).isZero();
-        assertThat(archive.get(1).month()).isEqualTo(6);
-        assertThat(archive.get(1).filledDays()).isEqualTo(2);
-        assertThat(archive.get(1).totalDays()).isEqualTo(30);
-        assertThat(archive.get(2).month()).isEqualTo(7);
-        assertThat(archive.get(2).filledDays()).isEqualTo(1);
-        // 이번 달(8월)은 포함하지 않는다
-        assertThat(archive).noneMatch(m -> m.month() == 8);
-    }
-
-    @Test
-    @DisplayName("months가 범위를 벗어나면 400 예외를 던진다")
-    void 보관함_범위_검증() {
-        assertThatThrownBy(() -> feedService.getHiveArchive("tester", 0))
-                .isInstanceOf(BusinessException.class);
-        assertThatThrownBy(() -> feedService.getHiveArchive("tester", 13))
-                .isInstanceOf(BusinessException.class);
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 사용자는 404 예외를 던진다")
-    void 없는_사용자_거부() {
-        given(userRepository.findByLoginId("ghost")).willReturn(Optional.empty());
-
-        assertThatThrownBy(() -> feedService.getMonthlyHive("ghost", 2026, 8))
+        assertThatThrownBy(() -> feedService.getMyStreak("user1", "2026/01/01", "2026-06-30"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("존재하지 않는 사용자");
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void 오십삼주를_넘는_기간은_거부한다() {
+        givenMe(user(1L));
+
+        assertThatThrownBy(() -> feedService.getMyStreak("user1", "2025-01-01", "2026-06-30"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    private void givenMe(User me) {
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(me));
+    }
+
+    private void givenMyTeams(User me) {
+        givenMe(me);
+        Team team = Team.create("팀", null, "invite-code");
+        ReflectionTestUtils.setField(team, "id", TEAM_ID);
+        TeamMember member1 = TeamMember.create(team, me, TeamMemberRole.LEADER);
+        TeamMember member2 = TeamMember.create(team, user(2L), TeamMemberRole.MEMBER);
+        given(teamMemberRepository.findTeamsByUserId(me.getId())).willReturn(List.of(team));
+        given(teamMemberRepository.findByTeamIdWithUser(TEAM_ID)).willReturn(List.of(member1, member2));
+    }
+
+    private void givenTeamActivity(
+            List<UserActivityRecord> creations,
+            List<UserActivityRecord> submissions,
+            List<CheckInActivityRecord> checkIns
+    ) {
+        given(todoRepository.findCreationActivityByTeamId(eq(TEAM_ID), any())).willReturn(creations);
+        given(todoWorkItemRepository.findSubmissionActivityByTeamId(eq(TEAM_ID), any())).willReturn(submissions);
+        given(workItemCheckInRepository.findActivityByTeamId(eq(TEAM_ID), any())).willReturn(checkIns);
+    }
+
+    private void givenMyActivity(
+            List<UserActivityRecord> creations,
+            List<UserActivityRecord> submissions,
+            List<CheckInActivityRecord> checkIns
+    ) {
+        given(todoRepository.findCreationActivityByCreatorId(anyLong(), any())).willReturn(creations);
+        given(todoWorkItemRepository.findSubmissionActivityByAssigneeId(anyLong(), any())).willReturn(submissions);
+        given(workItemCheckInRepository.findActivityByUserId(anyLong(), any())).willReturn(checkIns);
+    }
+
+    private User user(Long id) {
+        User user = User.create("user" + id, "encoded-password", "닉네임" + id, null);
+        ReflectionTestUtils.setField(user, "id", id);
+        return user;
     }
 }

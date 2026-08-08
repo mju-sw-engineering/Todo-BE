@@ -7,4 +7,7 @@ description = "테스트 더미 값과 검사 스크립트 자체의 패턴 문�
 paths = [
   '''src/test/resources/application-test\.yml''',
   '''\.githooks/.*''',
+  # 런타임에 KeyPairGenerator로 생성하는 테스트용 키를 PEM 마커로 감싸는 코드라
+  # private-key 룰에 오탐된다. 실제 키는 커밋되지 않는다.
+  '''src/test/java/com/todo/domain/auth/service/apple/AppleTokenClientTest\.java''',
 ]
