@@ -27,7 +27,7 @@ public class UserController implements UserControllerDocs {
     public ResponseEntity<ApiResponse<MyPageResponse>> getMyPage(Authentication authentication) {
         String loginId = authentication.getName();
         MyPageResponse response = userService.getMyPage(loginId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "내 정보를 조회했습니다"));
     }
 
     @PatchMapping("/me/nickname")
@@ -37,7 +37,7 @@ public class UserController implements UserControllerDocs {
     ) {
         String loginId = authentication.getName();
         MyPageResponse response = userService.updateNickname(loginId, request);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "닉네임이 변경되었습니다"));
     }
 
     @DeleteMapping("/me")

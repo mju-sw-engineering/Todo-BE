@@ -28,7 +28,7 @@ public class NotificationController implements NotificationControllerDocs {
             Authentication authentication
     ) {
         NotificationPageResponse response = notificationService.getNotifications(authentication.getName(), cursorId, size);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "알림 목록을 조회했습니다"));
     }
 
     @PatchMapping("/{notificationId}/read")
@@ -37,18 +37,18 @@ public class NotificationController implements NotificationControllerDocs {
             Authentication authentication
     ) {
         notificationService.markAsRead(authentication.getName(), notificationId);
-        return ResponseEntity.ok(ApiResponse.success(null));
+        return ResponseEntity.ok(ApiResponse.success(null, "알림을 읽음 처리했습니다"));
     }
 
     @PatchMapping("/read-all")
     public ResponseEntity<ApiResponse<Void>> markAllAsRead(Authentication authentication) {
         notificationService.markAllAsRead(authentication.getName());
-        return ResponseEntity.ok(ApiResponse.success(null));
+        return ResponseEntity.ok(ApiResponse.success(null, "모든 알림을 읽음 처리했습니다"));
     }
 
     @GetMapping("/unread-count")
     public ResponseEntity<ApiResponse<UnreadNotificationCountResponse>> getUnreadCount(Authentication authentication) {
         UnreadNotificationCountResponse response = notificationService.getUnreadCount(authentication.getName());
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "미읽음 알림 수를 조회했습니다"));
     }
 }

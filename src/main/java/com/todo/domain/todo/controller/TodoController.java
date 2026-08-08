@@ -56,7 +56,7 @@ public class TodoController implements TodoControllerDocs {
                     : "조회된 할 일이 없습니다";
             return ResponseEntity.ok(ApiResponse.success(null, message));
         }
-        return ResponseEntity.ok(ApiResponse.success(result));
+        return ResponseEntity.ok(ApiResponse.success(result, "할 일 목록을 조회했습니다"));
     }
 
     @GetMapping("/teams/{teamId}/todos/report")
@@ -73,7 +73,7 @@ public class TodoController implements TodoControllerDocs {
                 startDate,
                 endDate
         );
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "기간별 리포트를 조회했습니다"));
     }
 
     @GetMapping("/todos/{todoId}")
@@ -83,7 +83,7 @@ public class TodoController implements TodoControllerDocs {
     ) {
         String loginId = authentication.getName();
         TodoDetailResponse response = todoService.getTodoDetail(todoId, loginId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "할 일 상세를 조회했습니다"));
     }
 
     @PostMapping("/todo-participants/{participantId}/reactions")
@@ -138,7 +138,7 @@ public class TodoController implements TodoControllerDocs {
     ) {
         String loginId = authentication.getName();
         TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(workItemId, loginId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "제출 내역을 조회했습니다"));
     }
 
     @PatchMapping("/todo-work-items/{workItemId}/assignee")
