@@ -1,5 +1,6 @@
 package com.todo.domain.feed.controller;
 
+import com.todo.domain.feed.dto.response.BadgeResponse;
 import com.todo.domain.feed.dto.response.HiveArchiveMonthResponse;
 import com.todo.domain.feed.dto.response.MonthlyHiveResponse;
 import com.todo.domain.feed.dto.response.MyStreakResponse;
@@ -53,6 +54,19 @@ public interface FeedControllerDocs {
             description = "내가 속한 모든 팀의 최근 8주 요일별 참여 팀원 수, 오늘 참여자, 연속 활동 일수를 반환합니다."
     )
     ResponseEntity<ApiResponse<List<TeamRhythmResponse>>> getTeamRhythm(Authentication authentication);
+
+    @Operation(summary = "배지 조회",
+            description = """
+                    마일스톤 배지 6종의 획득 여부를 카탈로그 순서대로 반환합니다. 획득 여부는 저장하지 않고
+                    최근 1년 활동(잔디·벌집과 같은 기준)으로 조회 시점에 판정합니다.
+                    스트릭 배지는 최장 연속 기록, 완주 배지는 모든 날에 활동한 지난 달 수,
+                    팀 전원 참여는 2인 이상 팀에서 현재 팀원 전원이 같은 날 기록을 남긴 적이 있는지로 판정합니다.""")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
+                    content = @Content(schema = @Schema(implementation = BadgeResponse.class)))
+    })
+    ResponseEntity<ApiResponse<List<BadgeResponse>>> getBadges(Authentication authentication);
 
     @Operation(
             summary = "나의 꾸준함 조회",
