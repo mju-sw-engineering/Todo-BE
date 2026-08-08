@@ -1,5 +1,6 @@
 package com.todo.domain.feed.controller;
 
+import com.todo.domain.feed.dto.response.BadgeResponse;
 import com.todo.domain.feed.dto.response.HiveArchiveMonthResponse;
 import com.todo.domain.feed.dto.response.MonthlyHiveResponse;
 import com.todo.domain.feed.dto.response.MyStreakResponse;
@@ -55,6 +56,11 @@ public class FeedController implements FeedControllerDocs {
     public ResponseEntity<ApiResponse<List<TeamRhythmResponse>>> getTeamRhythm(Authentication authentication) {
         String loginId = authentication.getName();
         return ResponseEntity.ok(ApiResponse.success(feedService.getTeamRhythm(loginId)));
+    }
+
+    @GetMapping("/badges")
+    public ResponseEntity<ApiResponse<List<BadgeResponse>>> getBadges(Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success(feedService.getBadges(authentication.getName())));
     }
 
     @GetMapping("/my-streak")
