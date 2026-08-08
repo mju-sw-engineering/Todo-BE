@@ -26,6 +26,7 @@ class AppleTokenClientTest {
 
     private static final String CLIENT_ID = "com.test.app";
     private static final String TOKEN_URL = "https://appleid.apple.com/auth/token";
+    private static final String REVOKE_URL = "https://appleid.apple.com/auth/revoke";
 
     @Mock private AppleProperties appleProperties;
     @Mock private RestClient restClient;
@@ -84,5 +85,44 @@ class AppleTokenClientTest {
         assertThatThrownBy(() -> appleTokenClient.exchangeForAppleRefreshToken("bad-code", CLIENT_ID))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Apple 토큰 교환에 실패했습니다.");
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void refresh_token을_revoke한다() {
+        given(appleProperties.privateKey()).willReturn(ecPrivateKeyPem);
+        given(appleProperties.teamId()).willReturn("TEAM123456");
+        given(appleProperties.keyId()).willReturn("KEY1234567");
+        given(appleProperties.revokeUrl()).willReturn(REVOKE_URL);
+
+        RestClient.RequestBodyUriSpec uriSpec = mock(RestClient.RequestBodyUriSpec.class, Mockito.RETURNS_SELF);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        given(restClient.post()).willReturn(uriSpec);
+        given(uriSpec.retrieve()).willReturn(responseSpec);
+
+        appleTokenClient.revokeRefreshToken("apple-rt-xyz", CLIENT_ID);
+
+        Mockito.verify(responseSpec).toBodilessEntity();
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void revoke_요청이_실패하면_예외를_던진다() {
+        given(appleProperties.privateKey()).willReturn(ecPrivateKeyPem);
+        given(appleProperties.teamId()).willReturn("TEAM123456");
+        given(appleProperties.keyId()).willReturn("KEY1234567");
+        given(appleProperties.revokeUrl()).willReturn(REVOKE_URL);
+
+        RestClient.RequestBodyUriSpec uriSpec = mock(RestClient.RequestBodyUriSpec.class, Mockito.RETURNS_SELF);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        given(restClient.post()).willReturn(uriSpec);
+        given(uriSpec.retrieve()).willReturn(responseSpec);
+        given(responseSpec.toBodilessEntity()).willThrow(new RuntimeException("Apple 서버 오류"));
+
+        assertThatThrownBy(() -> appleTokenClient.revokeRefreshToken("apple-rt-xyz", CLIENT_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Apple 토큰 revoke 중 오류가 발생했습니다.");
     }
 }

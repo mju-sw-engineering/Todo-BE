@@ -95,6 +95,7 @@ apple:
   private-key: ${APPLE_PRIVATE_KEY}
   public-key-url: https://appleid.apple.com/auth/keys
   token-url: https://appleid.apple.com/auth/token
+  revoke-url: https://appleid.apple.com/auth/revoke
 
 file-deletion:
   async:

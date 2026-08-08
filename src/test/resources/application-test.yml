@@ -31,6 +31,7 @@ apple:
   private-key: MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgtest-private-key-placeholder-for-testing
   public-key-url: https://appleid.apple.com/auth/keys
   token-url: https://appleid.apple.com/auth/token
+  revoke-url: https://appleid.apple.com/auth/revoke
 
 minio:
   endpoint: http://localhost:9000
