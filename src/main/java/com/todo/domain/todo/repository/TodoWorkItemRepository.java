@@ -23,12 +23,21 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
             """)
     List<Long> findOverdueTodoIds(@Param("now") LocalDateTime now);
 
+    /**
+     * 마감이 지난 진행 중 작업을 실패로 바꾼다.
+     *
+     * WHERE에서 {@code wi.todo.deadline}처럼 암시적 조인을 쓰면 Hibernate가
+     * MySQL의 {@code UPDATE ... JOIN}으로 변환하면서 SET의 status 컬럼을 테이블 한정 없이
+     * 생성한다. 두 테이블 모두 status 컬럼이 있어 "Column 'status' is ambiguous"로
+     * 매 실행이 실패하므로, 조인이 생기지 않게 상관 서브쿼리로 투두 마감을 읽는다.
+     */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE TodoWorkItem wi
             SET wi.status = com.todo.domain.todo.entity.WorkItemStatus.FAIL
             WHERE wi.status = com.todo.domain.todo.entity.WorkItemStatus.IN_PROGRESS
-              AND COALESCE(wi.deadline, wi.todo.deadline) < :now
+              AND COALESCE(wi.deadline,
+                    (SELECT t.deadline FROM Todo t WHERE t.id = wi.todo.id)) < :now
             """)
     int markOverdueAsFail(@Param("now") LocalDateTime now);
 
