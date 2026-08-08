@@ -88,7 +88,7 @@ class FileControllerTest {
         PresignedUploadRequest request = profileRequest();
         PresignedUploadResponse serviceResponse = new PresignedUploadResponse("https://upload", "profiles/1/a.png");
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(fileService.generatePresignedPutUrl(1L, request)).willReturn(serviceResponse);
 
         ResponseEntity<ApiResponse<PresignedUploadResponse>> response =
@@ -114,7 +114,7 @@ class FileControllerTest {
         PresignedUploadRequest request = new PresignedUploadRequest(UploadType.TEAM, "team.png", "image/png", null);
         PresignedUploadResponse serviceResponse = new PresignedUploadResponse("https://upload", "teams/temp/1/a.png");
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(fileService.generatePresignedPutUrl(1L, request)).willReturn(serviceResponse);
 
         ResponseEntity<ApiResponse<PresignedUploadResponse>> response =
@@ -127,11 +127,11 @@ class FileControllerTest {
     void 팀_업로드는_사용자가_없으면_401_예외를_던진다() {
         FileController controller = controller();
         PresignedUploadRequest request = new PresignedUploadRequest(UploadType.TEAM, "team.png", "image/png", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.empty());
+        given(userRepository.findById(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, auth(), httpRequest("1.2.3.4")))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("사용자를 찾을 수 없습니다.")
+                .hasMessage("이미지 업로드는 로그인이 필요합니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 
@@ -164,7 +164,7 @@ class FileControllerTest {
         PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", null);
         PresignedUploadResponse serviceResponse = new PresignedUploadResponse("https://upload", "proofs/1/a.png");
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(fileService.generatePresignedPutUrl(1L, request)).willReturn(serviceResponse);
 
         ResponseEntity<ApiResponse<PresignedUploadResponse>> response =
@@ -177,11 +177,11 @@ class FileControllerTest {
     void 인증샷_업로드는_사용자가_없으면_401_예외를_던진다() {
         FileController controller = controller();
         PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.empty());
+        given(userRepository.findById(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, auth(), httpRequest("1.2.3.4")))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("사용자를 찾을 수 없습니다.")
+                .hasMessage("이미지 업로드는 로그인이 필요합니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 
@@ -204,13 +204,13 @@ class FileControllerTest {
     }
 
     private TestingAuthenticationToken auth() {
-        TestingAuthenticationToken authentication = new TestingAuthenticationToken("user1", null);
+        TestingAuthenticationToken authentication = new TestingAuthenticationToken("1", null);
         authentication.setAuthenticated(true);
         return authentication;
     }
 
     private TestingAuthenticationToken unauthenticatedAuth() {
-        TestingAuthenticationToken authentication = new TestingAuthenticationToken("user1", null);
+        TestingAuthenticationToken authentication = new TestingAuthenticationToken("1", null);
         authentication.setAuthenticated(false);
         return authentication;
     }

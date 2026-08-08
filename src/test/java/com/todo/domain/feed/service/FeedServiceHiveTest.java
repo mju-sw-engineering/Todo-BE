@@ -72,10 +72,10 @@ class FeedServiceHiveTest {
                 fixedClock
         );
 
-        User user = User.create("tester", "encoded-password", "테스터", null);
+        User user = User.create("1", "encoded-password", "테스터", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         // months 범위 검증처럼 사용자 조회 전에 끝나는 테스트도 있어 lenient로 둔다
-        lenient().when(userRepository.findByLoginId("tester")).thenReturn(Optional.of(user));
+        lenient().when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         givenActivities(List.of(), List.of(), List.of());
     }
 
@@ -142,7 +142,7 @@ class FeedServiceHiveTest {
                 List.of(checkedIn(day2, 10L))
         );
 
-        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
+        MonthlyHiveResponse response = feedService.getMonthlyHive("1", 2026, 8);
 
         assertThat(response.dayLevels()).hasSize(31);
         assertThat(response.dayLevels().get(0)).isEqualTo(3);
@@ -161,7 +161,7 @@ class FeedServiceHiveTest {
     void 체크인만으로_꿀_채움() {
         givenActivities(List.of(), List.of(), List.of(checkedIn(LocalDate.of(2026, 8, 5), 7L)));
 
-        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
+        MonthlyHiveResponse response = feedService.getMonthlyHive("1", 2026, 8);
 
         assertThat(response.dayLevels().get(4)).isEqualTo(1);
     }
@@ -176,7 +176,7 @@ class FeedServiceHiveTest {
                 List.of(checkedIn(TODAY.minusDays(2), 3L), checkedIn(TODAY.minusDays(4), 4L))
         );
 
-        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
+        MonthlyHiveResponse response = feedService.getMonthlyHive("1", 2026, 8);
 
         assertThat(response.currentStreak()).isEqualTo(3);
     }
@@ -190,7 +190,7 @@ class FeedServiceHiveTest {
                 List.of()
         );
 
-        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 8);
+        MonthlyHiveResponse response = feedService.getMonthlyHive("1", 2026, 8);
 
         assertThat(response.currentStreak()).isEqualTo(2);
     }
@@ -200,7 +200,7 @@ class FeedServiceHiveTest {
     void 과거달_null_없음() {
         givenActivities(List.of(), List.of(submitted(LocalDate.of(2026, 7, 15), 1L)), List.of());
 
-        MonthlyHiveResponse response = feedService.getMonthlyHive("tester", 2026, 7);
+        MonthlyHiveResponse response = feedService.getMonthlyHive("1", 2026, 7);
 
         assertThat(response.dayLevels()).hasSize(31);
         assertThat(response.dayLevels()).doesNotContainNull();
@@ -210,7 +210,7 @@ class FeedServiceHiveTest {
     @Test
     @DisplayName("미래 달 조회는 400 예외를 던진다")
     void 미래달_조회_거부() {
-        assertThatThrownBy(() -> feedService.getMonthlyHive("tester", 2026, 9))
+        assertThatThrownBy(() -> feedService.getMonthlyHive("1", 2026, 9))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("미래 달");
     }
@@ -218,7 +218,7 @@ class FeedServiceHiveTest {
     @Test
     @DisplayName("올바르지 않은 월은 400 예외를 던진다")
     void 잘못된_연월_거부() {
-        assertThatThrownBy(() -> feedService.getMonthlyHive("tester", 2026, 13))
+        assertThatThrownBy(() -> feedService.getMonthlyHive("1", 2026, 13))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("올바르지 않은 연월");
     }
@@ -232,7 +232,7 @@ class FeedServiceHiveTest {
                 List.of(checkedIn(LocalDate.of(2026, 6, 2), 3L))
         );
 
-        List<HiveArchiveMonthResponse> archive = feedService.getHiveArchive("tester", 3);
+        List<HiveArchiveMonthResponse> archive = feedService.getHiveArchive("1", 3);
 
         assertThat(archive).hasSize(3);
         assertThat(archive.get(0).month()).isEqualTo(5);
@@ -249,18 +249,18 @@ class FeedServiceHiveTest {
     @Test
     @DisplayName("months가 범위를 벗어나면 400 예외를 던진다")
     void 보관함_범위_검증() {
-        assertThatThrownBy(() -> feedService.getHiveArchive("tester", 0))
+        assertThatThrownBy(() -> feedService.getHiveArchive("1", 0))
                 .isInstanceOf(BusinessException.class);
-        assertThatThrownBy(() -> feedService.getHiveArchive("tester", 13))
+        assertThatThrownBy(() -> feedService.getHiveArchive("1", 13))
                 .isInstanceOf(BusinessException.class);
     }
 
     @Test
     @DisplayName("존재하지 않는 사용자는 인증 예외를 던진다")
     void 없는_사용자_거부() {
-        lenient().when(userRepository.findByLoginId("ghost")).thenReturn(Optional.empty());
+        lenient().when(userRepository.findById(999L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> feedService.getMonthlyHive("ghost", 2026, 8))
+        assertThatThrownBy(() -> feedService.getMonthlyHive("999", 2026, 8))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("사용자를 찾을 수 없습니다");
     }

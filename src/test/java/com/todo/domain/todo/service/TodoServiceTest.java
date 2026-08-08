@@ -124,7 +124,7 @@ class TodoServiceTest {
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 3L)).willReturn(true);
 
-        CreateTodoResponse response = todoService.createTodo("user1", TEAM_ID, new CreateTodoRequest(
+        CreateTodoResponse response = todoService.createTodo("1", TEAM_ID, new CreateTodoRequest(
                 "공통 인증", "설명", futureOffset(3), List.of(2L, 3L), null
         ));
 
@@ -155,7 +155,7 @@ class TodoServiceTest {
         given(userRepository.findById(2L)).willReturn(Optional.of(assignee));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
 
-        CreateTodoResponse response = todoService.createTodo("user1", TEAM_ID, new CreateTodoRequest(
+        CreateTodoResponse response = todoService.createTodo("1", TEAM_ID, new CreateTodoRequest(
                 "발표 준비",
                 null,
                 futureOffset(3),
@@ -177,7 +177,7 @@ class TodoServiceTest {
         User creator = user(1L);
         givenCreateAccess(creator, team());
 
-        assertThatThrownBy(() -> todoService.createTodo("user1", TEAM_ID, new CreateTodoRequest(
+        assertThatThrownBy(() -> todoService.createTodo("1", TEAM_ID, new CreateTodoRequest(
                 "잘못된 요청",
                 null,
                 futureOffset(1),
@@ -198,7 +198,7 @@ class TodoServiceTest {
         given(userRepository.findById(2L)).willReturn(Optional.of(assignee));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
 
-        assertThatThrownBy(() -> todoService.createTodo("user1", TEAM_ID, new CreateTodoRequest(
+        assertThatThrownBy(() -> todoService.createTodo("1", TEAM_ID, new CreateTodoRequest(
                 "마감된 작업",
                 null,
                 futureOffset(1),
@@ -224,8 +224,8 @@ class TodoServiceTest {
         Todo todo = todo(team, TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(3));
         TodoWorkItem expired = task(todo, firstAssignee, 20L, "지난 작업", LocalDateTime.now().minusMinutes(1), 0);
         TodoWorkItem remaining = task(todo, secondAssignee, 21L, "남은 작업", LocalDateTime.now().plusDays(1), 1);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(firstAssignee));
-        given(userRepository.findByLoginId("user2")).willReturn(Optional.of(secondAssignee));
+        given(userRepository.findById(1L)).willReturn(Optional.of(firstAssignee));
+        given(userRepository.findById(2L)).willReturn(Optional.of(secondAssignee));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(expired));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(21L)).willReturn(Optional.of(remaining));
         given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
@@ -236,13 +236,13 @@ class TodoServiceTest {
         // 실패한 TASK가 하나 남아 있으므로 재평가는 FAIL 단계에서 끝나고 성공 개수는 보지 않는다.
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(1L);
 
-        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("expired-proof")))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("expired-proof")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("마감 시간이 지났습니다.");
         assertThat(expired.getStatus()).isEqualTo(WorkItemStatus.FAIL);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.FAIL);
 
-        todoService.submitTodoWorkItem(21L, "user2", new SubmitTodoRequest("remaining-proof"));
+        todoService.submitTodoWorkItem(21L, "2", new SubmitTodoRequest("remaining-proof"));
 
         assertThat(remaining.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.FAIL);
@@ -255,12 +255,12 @@ class TodoServiceTest {
         User outsider = user(2L);
         Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
         TodoWorkItem workItem = task(todo, assignee, 20L, "담당 작업", LocalDateTime.now().plusDays(1), 0);
-        given(userRepository.findByLoginId("user2")).willReturn(Optional.of(outsider));
+        given(userRepository.findById(2L)).willReturn(Optional.of(outsider));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
 
-        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "user2", new SubmitTodoRequest("proof")))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "2", new SubmitTodoRequest("proof")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("해당 WorkItem의 담당자가 아닙니다.")
                 .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
@@ -272,13 +272,13 @@ class TodoServiceTest {
         User assignee = user(1L);
         Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
         TodoWorkItem workItem = task(todo, assignee, 20L, "새 작업", LocalDateTime.now().plusDays(1), 0);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(assignee));
+        given(userRepository.findById(1L)).willReturn(Optional.of(assignee));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
         given(todoWorkItemRepository.existsByProofImageKey("used-proof")).willReturn(true);
 
-        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("used-proof")))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("used-proof")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 다른 WorkItem에 제출된 인증 사진입니다.")
                 .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
@@ -292,7 +292,7 @@ class TodoServiceTest {
         Team team = team();
         Todo todo = todo(team, TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
         TodoWorkItem workItem = direct(todo, assignee, 20L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(assignee));
+        given(userRepository.findById(1L)).willReturn(Optional.of(assignee));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
@@ -301,13 +301,13 @@ class TodoServiceTest {
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
 
-        todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("proof"));
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof"));
 
         assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
         then(teamRepository).should().incrementSuccessCount(TEAM_ID);
 
-        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "user1", new SubmitTodoRequest("another-proof")))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("another-proof")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 제출했거나 종료된 WorkItem입니다.")
                 .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.CONFLICT));
@@ -321,7 +321,7 @@ class TodoServiceTest {
         Team team = team();
         Todo todo = todo(team, TodoMode.TASK, TodoStatus.FAIL, LocalDateTime.now().plusDays(2));
         TodoWorkItem workItem = task(todo, null, 20L, "인수인계", LocalDateTime.now().plusDays(1), 0);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(requester));
+        given(userRepository.findById(1L)).willReturn(Optional.of(requester));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
         given(userRepository.findById(2L)).willReturn(Optional.of(newAssignee));
@@ -330,7 +330,7 @@ class TodoServiceTest {
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
 
         TodoWorkItemAssigneeResponse response = todoService.reassignTodoWorkItem(
-                20L, "user1", new AssignTodoWorkItemRequest(2L)
+                20L, "1", new AssignTodoWorkItemRequest(2L)
         );
 
         assertThat(response.assigneeId()).isEqualTo(2L);
@@ -346,14 +346,14 @@ class TodoServiceTest {
         setField(workItem, "proofImageKey", "proof/original.jpg");
         setField(workItem, "proofThumbnailKey", "proof/thumb.webp");
         setField(workItem, "submittedAt", LocalDateTime.of(2026, 8, 2, 12, 0));
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
+        given(userRepository.findById(1L)).willReturn(Optional.of(viewer));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
         given(fileService.resolveImageUrl("proof/original.jpg")).willReturn("original-url");
         given(fileService.resolveImageUrl("proof/thumb.webp")).willReturn("thumb-url");
         given(fileService.getPresignedUrlExpiration()).willReturn(Duration.ofMinutes(10));
 
-        TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(20L, "user1");
+        TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(20L, "1");
 
         assertThat(response.workItemId()).isEqualTo(20L);
         assertThat(response.assigneeId()).isEqualTo(2L);
@@ -369,14 +369,14 @@ class TodoServiceTest {
         Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
         TodoWorkItem workItem = task(todo, assignee, 20L, "반응 대상", LocalDateTime.now().plusDays(1), 0);
         setField(workItem, "proofImageKey", "proof.jpg");
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(reactor));
+        given(userRepository.findById(1L)).willReturn(Optional.of(reactor));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
         given(todoReactionRepository.findByTodoWorkItemIdAndUserId(20L, 1L)).willReturn(Optional.empty());
         given(todoReactionRepository.save(any(TodoReaction.class))).willAnswer(invocation -> invocation.getArgument(0));
         given(todoReactionRepository.countByTodoWorkItemIdAndReactionType(20L, TodoReactionType.LIKE)).willReturn(1L);
 
-        TodoReactionResponse response = todoService.reactTodoWorkItem(20L, "user1", new ReactTodoRequest(TodoReactionType.LIKE));
+        TodoReactionResponse response = todoService.reactTodoWorkItem(20L, "1", new ReactTodoRequest(TodoReactionType.LIKE));
 
         assertThat(response.type()).isEqualTo(TodoReactionType.LIKE);
         assertThat(response.count()).isEqualTo(1L);
@@ -396,7 +396,7 @@ class TodoServiceTest {
                 summary(TODO_ID, 2L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 3)
         ));
 
-        TodoSummaryResponse response = todoService.getTodoList(TEAM_ID, "user1", null, null).get(0);
+        TodoSummaryResponse response = todoService.getTodoList(TEAM_ID, "1", null, null).get(0);
 
         assertThat(response.achievementCount()).isEqualTo("2 / 4");
         assertThat(response.myWorkSummary().totalCount()).isEqualTo(3);
@@ -415,7 +415,7 @@ class TodoServiceTest {
         given(todoReactionRepository.countByTodoWorkItemIds(List.of(20L))).willReturn(List.of());
         given(todoReactionRepository.findByTodoWorkItemIdInAndUserId(List.of(20L), 1L)).willReturn(List.of());
 
-        TodoDetailResponse response = todoService.getTodoDetail(TODO_ID, "user1");
+        TodoDetailResponse response = todoService.getTodoDetail(TODO_ID, "1");
 
         assertThat(response.mode()).isEqualTo(TodoMode.DIRECT);
         assertThat(response.directAssignees()).hasSize(1);
@@ -432,7 +432,7 @@ class TodoServiceTest {
         given(todoReactionRepository.countByTodoWorkItemIds(List.of(20L))).willReturn(List.of());
         given(todoReactionRepository.findByTodoWorkItemIdInAndUserId(List.of(20L), 1L)).willReturn(List.of());
 
-        TodoDetailResponse response = todoService.getTodoDetail(TODO_ID, "user1");
+        TodoDetailResponse response = todoService.getTodoDetail(TODO_ID, "1");
 
         assertThat(response.mode()).isEqualTo(TodoMode.TASK);
         assertThat(response.directAssignees()).isEmpty();
@@ -444,19 +444,19 @@ class TodoServiceTest {
         User viewer = user(1L);
         givenListAccess(viewer);
 
-        assertThat(todoService.getTodoList(TEAM_ID, "user1", null, null)).isEmpty();
-        assertThat(todoService.getTodoList(TEAM_ID, "user1", "", null)).isEmpty();
-        assertThat(todoService.getTodoList(TEAM_ID, "user1", "IN_PROGRESS", null)).isEmpty();
-        assertThat(todoService.getTodoList(TEAM_ID, "user1", "ENDED", null)).isEmpty();
-        assertThat(todoService.getTodoList(TEAM_ID, "user1", null, "2026-08-02")).isEmpty();
+        assertThat(todoService.getTodoList(TEAM_ID, "1", null, null)).isEmpty();
+        assertThat(todoService.getTodoList(TEAM_ID, "1", "", null)).isEmpty();
+        assertThat(todoService.getTodoList(TEAM_ID, "1", "IN_PROGRESS", null)).isEmpty();
+        assertThat(todoService.getTodoList(TEAM_ID, "1", "ENDED", null)).isEmpty();
+        assertThat(todoService.getTodoList(TEAM_ID, "1", null, "2026-08-02")).isEmpty();
 
-        assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "user1", "UNKNOWN", null))
+        assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "1", "UNKNOWN", null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("알 수 없는 투두 필터입니다.");
-        assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "user1", null, "2026/08/02"))
+        assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "1", null, "2026/08/02"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("date 형식은 yyyy-MM-dd 이어야 합니다.");
-        assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "user1", "ENDED", "2026-08-02"))
+        assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "1", "ENDED", "2026-08-02"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("filter와 date는 함께 사용할 수 없습니다.");
     }
@@ -466,17 +466,17 @@ class TodoServiceTest {
         User viewer = user(1L);
         givenListAccess(viewer);
 
-        assertThatThrownBy(() -> todoService.getTodoPeriodReport(TEAM_ID, "user1", null, "2026-08-02"))
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(TEAM_ID, "1", null, "2026-08-02"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startDate 파라미터는 필수입니다.");
-        assertThatThrownBy(() -> todoService.getTodoPeriodReport(TEAM_ID, "user1", " ", "2026-08-02"))
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(TEAM_ID, "1", " ", "2026-08-02"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startDate 파라미터는 필수입니다.");
-        assertThatThrownBy(() -> todoService.getTodoPeriodReport(TEAM_ID, "user1", "invalid", "2026-08-02"))
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(TEAM_ID, "1", "invalid", "2026-08-02"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startDate 형식은 yyyy-MM-dd 이어야 합니다.");
         assertThatThrownBy(() -> todoService.getTodoPeriodReport(
-                TEAM_ID, "user1", "2026-08-03", "2026-08-02"
+                TEAM_ID, "1", "2026-08-03", "2026-08-02"
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startDate는 endDate보다 늦을 수 없습니다.");
@@ -504,7 +504,7 @@ class TodoServiceTest {
 
         TodoPeriodReportResponse response = todoService.getTodoPeriodReport(
                 TEAM_ID,
-                "user1",
+                "1",
                 reportDate.toString(),
                 reportDate.plusDays(1).toString()
         );
@@ -529,7 +529,7 @@ class TodoServiceTest {
         TodoWorkItem unsubmitted = task(todo, user(2L), 21L, "미제출", LocalDateTime.now().plusDays(1), 1);
         TodoWorkItem missingTime = task(todo, user(2L), 22L, "시각 누락", LocalDateTime.now().plusDays(1), 2);
         setField(missingTime, "proofImageKey", "proof/missing-time.jpg");
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
+        given(userRepository.findById(1L)).willReturn(Optional.of(viewer));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(submitted));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(21L)).willReturn(Optional.of(unsubmitted));
@@ -537,13 +537,13 @@ class TodoServiceTest {
         given(fileService.resolveImageUrl("proof/original.jpg")).willReturn("original-url");
         given(fileService.getPresignedUrlExpiration()).willReturn(Duration.ofMinutes(10));
 
-        TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(20L, "user1");
+        TodoWorkItemSubmissionResponse response = todoService.getTodoWorkItemSubmission(20L, "1");
 
         assertThat(response.thumbnailUrl()).isEqualTo("original-url");
-        assertThatThrownBy(() -> todoService.getTodoWorkItemSubmission(21L, "user1"))
+        assertThatThrownBy(() -> todoService.getTodoWorkItemSubmission(21L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("제출된 인증 사진이 없습니다.");
-        assertThatThrownBy(() -> todoService.getTodoWorkItemSubmission(22L, "user1"))
+        assertThatThrownBy(() -> todoService.getTodoWorkItemSubmission(22L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("제출된 인증 사진이 없습니다.");
     }
@@ -556,7 +556,7 @@ class TodoServiceTest {
         setField(workItem, "proofImageKey", "proof.jpg");
         TodoReaction same = TodoReaction.create(workItem, reactor, TodoReactionType.LIKE);
         TodoReaction different = TodoReaction.create(workItem, reactor, TodoReactionType.HEART);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(reactor));
+        given(userRepository.findById(1L)).willReturn(Optional.of(reactor));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
         given(todoReactionRepository.findByTodoWorkItemIdAndUserId(20L, 1L))
@@ -564,12 +564,12 @@ class TodoServiceTest {
 
         TodoReactionResponse cancelled = todoService.reactTodoWorkItem(
                 20L,
-                "user1",
+                "1",
                 new ReactTodoRequest(TodoReactionType.LIKE)
         );
         TodoReactionResponse changed = todoService.reactTodoWorkItem(
                 20L,
-                "user1",
+                "1",
                 new ReactTodoRequest(TodoReactionType.LIKE)
         );
 
@@ -585,7 +585,7 @@ class TodoServiceTest {
         Todo todo = todo(team(), TodoMode.TASK, TodoStatus.FAIL, LocalDateTime.now().plusDays(2));
         TodoWorkItem assigned = task(todo, user(2L), 20L, "배정됨", LocalDateTime.now().plusDays(1), 0);
         TodoWorkItem unassigned = task(todo, null, 21L, "미배정", LocalDateTime.now().plusDays(1), 1);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(requester));
+        given(userRepository.findById(1L)).willReturn(Optional.of(requester));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(assigned));
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(21L)).willReturn(Optional.of(unassigned));
@@ -594,13 +594,13 @@ class TodoServiceTest {
         given(todoWorkItemRepository.findByIdWithLock(21L)).willReturn(Optional.of(unassigned));
 
         assertThatThrownBy(() -> todoService.reassignTodoWorkItem(
-                20L, "user1", new AssignTodoWorkItemRequest(1L)
+                20L, "1", new AssignTodoWorkItemRequest(1L)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 담당자가 배정된 WorkItem입니다.");
 
         TodoWorkItemAssigneeResponse response = todoService.reassignTodoWorkItem(
-                21L, "user1", new AssignTodoWorkItemRequest(1L)
+                21L, "1", new AssignTodoWorkItemRequest(1L)
         );
 
         assertThat(response.assigneeId()).isEqualTo(1L);
@@ -608,19 +608,19 @@ class TodoServiceTest {
     }
 
     private void givenCreateAccess(User creator, Team team) {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(creator));
+        given(userRepository.findById(1L)).willReturn(Optional.of(creator));
         given(teamRepository.findById(TEAM_ID)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, creator.getId())).willReturn(true);
     }
 
     private void givenListAccess(User user) {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.existsById(TEAM_ID)).willReturn(true);
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, user.getId())).willReturn(true);
     }
 
     private void givenDetailAccess(User viewer, Todo todo) {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(viewer));
+        given(userRepository.findById(1L)).willReturn(Optional.of(viewer));
         given(todoRepository.findByIdWithCreatorAndTeam(TODO_ID)).willReturn(Optional.of(todo));
         given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, viewer.getId())).willReturn(true);
     }

@@ -54,8 +54,8 @@ public class FeedController implements FeedControllerDocs {
 
     @GetMapping("/team-rhythm")
     public ResponseEntity<ApiResponse<List<TeamRhythmResponse>>> getTeamRhythm(Authentication authentication) {
-        String loginId = authentication.getName();
-        return ResponseEntity.ok(ApiResponse.success(feedService.getTeamRhythm(loginId), "팀 리듬을 조회했습니다"));
+        String userId = authentication.getName();
+        return ResponseEntity.ok(ApiResponse.success(feedService.getTeamRhythm(userId), "팀 리듬을 조회했습니다"));
     }
 
     @GetMapping("/badges")
@@ -69,7 +69,7 @@ public class FeedController implements FeedControllerDocs {
             @RequestParam(required = false) String endDate,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        return ResponseEntity.ok(ApiResponse.success(feedService.getMyStreak(loginId, startDate, endDate), "잔디를 조회했습니다"));
+        String userId = authentication.getName();
+        return ResponseEntity.ok(ApiResponse.success(feedService.getMyStreak(userId, startDate, endDate), "잔디를 조회했습니다"));
     }
 }

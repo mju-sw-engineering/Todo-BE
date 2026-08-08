@@ -24,7 +24,7 @@ public class TeamSubscriptionValidator {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
 
-    public void validate(String destination, String loginId) {
+    public void validate(String destination, String userId) {
         if (destination == null) {
             throw new MessageDeliveryException("허용되지 않은 구독 채널입니다.");
         }
@@ -41,7 +41,7 @@ public class TeamSubscriptionValidator {
 
         // 팀 존재 확인은 하지 않는다. 없는 팀이면 아래 멤버 확인이 어차피 실패하고,
         // 응답 메시지가 갈리면 인증된 사용자가 팀 ID를 열거해 존재 여부를 알아낼 수 있다.
-        User user = userRepository.findByLoginId(loginId)
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new MessageDeliveryException("사용자를 찾을 수 없습니다."));
 
         if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())) {

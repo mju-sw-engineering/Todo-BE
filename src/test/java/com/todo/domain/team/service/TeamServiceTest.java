@@ -82,13 +82,13 @@ class TeamServiceTest {
 
     @Test
     void 팀_생성_성공_이미지없음() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null, null));
+        CreateTeamResponse response = teamService.createTeam("1", new CreateTeamRequest("우리팀", null, null));
 
         assertThat(response.teamName()).isEqualTo("우리팀");
         assertThat(response.teamImage()).isNull();
@@ -97,29 +97,29 @@ class TeamServiceTest {
 
     @Test
     void 팀_생성_성공_이미지있음() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         String imageKey = "teams/temp/uuid.jpg";
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
         given(fileService.resolveImageUrl(imageKey)).willReturn("https://minio.example.com/image.jpg");
 
-        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null, imageKey));
+        CreateTeamResponse response = teamService.createTeam("1", new CreateTeamRequest("우리팀", null, imageKey));
 
         assertThat(response.teamImage()).isEqualTo("https://minio.example.com/image.jpg");
     }
 
     @Test
     void 팀_생성_시_설명이_저장된다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
         CreateTeamResponse response = teamService.createTeam(
-                "user1", new CreateTeamRequest("우리팀", "  매일 한 문제씩 푸는 스터디  ", null));
+                "1", new CreateTeamRequest("우리팀", "  매일 한 문제씩 푸는 스터디  ", null));
 
         // 앞뒤 공백은 정리해 저장한다
         assertThat(response.description()).isEqualTo("매일 한 문제씩 푸는 스터디");
@@ -127,23 +127,23 @@ class TeamServiceTest {
 
     @Test
     void 공백뿐인_설명은_저장하지_않는다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
         CreateTeamResponse response = teamService.createTeam(
-                "user1", new CreateTeamRequest("우리팀", "   ", null));
+                "1", new CreateTeamRequest("우리팀", "   ", null));
 
         assertThat(response.description()).isNull();
     }
 
     @Test
     void 팀_생성_실패_존재하지_않는_사용자() {
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.createTeam("unknown", new CreateTeamRequest("팀", null, null)))
+        assertThatThrownBy(() -> teamService.createTeam("999", new CreateTeamRequest("팀", null, null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("사용자를 찾을 수 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -151,59 +151,59 @@ class TeamServiceTest {
 
     @Test
     void 팀_생성_시_팀장으로_등록된다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        teamService.createTeam("user1", new CreateTeamRequest("우리팀", null, null));
+        teamService.createTeam("1", new CreateTeamRequest("우리팀", null, null));
 
         then(teamMemberRepository).should().save(argThat(member -> member.getRole() == TeamMemberRole.LEADER));
     }
 
     @Test
     void 초대코드_중복시_재시도하여_고유코드_생성() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.existsByInviteCode(anyString()))
                 .willReturn(true)   // 1회 중복
                 .willReturn(false); // 2회 성공
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null, null));
+        CreateTeamResponse response = teamService.createTeam("1", new CreateTeamRequest("우리팀", null, null));
 
         assertThat(response.inviteCode()).hasSize(8);
     }
 
     @Test
     void 내_팀_목록_조회_성공_팀없음() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of());
 
-        TeamListResponse response = teamService.getMyTeams("user1");
+        TeamListResponse response = teamService.getMyTeams("1");
 
         assertThat(response.teams()).isEmpty();
     }
 
     @Test
     void 내_팀_목록_조회_성공_팀있음() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team studyTeam = Team.create("스터디 팀", "https://example.com/team1.png", "ABCDEFGH");
         ReflectionTestUtils.setField(studyTeam, "id", 10L);
         Team exerciseTeam = Team.create("운동 팀", null, "IJKLMNOP");
         ReflectionTestUtils.setField(exerciseTeam, "id", 20L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of(studyTeam, exerciseTeam));
         given(fileService.resolveImageUrl("https://example.com/team1.png")).willReturn("https://example.com/team1.png");
 
-        TeamListResponse response = teamService.getMyTeams("user1");
+        TeamListResponse response = teamService.getMyTeams("1");
 
         assertThat(response.teams()).hasSize(2);
         assertThat(response.teams().get(0).teamId()).isEqualTo(10L);
@@ -216,9 +216,9 @@ class TeamServiceTest {
 
     @Test
     void 팀_상세_조회_성공() {
-        User user = User.create("user1", "encodedPwd", "홍길동", "https://example.com/profile1.png");
+        User user = User.create("1", "encodedPwd", "홍길동", "https://example.com/profile1.png");
         ReflectionTestUtils.setField(user, "id", 1L);
-        User member2 = User.create("user2", "encodedPwd", "김철수", null);
+        User member2 = User.create("2", "encodedPwd", "김철수", null);
         ReflectionTestUtils.setField(member2, "id", 2L);
 
         Team team = Team.create("스터디 팀", "https://example.com/team.png", "ABCDEFGH");
@@ -227,7 +227,7 @@ class TeamServiceTest {
         TeamMember leader = TeamMember.create(team, user, TeamMemberRole.LEADER);
         TeamMember memberEntry = TeamMember.create(team, member2, TeamMemberRole.MEMBER);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(1L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(true);
         given(teamMemberRepository.findByTeamIdWithUser(1L)).willReturn(List.of(leader, memberEntry));
@@ -235,7 +235,7 @@ class TeamServiceTest {
         given(fileService.resolveImageUrl("https://example.com/team.png")).willReturn("https://example.com/team.png");
         given(fileService.resolveImageUrl("https://example.com/profile1.png")).willReturn("https://example.com/profile1.png");
 
-        TeamDetailResponse response = teamService.getTeamDetail(1L, "user1");
+        TeamDetailResponse response = teamService.getTeamDetail(1L, "1");
 
         assertThat(response.teamId()).isEqualTo(1L);
         assertThat(response.teamName()).isEqualTo("스터디 팀");
@@ -248,13 +248,13 @@ class TeamServiceTest {
 
     @Test
     void 팀_상세_조회_실패_존재하지_않는_팀() {
-        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        User user = User.create("1", "encodedPwd", "홍길동", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(99L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.getTeamDetail(99L, "user1"))
+        assertThatThrownBy(() -> teamService.getTeamDetail(99L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("존재하지 않는 팀입니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
@@ -262,16 +262,16 @@ class TeamServiceTest {
 
     @Test
     void 팀_상세_조회_실패_팀에_속하지_않은_사용자() {
-        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        User user = User.create("1", "encodedPwd", "홍길동", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCDEFGH");
         ReflectionTestUtils.setField(team, "id", 1L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(1L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> teamService.getTeamDetail(1L, "user1"))
+        assertThatThrownBy(() -> teamService.getTeamDetail(1L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("팀에 접근할 권한이 없습니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
@@ -279,9 +279,9 @@ class TeamServiceTest {
 
     @Test
     void 팀_상세_조회_실패_존재하지_않는_사용자() {
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.getTeamDetail(1L, "unknown"))
+        assertThatThrownBy(() -> teamService.getTeamDetail(1L, "999"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("로그인이 필요합니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -289,9 +289,9 @@ class TeamServiceTest {
 
     @Test
     void 내_팀_목록_조회_실패_존재하지_않는_사용자() {
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.getMyTeams("unknown"))
+        assertThatThrownBy(() -> teamService.getMyTeams("999"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("로그인이 필요합니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -299,17 +299,17 @@ class TeamServiceTest {
 
     @Test
     void 팀_참여_성공() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findByInviteCode("ABCD1234")).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(false);
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        JoinTeamResponse response = teamService.joinTeam("user1", new JoinTeamRequest("ABCD1234"));
+        JoinTeamResponse response = teamService.joinTeam("1", new JoinTeamRequest("ABCD1234"));
 
         assertThat(response.teamId()).isEqualTo(10L);
         then(teamMemberRepository).should().save(argThat(m -> m.getRole() == TeamMemberRole.MEMBER));
@@ -317,13 +317,13 @@ class TeamServiceTest {
 
     @Test
     void 팀_참여_실패_유효하지_않은_초대_코드() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findByInviteCode("INVALID")).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.joinTeam("user1", new JoinTeamRequest("INVALID")))
+        assertThatThrownBy(() -> teamService.joinTeam("1", new JoinTeamRequest("INVALID")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("유효하지 않은 초대 코드입니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
@@ -331,16 +331,16 @@ class TeamServiceTest {
 
     @Test
     void 팀_참여_실패_이미_참여한_팀() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findByInviteCode("ABCD1234")).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
 
-        assertThatThrownBy(() -> teamService.joinTeam("user1", new JoinTeamRequest("ABCD1234")))
+        assertThatThrownBy(() -> teamService.joinTeam("1", new JoinTeamRequest("ABCD1234")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 참여한 팀입니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
@@ -348,9 +348,9 @@ class TeamServiceTest {
 
     @Test
     void 팀_참여_실패_존재하지_않는_사용자() {
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.joinTeam("unknown", new JoinTeamRequest("ABCD1234")))
+        assertThatThrownBy(() -> teamService.joinTeam("999", new JoinTeamRequest("ABCD1234")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("로그인이 필요합니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -359,18 +359,18 @@ class TeamServiceTest {
     @Test
     void 팀장이_이메일로_팀원을_초대한다() {
         setupInviteLinkProperties();
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember member = TeamMember.create(team, user, TeamMemberRole.LEADER);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
 
         InviteTeamResponse response = teamService.inviteTeamMembers(
-                "user1",
+                "1",
                 10L,
                 new InviteTeamRequest(List.of("Member@Example.com ", "member@example.com", "second@example.com"))
         );
@@ -390,18 +390,18 @@ class TeamServiceTest {
     @Test
     void 팀원도_이메일로_팀원을_초대한다() {
         setupInviteLinkProperties();
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember member = TeamMember.create(team, user, TeamMemberRole.MEMBER);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
 
         InviteTeamResponse response = teamService.inviteTeamMembers(
-                "user1",
+                "1",
                 10L,
                 new InviteTeamRequest(List.of("member@example.com"))
         );
@@ -417,20 +417,20 @@ class TeamServiceTest {
 
     @Test
     void 이메일_초대는_한번에_20명까지만_허용한다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember member = TeamMember.create(team, user, TeamMemberRole.LEADER);
         List<String> emails = java.util.stream.IntStream.rangeClosed(1, 21)
-                .mapToObj(i -> "member" + i + "@example.com")
+                .mapToObj(i -> "2" + i + "@example.com")
                 .toList();
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
 
-        assertThatThrownBy(() -> teamService.inviteTeamMembers("user1", 10L, new InviteTeamRequest(emails)))
+        assertThatThrownBy(() -> teamService.inviteTeamMembers("1", 10L, new InviteTeamRequest(emails)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("한 번에 최대 20명까지 초대할 수 있습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
@@ -439,7 +439,7 @@ class TeamServiceTest {
     @Test
     void 이메일_초대_메일_발송_실패시_예외를_전달한다() {
         setupInviteLinkProperties();
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
@@ -449,7 +449,7 @@ class TeamServiceTest {
                 HttpStatus.INTERNAL_SERVER_ERROR
         );
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
         willThrow(mailException).given(teamInviteMailService).sendInvitations(
@@ -459,7 +459,7 @@ class TeamServiceTest {
         );
 
         assertThatThrownBy(() -> teamService.inviteTeamMembers(
-                "user1",
+                "1",
                 10L,
                 new InviteTeamRequest(List.of("member@example.com"))
         ))
@@ -471,16 +471,16 @@ class TeamServiceTest {
 
     @Test
     void 팀_나가기_성공() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember member = TeamMember.create(team, user, TeamMemberRole.MEMBER);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
 
-        teamService.leaveTeam("user1", 10L);
+        teamService.leaveTeam("1", 10L);
 
         then(todoWorkItemLifecycleService).should().handleTeamDeparture(10L, user);
         then(teamMemberRepository).should().delete(member);
@@ -488,20 +488,20 @@ class TeamServiceTest {
 
     @Test
     void 팀장_강퇴_시_대상_멤버의_진행중_WorkItem을_정리한_후_멤버를_삭제한다() {
-        User leader = User.create("leader", "encodedPwd", "팀장", null);
+        User leader = User.create("1", "encodedPwd", "팀장", null);
         ReflectionTestUtils.setField(leader, "id", 1L);
-        User targetUser = User.create("member", "encodedPwd", "팀원", null);
+        User targetUser = User.create("2", "encodedPwd", "팀원", null);
         ReflectionTestUtils.setField(targetUser, "id", 2L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember leaderMember = TeamMember.create(team, leader, TeamMemberRole.LEADER);
         TeamMember targetMember = TeamMember.create(team, targetUser, TeamMemberRole.MEMBER);
 
-        given(userRepository.findByLoginId("leader")).willReturn(Optional.of(leader));
+        given(userRepository.findById(1L)).willReturn(Optional.of(leader));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(leaderMember));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 2L)).willReturn(Optional.of(targetMember));
 
-        teamService.removeMember("leader", 10L, 2L);
+        teamService.removeMember("1", 10L, 2L);
 
         var inOrder = inOrder(todoWorkItemLifecycleService, teamMemberRepository);
         inOrder.verify(todoWorkItemLifecycleService).handleTeamDeparture(10L, targetUser);
@@ -510,20 +510,20 @@ class TeamServiceTest {
 
     @Test
     void 팀_나가기_성공_마지막_리더면_팀데이터까지_삭제한다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember member = TeamMember.create(team, user, TeamMemberRole.LEADER);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of(100L));
         given(todoWorkItemRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of(1000L));
 
-        teamService.leaveTeam("user1", 10L);
+        teamService.leaveTeam("1", 10L);
 
         var inOrder = inOrder(todoReactionRepository, todoWorkItemRepository, todoRepository,
                 teamChatReadStatusRepository, teamChatMessageRepository, teamMemberRepository, teamRepository);
@@ -538,19 +538,19 @@ class TeamServiceTest {
 
     @Test
     void 팀_나가기_성공_마지막_리더이고_투두가_없으면_팀데이터만_삭제한다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember member = TeamMember.create(team, user, TeamMemberRole.LEADER);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of());
 
-        teamService.leaveTeam("user1", 10L);
+        teamService.leaveTeam("1", 10L);
 
         var inOrder = inOrder(teamChatReadStatusRepository, teamChatMessageRepository, teamMemberRepository, teamRepository);
         inOrder.verify(teamChatReadStatusRepository).deleteByTeamId(10L);
@@ -565,20 +565,20 @@ class TeamServiceTest {
 
     @Test
     void 팀_나가기_성공_마지막_리더이고_WorkItem이_없으면_리액션_삭제를_건너뛴다() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember member = TeamMember.create(team, user, TeamMemberRole.LEADER);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
         given(teamRepository.findById(10L)).willReturn(Optional.of(team));
         given(todoRepository.findIdsByTeamId(10L)).willReturn(List.of(100L));
         given(todoWorkItemRepository.findIdsByTodoIdIn(List.of(100L))).willReturn(List.of());
 
-        teamService.leaveTeam("user1", 10L);
+        teamService.leaveTeam("1", 10L);
 
         var inOrder = inOrder(todoWorkItemRepository, todoRepository,
                 teamChatReadStatusRepository, teamChatMessageRepository, teamMemberRepository, teamRepository);
@@ -627,9 +627,9 @@ class TeamServiceTest {
 
     @Test
     void 팀_나가기_실패_존재하지_않는_사용자() {
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.leaveTeam("unknown", 10L))
+        assertThatThrownBy(() -> teamService.leaveTeam("999", 10L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("로그인이 필요합니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -637,13 +637,13 @@ class TeamServiceTest {
 
     @Test
     void 팀_나가기_실패_소속된_팀이_아님() {
-        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        User user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.leaveTeam("user1", 10L))
+        assertThatThrownBy(() -> teamService.leaveTeam("1", 10L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("소속된 팀이 아닙니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
@@ -651,17 +651,17 @@ class TeamServiceTest {
 
     @Test
     void 팀_달성_통계_조회_성공() {
-        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        User user = User.create("1", "encodedPwd", "홍길동", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCDEFGH");
         ReflectionTestUtils.setField(team, "id", 1L);
         ReflectionTestUtils.setField(team, "successCount", 2);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(1L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(true);
 
-        var response = teamService.getTeamAchievement(1L, "user1");
+        var response = teamService.getTeamAchievement(1L, "1");
 
         assertThat(response.teamId()).isEqualTo(1L);
         assertThat(response.successCount()).isEqualTo(2);
@@ -669,13 +669,13 @@ class TeamServiceTest {
 
     @Test
     void 팀_달성_통계_조회_실패_존재하지_않는_팀() {
-        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        User user = User.create("1", "encodedPwd", "홍길동", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(99L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.getTeamAchievement(99L, "user1"))
+        assertThatThrownBy(() -> teamService.getTeamAchievement(99L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("존재하지 않는 팀입니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
@@ -683,16 +683,16 @@ class TeamServiceTest {
 
     @Test
     void 팀_달성_통계_조회_실패_팀에_속하지_않은_사용자() {
-        User user = User.create("user1", "encodedPwd", "홍길동", null);
+        User user = User.create("1", "encodedPwd", "홍길동", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCDEFGH");
         ReflectionTestUtils.setField(team, "id", 1L);
 
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findById(1L)).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(1L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> teamService.getTeamAchievement(1L, "user1"))
+        assertThatThrownBy(() -> teamService.getTeamAchievement(1L, "1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("팀에 접근할 권한이 없습니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));

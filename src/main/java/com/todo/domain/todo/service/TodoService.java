@@ -91,8 +91,8 @@ public class TodoService {
     private final TodoStatusTransitionService todoStatusTransitionService;
 
     @Transactional
-    public CreateTodoResponse createTodo(String loginId, Long teamId, CreateTodoRequest request) {
-        User creator = findAuthenticatedUser(loginId);
+    public CreateTodoResponse createTodo(String userId, Long teamId, CreateTodoRequest request) {
+        User creator = findAuthenticatedUser(userId);
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND));
         requireTeamMember(teamId, creator.getId(), "팀에 접근할 권한이 없습니다.");
@@ -129,8 +129,8 @@ public class TodoService {
         return toCreateResponse(todo, workItems);
     }
 
-    public List<TodoSummaryResponse> getTodoList(Long teamId, String loginId, String filter, String date) {
-        User user = validateTeamMember(teamId, loginId);
+    public List<TodoSummaryResponse> getTodoList(Long teamId, String userId, String filter, String date) {
+        User user = validateTeamMember(teamId, userId);
         boolean hasFilter = filter != null && !filter.isBlank();
         boolean hasDate = date != null && !date.isBlank();
         if (hasFilter && hasDate) {
@@ -153,11 +153,11 @@ public class TodoService {
 
     public TodoPeriodReportResponse getTodoPeriodReport(
             Long teamId,
-            String loginId,
+            String userId,
             String startDate,
             String endDate
     ) {
-        validateTeamMember(teamId, loginId);
+        validateTeamMember(teamId, userId);
         LocalDate start = parseRequiredDate("startDate", startDate);
         LocalDate end = parseRequiredDate("endDate", endDate);
         if (start.isAfter(end)) {
@@ -181,8 +181,8 @@ public class TodoService {
         );
     }
 
-    public TodoDetailResponse getTodoDetail(Long todoId, String loginId) {
-        User user = findAuthenticatedUser(loginId);
+    public TodoDetailResponse getTodoDetail(Long todoId, String userId) {
+        User user = findAuthenticatedUser(userId);
         Todo todo = todoRepository.findByIdWithCreatorAndTeam(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
         requireTeamMember(todo.getTeam().getId(), user.getId(), "해당 투두의 상세 정보 조회 권한이 없습니다.");
@@ -224,8 +224,8 @@ public class TodoService {
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void submitTodo(Long todoId, String loginId, SubmitTodoRequest request) {
-        User user = findAuthenticatedUser(loginId);
+    public void submitTodo(Long todoId, String userId, SubmitTodoRequest request) {
+        User user = findAuthenticatedUser(userId);
         TodoWorkItem workItem = todoWorkItemRepository
                 .findDirectByTodoIdAndAssigneeIdWithTodo(todoId, user.getId())
                 .orElseThrow(() -> new BusinessException("해당 투두의 DIRECT 담당자가 아닙니다.", HttpStatus.FORBIDDEN));
@@ -233,15 +233,15 @@ public class TodoService {
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void submitTodoWorkItem(Long workItemId, String loginId, SubmitTodoRequest request) {
-        User user = findAuthenticatedUser(loginId);
+    public void submitTodoWorkItem(Long workItemId, String userId, SubmitTodoRequest request) {
+        User user = findAuthenticatedUser(userId);
         TodoWorkItem workItem = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
         submitWorkItem(workItemId, workItem.getTodo().getId(), user, request.proofImageKey());
     }
 
-    public TodoWorkItemSubmissionResponse getTodoWorkItemSubmission(Long workItemId, String loginId) {
-        User user = findAuthenticatedUser(loginId);
+    public TodoWorkItemSubmissionResponse getTodoWorkItemSubmission(Long workItemId, String userId) {
+        User user = findAuthenticatedUser(userId);
         TodoWorkItem workItem = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
         requireTeamMember(workItem.getTodo().getTeam().getId(), user.getId(), "해당 제출 사진을 조회할 권한이 없습니다.");
@@ -264,8 +264,8 @@ public class TodoService {
     }
 
     @Transactional
-    public TodoReactionResponse reactTodoWorkItem(Long workItemId, String loginId, ReactTodoRequest request) {
-        User user = findAuthenticatedUser(loginId);
+    public TodoReactionResponse reactTodoWorkItem(Long workItemId, String userId, ReactTodoRequest request) {
+        User user = findAuthenticatedUser(userId);
         TodoWorkItem workItem = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
         requireTeamMember(workItem.getTodo().getTeam().getId(), user.getId(), "팀에 접근할 권한이 없습니다.");
@@ -286,17 +286,17 @@ public class TodoService {
      */
     @Deprecated
     @Transactional
-    public TodoReactionResponse reactTodoParticipant(Long participantId, String loginId, ReactTodoRequest request) {
-        return reactTodoWorkItem(participantId, loginId, request);
+    public TodoReactionResponse reactTodoParticipant(Long participantId, String userId, ReactTodoRequest request) {
+        return reactTodoWorkItem(participantId, userId, request);
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public TodoWorkItemAssigneeResponse reassignTodoWorkItem(
             Long workItemId,
-            String loginId,
+            String userId,
             AssignTodoWorkItemRequest request
     ) {
-        User requester = findAuthenticatedUser(loginId);
+        User requester = findAuthenticatedUser(userId);
         TodoWorkItem snapshot = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
         Long teamId = snapshot.getTodo().getTeam().getId();
@@ -719,8 +719,8 @@ public class TodoService {
         return result;
     }
 
-    private User validateTeamMember(Long teamId, String loginId) {
-        User user = findAuthenticatedUser(loginId);
+    private User validateTeamMember(Long teamId, String userId) {
+        User user = findAuthenticatedUser(userId);
         if (!teamRepository.existsById(teamId)) {
             throw new BusinessException("존재하지 않는 팀입니다.", HttpStatus.NOT_FOUND);
         }
@@ -728,8 +728,8 @@ public class TodoService {
         return user;
     }
 
-    private User findAuthenticatedUser(String loginId) {
-        return userRepository.findByLoginId(loginId)
+    private User findAuthenticatedUser(String userId) {
+        return userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
     }
 

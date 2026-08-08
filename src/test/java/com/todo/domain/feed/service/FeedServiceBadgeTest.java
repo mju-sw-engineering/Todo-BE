@@ -81,7 +81,7 @@ class FeedServiceBadgeTest {
         );
 
         me = user(1L);
-        lenient().when(userRepository.findByLoginId("tester")).thenReturn(Optional.of(me));
+        lenient().when(userRepository.findById(1L)).thenReturn(Optional.of(me));
         givenMyActivity(List.of());
     }
 
@@ -156,7 +156,7 @@ class FeedServiceBadgeTest {
     @Test
     @DisplayName("활동이 없으면 6종 전부 미획득 상태로 카탈로그 순서대로 반환한다")
     void 활동_없음_전부_미획득() {
-        List<BadgeResponse> badges = feedService.getBadges("tester");
+        List<BadgeResponse> badges = feedService.getBadges("1");
 
         assertThat(badges).extracting(BadgeResponse::id).containsExactly(
                 "first-honey", "streak-7", "first-full-hive", "streak-30", "full-hive-3", "team-all-in");
@@ -168,7 +168,7 @@ class FeedServiceBadgeTest {
     void 첫_꿀_획득() {
         givenMyActivity(List.of(checkedIn(TODAY, 1L)));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("first-honey")).isTrue();
         assertThat(acquired.get("streak-7")).isFalse();
@@ -181,7 +181,7 @@ class FeedServiceBadgeTest {
         // 7/1~7/7 연속 후 기록 없음 — 현재 스트릭은 0이지만 배지는 획득
         givenMyActivity(dailyCheckIns(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 7), 1L));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("streak-7")).isTrue();
         assertThat(acquired.get("streak-30")).isFalse();
@@ -192,7 +192,7 @@ class FeedServiceBadgeTest {
     void 스트릭30_획득() {
         givenMyActivity(dailyCheckIns(LocalDate.of(2026, 6, 20), LocalDate.of(2026, 7, 19), 1L));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("streak-7")).isTrue();
         assertThat(acquired.get("streak-30")).isTrue();
@@ -206,7 +206,7 @@ class FeedServiceBadgeTest {
         checkIns.addAll(dailyCheckIns(LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 13), 1L));
         givenMyActivity(checkIns);
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("streak-7")).isFalse();
     }
@@ -216,7 +216,7 @@ class FeedServiceBadgeTest {
     void 첫_완주_획득() {
         givenMyActivity(dailyCheckIns(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31), 1L));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("first-full-hive")).isTrue();
         assertThat(acquired.get("full-hive-3")).isFalse();
@@ -229,7 +229,7 @@ class FeedServiceBadgeTest {
     void 삼개월_완주_획득() {
         givenMyActivity(dailyCheckIns(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 7, 31), 1L));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("first-full-hive")).isTrue();
         assertThat(acquired.get("full-hive-3")).isTrue();
@@ -241,7 +241,7 @@ class FeedServiceBadgeTest {
         // 8/1~8/8(오늘)까지 모두 채워도 이번 달은 판정 대상이 아니다
         givenMyActivity(dailyCheckIns(LocalDate.of(2026, 8, 1), TODAY, 1L));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("first-full-hive")).isFalse();
     }
@@ -253,7 +253,7 @@ class FeedServiceBadgeTest {
         LocalDate day = LocalDate.of(2026, 8, 5);
         givenTeamActivity(List.of(new CheckIn(day, 1L, 100L), new CheckIn(day, 2L, 101L)));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("team-all-in")).isTrue();
     }
@@ -264,7 +264,7 @@ class FeedServiceBadgeTest {
         givenMyTeam(List.of(me));
         givenTeamActivity(List.of(new CheckIn(LocalDate.of(2026, 8, 5), 1L, 100L)));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("team-all-in")).isFalse();
     }
@@ -277,7 +277,7 @@ class FeedServiceBadgeTest {
         // 나와 외부인(3L)만 활동 — 팀원 2L이 빠졌으므로 전원 참여가 아니다
         givenTeamActivity(List.of(new CheckIn(day, 1L, 100L), new CheckIn(day, 3L, 102L)));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("team-all-in")).isFalse();
     }
@@ -290,7 +290,7 @@ class FeedServiceBadgeTest {
                 new CheckIn(LocalDate.of(2026, 8, 4), 1L, 100L),
                 new CheckIn(LocalDate.of(2026, 8, 5), 2L, 101L)));
 
-        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("tester"));
+        Map<String, Boolean> acquired = acquiredById(feedService.getBadges("1"));
 
         assertThat(acquired.get("team-all-in")).isFalse();
     }
@@ -298,7 +298,7 @@ class FeedServiceBadgeTest {
     @Test
     @DisplayName("존재하지 않는 사용자는 인증 예외를 던진다")
     void 없는_사용자_거부() {
-        assertThatThrownBy(() -> feedService.getBadges("ghost"))
+        assertThatThrownBy(() -> feedService.getBadges("999"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("사용자를 찾을 수 없습니다");
     }

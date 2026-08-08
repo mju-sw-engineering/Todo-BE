@@ -96,15 +96,15 @@ class UserServiceTest {
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {
-        User user = user(1L, "user1", "닉네임", "profiles/user1.png");
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        User user = user(1L, "1", "닉네임", "profiles/user1.png");
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of());
         given(fileService.resolveImageUrl("profiles/user1.png")).willReturn("https://example.com/profiles/user1.png");
 
-        MyPageResponse response = userService.getMyPage("user1");
+        MyPageResponse response = userService.getMyPage("1");
 
         assertThat(response.userId()).isEqualTo(1L);
-        assertThat(response.loginId()).isEqualTo("user1");
+        assertThat(response.loginId()).isEqualTo("1");
         assertThat(response.nickname()).isEqualTo("닉네임");
         assertThat(response.profileImageUrl()).isEqualTo("https://example.com/profiles/user1.png");
         assertThat(response.teams()).isEmpty();
@@ -112,14 +112,14 @@ class UserServiceTest {
 
     @Test
     void 마이페이지_조회_성공_소속팀있음() {
-        User user = user(1L, "user1", "닉네임", null);
+        User user = user(1L, "1", "닉네임", null);
         Team team = Team.create("스터디 팀", "teams/study.png", "ABCDEFGH");
         ReflectionTestUtils.setField(team, "id", 10L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of(team));
         given(fileService.resolveImageUrl("teams/study.png")).willReturn("https://example.com/teams/study.png");
 
-        MyPageResponse response = userService.getMyPage("user1");
+        MyPageResponse response = userService.getMyPage("1");
 
         assertThat(response.teams()).singleElement().satisfies(summary -> {
             assertThat(summary.teamId()).isEqualTo(10L);
@@ -130,11 +130,11 @@ class UserServiceTest {
 
     @Test
     void 닉네임_수정_성공() {
-        User user = user(1L, "user1", "기존닉네임", null);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        User user = user(1L, "1", "기존닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of());
 
-        MyPageResponse response = userService.updateNickname("user1", new UpdateNicknameRequest("새닉네임"));
+        MyPageResponse response = userService.updateNickname("1", new UpdateNicknameRequest("새닉네임"));
 
         assertThat(user.getNickname()).isEqualTo("새닉네임");
         assertThat(response.nickname()).isEqualTo("새닉네임");
@@ -142,9 +142,9 @@ class UserServiceTest {
 
     @Test
     void 마이페이지_조회_실패_존재하지_않는_사용자() {
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> userService.getMyPage("unknown"))
+        assertThatThrownBy(() -> userService.getMyPage("999"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("로그인이 필요합니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -152,9 +152,9 @@ class UserServiceTest {
 
     @Test
     void 닉네임_수정_실패_존재하지_않는_사용자() {
-        given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> userService.updateNickname("unknown", new UpdateNicknameRequest("새닉네임")))
+        assertThatThrownBy(() -> userService.updateNickname("999", new UpdateNicknameRequest("새닉네임")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("로그인이 필요합니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -168,7 +168,7 @@ class UserServiceTest {
         givenWithdrawalUser(withdrawing);
         given(teamMemberRepository.findTeamsByUserId(withdrawing.getId())).willReturn(List.of(firstTeam, secondTeam));
 
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
         InOrder order = inOrder(todoWorkItemLifecycleService);
         order.verify(todoWorkItemLifecycleService).handleTeamDeparture(10L, withdrawing);
@@ -181,7 +181,7 @@ class UserServiceTest {
         User withdrawing = withdrawingUser();
         givenWithdrawalUser(withdrawing);
 
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verify(todoRepository).clearCreatorByUserId(1L);
         verify(teamChatMessageRepository).clearSenderByUserId(1L);
@@ -191,12 +191,12 @@ class UserServiceTest {
 
     @Test
     void 회원탈퇴는_완료사진_키를_outbox에_넣은_뒤_완료기록을_익명화한다() {
-        User withdrawing = user(1L, "user1", "닉네임", "profiles/1/profile.png");
+        User withdrawing = user(1L, "1", "닉네임", "profiles/1/profile.png");
         givenWithdrawalUser(withdrawing);
         given(todoWorkItemRepository.findProofImageKeysByAssigneeId(1L)).willReturn(List.of("proofs/1/original.png"));
         given(todoWorkItemRepository.findProofThumbnailKeysByAssigneeId(1L)).willReturn(List.of("proofs/1/thumb.jpg"));
 
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verify(fileDeletionOutboxService).enqueueAll(List.of(
                 "profiles/1/profile.png", "proofs/1/original.png", "proofs/1/thumb.jpg"
@@ -209,7 +209,7 @@ class UserServiceTest {
         User withdrawing = withdrawingUser();
         givenWithdrawalUser(withdrawing);
 
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
         InOrder order = inOrder(notificationRepository);
         order.verify(notificationRepository).deleteByReceiverId(1L);
@@ -222,9 +222,9 @@ class UserServiceTest {
         withdrawing.assignEmail("user1@example.com");
         givenWithdrawalUser(withdrawing);
 
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
-        verify(reauthService).consume("user1", REAUTH_TOKEN, ReauthPurpose.WITHDRAWAL);
+        verify(reauthService).consume("1", REAUTH_TOKEN, ReauthPurpose.WITHDRAWAL);
         verify(teamChatReadStatusRepository).deleteByUserId(1L);
         verify(todoReactionRepository).deleteByUserId(1L);
         verify(userConsentRepository).deleteByUserId(1L);
@@ -239,7 +239,7 @@ class UserServiceTest {
         User withdrawing = withdrawingUser();
         givenWithdrawalUser(withdrawing);
 
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
         InOrder order = inOrder(notificationRepository, userConsentRepository, teamChatMessageRepository,
                 todoRepository, todoWorkItemLifecycleService, teamMemberRepository, userRepository);
@@ -261,7 +261,7 @@ class UserServiceTest {
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of(10L));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of());
 
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verify(teamService).deleteTeamWithAllData(10L);
         verify(userRepository).delete(withdrawing);
@@ -270,13 +270,13 @@ class UserServiceTest {
     @Test
     void 회원탈퇴는_남은_리더팀의_가장_먼저_가입한_멤버에게_권한을_넘긴다() {
         User withdrawing = withdrawingUser();
-        User remaining = user(2L, "user2", "남은사람", null);
+        User remaining = user(2L, "2", "남은사람", null);
         TeamMember remainingMember = TeamMember.create(team(10L), remaining, TeamMemberRole.MEMBER);
         givenWithdrawalUser(withdrawing);
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of(10L));
         given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of(remainingMember));
 
-        userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN));
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
         assertThat(remainingMember.getRole()).isEqualTo(TeamMemberRole.LEADER);
         verify(teamService, never()).deleteTeamWithAllData(10L);
@@ -288,7 +288,7 @@ class UserServiceTest {
         givenWithdrawalUser(withdrawing);
         willThrow(new RuntimeException("DB 오류")).given(userConsentRepository).deleteByUserId(1L);
 
-        assertThatThrownBy(() -> userService.deleteUser("user1", new DeleteUserRequest(REAUTH_TOKEN)))
+        assertThatThrownBy(() -> userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN)))
                 .isInstanceOf(RuntimeException.class);
 
         verify(userRepository, never()).delete(withdrawing);
@@ -296,7 +296,7 @@ class UserServiceTest {
     }
 
     private User withdrawingUser() {
-        return user(1L, "user1", "닉네임", null);
+        return user(1L, "1", "닉네임", null);
     }
 
     private User user(Long id, String loginId, String nickname, String profileImageUrl) {
@@ -312,7 +312,7 @@ class UserServiceTest {
     }
 
     private void givenWithdrawalUser(User user) {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findTeamIdsByUserIdAndRole(1L, TeamMemberRole.LEADER)).willReturn(List.of());
     }
 }

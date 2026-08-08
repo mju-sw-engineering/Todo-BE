@@ -97,7 +97,7 @@ class FeedServiceTest {
         givenMyTeams(me);
         givenTeamActivity(List.of(), List.of(), List.of());
 
-        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("1");
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).weeks()).hasSize(8);
@@ -117,7 +117,7 @@ class FeedServiceTest {
                 List.of(new CheckInActivity(today, 2L, 101L))
         );
 
-        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("1");
 
         TeamWeekRhythmResponse currentWeek = result.get(0).weeks().get(7);
         int todayIndex = today.getDayOfWeek().getValue() - 1;
@@ -130,7 +130,7 @@ class FeedServiceTest {
         givenMyTeams(me);
         givenTeamActivity(List.of(), List.of(), List.of());
 
-        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("1");
 
         TeamWeekRhythmResponse currentWeek = result.get(0).weeks().get(7);
         int todayIndex = LocalDate.now(KST).getDayOfWeek().getValue() - 1;
@@ -154,7 +154,7 @@ class FeedServiceTest {
                 List.of()
         );
 
-        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("1");
 
         assertThat(result.get(0).todayMembers())
                 .extracting(m -> m.userId())
@@ -176,7 +176,7 @@ class FeedServiceTest {
                 List.of()
         );
 
-        List<TeamRhythmResponse> result = feedService.getTeamRhythm("user1");
+        List<TeamRhythmResponse> result = feedService.getTeamRhythm("1");
 
         assertThat(result.get(0).streakDays()).isEqualTo(2);
     }
@@ -186,7 +186,7 @@ class FeedServiceTest {
         givenMe(user(1L));
         givenMyActivity(List.of(), List.of(), List.of());
 
-        MyStreakResponse result = feedService.getMyStreak("user1", null, null);
+        MyStreakResponse result = feedService.getMyStreak("1", null, null);
 
         assertThat(result.days()).hasSize(112);
         assertThat(result.days().get(0).date().getDayOfWeek()).isEqualTo(DayOfWeek.MONDAY);
@@ -204,7 +204,7 @@ class FeedServiceTest {
                 List.of(new CheckInActivity(today, 1L, 101L))
         );
 
-        MyStreakResponse result = feedService.getMyStreak("user1", null, null);
+        MyStreakResponse result = feedService.getMyStreak("1", null, null);
 
         MyStreakDayResponse todayEntry = result.days().stream()
                 .filter(d -> d.date().equals(today))
@@ -227,7 +227,7 @@ class FeedServiceTest {
                 List.of()
         );
 
-        MyStreakResponse result = feedService.getMyStreak("user1", null, null);
+        MyStreakResponse result = feedService.getMyStreak("1", null, null);
 
         assertThat(result.currentStreak()).isEqualTo(2);
     }
@@ -238,7 +238,7 @@ class FeedServiceTest {
         givenMyActivity(List.of(), List.of(), List.of());
 
         // 2026-01-01은 목요일, 2026-06-30은 화요일
-        MyStreakResponse result = feedService.getMyStreak("user1", "2026-01-01", "2026-06-30");
+        MyStreakResponse result = feedService.getMyStreak("1", "2026-01-01", "2026-06-30");
 
         assertThat(result.days().get(0).date()).isEqualTo(LocalDate.of(2025, 12, 29));
         assertThat(result.days().get(0).date().getDayOfWeek()).isEqualTo(DayOfWeek.MONDAY);
@@ -254,7 +254,7 @@ class FeedServiceTest {
         LocalDate today = LocalDate.now(KST);
 
         MyStreakResponse result = feedService.getMyStreak(
-                "user1", today.toString(), today.plusDays(10).toString());
+                "1", today.toString(), today.plusDays(10).toString());
 
         assertThat(result.days())
                 .filteredOn(d -> d.date().isAfter(today))
@@ -266,7 +266,7 @@ class FeedServiceTest {
     void 시작일이_종료일보다_늦으면_거부한다() {
         givenMe(user(1L));
 
-        assertThatThrownBy(() -> feedService.getMyStreak("user1", "2026-06-30", "2026-01-01"))
+        assertThatThrownBy(() -> feedService.getMyStreak("1", "2026-06-30", "2026-01-01"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
@@ -275,7 +275,7 @@ class FeedServiceTest {
     void 시작일만_주면_거부한다() {
         givenMe(user(1L));
 
-        assertThatThrownBy(() -> feedService.getMyStreak("user1", "2026-01-01", null))
+        assertThatThrownBy(() -> feedService.getMyStreak("1", "2026-01-01", null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
@@ -284,7 +284,7 @@ class FeedServiceTest {
     void 잘못된_날짜_형식은_거부한다() {
         givenMe(user(1L));
 
-        assertThatThrownBy(() -> feedService.getMyStreak("user1", "2026/01/01", "2026-06-30"))
+        assertThatThrownBy(() -> feedService.getMyStreak("1", "2026/01/01", "2026-06-30"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
@@ -293,13 +293,13 @@ class FeedServiceTest {
     void 오십삼주를_넘는_기간은_거부한다() {
         givenMe(user(1L));
 
-        assertThatThrownBy(() -> feedService.getMyStreak("user1", "2025-01-01", "2026-06-30"))
+        assertThatThrownBy(() -> feedService.getMyStreak("1", "2025-01-01", "2026-06-30"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     private void givenMe(User me) {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(me));
+        given(userRepository.findById(1L)).willReturn(Optional.of(me));
     }
 
     private void givenMyTeams(User me) {

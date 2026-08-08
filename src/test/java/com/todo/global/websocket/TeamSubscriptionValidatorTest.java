@@ -28,52 +28,52 @@ class TeamSubscriptionValidatorTest {
 
     @Test
     void 알림_채널_구독은_허용한다() {
-        assertThatCode(() -> validator.validate("/user/queue/notifications", "user1"))
+        assertThatCode(() -> validator.validate("/user/queue/notifications", "1"))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void 에러_채널_구독은_허용한다() {
-        assertThatCode(() -> validator.validate("/user/queue/errors", "user1"))
+        assertThatCode(() -> validator.validate("/user/queue/errors", "1"))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void 팀_채팅_채널은_팀원이면_구독을_허용한다() {
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
 
-        assertThatCode(() -> validator.validate("/topic/teams/100", "user1"))
+        assertThatCode(() -> validator.validate("/topic/teams/100", "1"))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void 타이핑_채널은_팀원이면_구독을_허용한다() {
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
 
-        assertThatCode(() -> validator.validate("/topic/teams/100/typing", "user1"))
+        assertThatCode(() -> validator.validate("/topic/teams/100/typing", "1"))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void 팀원이_아니면_구독을_거부한다() {
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> validator.validate("/topic/teams/100", "user1"))
+        assertThatThrownBy(() -> validator.validate("/topic/teams/100", "1"))
                 .isInstanceOf(MessageDeliveryException.class)
                 .hasMessage("해당 채널을 구독할 권한이 없습니다.");
     }
 
     @Test
     void 삭제된_사용자는_팀_채널_구독을_거부한다() {
-        given(userRepository.findByLoginId("deleted-user")).willReturn(Optional.empty());
+        given(userRepository.findById(998L)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> validator.validate("/topic/teams/100", "deleted-user"))
+        assertThatThrownBy(() -> validator.validate("/topic/teams/100", "998"))
                 .isInstanceOf(MessageDeliveryException.class)
                 .hasMessage("사용자를 찾을 수 없습니다.");
     }
@@ -81,24 +81,24 @@ class TeamSubscriptionValidatorTest {
     @Test
     void 존재하지_않는_팀_채널도_권한_없음으로_동일하게_거부한다() {
         User user = userWithId(1L);
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(999L, 1L)).willReturn(false);
 
-        assertThatThrownBy(() -> validator.validate("/topic/teams/999", "user1"))
+        assertThatThrownBy(() -> validator.validate("/topic/teams/999", "1"))
                 .isInstanceOf(MessageDeliveryException.class)
                 .hasMessage("해당 채널을 구독할 권한이 없습니다.");
     }
 
     @Test
     void 허용되지_않은_경로는_구독을_거부한다() {
-        assertThatThrownBy(() -> validator.validate("/topic/todos/10", "user1"))
+        assertThatThrownBy(() -> validator.validate("/topic/todos/10", "1"))
                 .isInstanceOf(MessageDeliveryException.class)
                 .hasMessage("허용되지 않은 구독 채널입니다.");
     }
 
     @Test
     void destination이_null이면_구독을_거부한다() {
-        assertThatThrownBy(() -> validator.validate(null, "user1"))
+        assertThatThrownBy(() -> validator.validate(null, "1"))
                 .isInstanceOf(MessageDeliveryException.class)
                 .hasMessage("허용되지 않은 구독 채널입니다.");
     }

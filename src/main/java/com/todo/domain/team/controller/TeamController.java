@@ -40,8 +40,8 @@ public class TeamController implements TeamControllerDocs {
             @PathVariable Long teamId,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        return ResponseEntity.ok(ApiResponse.success(teamHiveService.getTeamHive(teamId, loginId)));
+        String userId = authentication.getName();
+        return ResponseEntity.ok(ApiResponse.success(teamHiveService.getTeamHive(teamId, userId)));
     }
 
     @GetMapping("/{teamId}/achievements")
@@ -49,8 +49,8 @@ public class TeamController implements TeamControllerDocs {
             @PathVariable Long teamId,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        TeamAchievementResponse response = teamService.getTeamAchievement(teamId, loginId);
+        String userId = authentication.getName();
+        TeamAchievementResponse response = teamService.getTeamAchievement(teamId, userId);
         return ResponseEntity.ok(ApiResponse.success(response, "팀 달성률을 조회했습니다"));
     }
 
@@ -59,15 +59,15 @@ public class TeamController implements TeamControllerDocs {
             @PathVariable Long teamId,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        TeamDetailResponse response = teamService.getTeamDetail(teamId, loginId);
+        String userId = authentication.getName();
+        TeamDetailResponse response = teamService.getTeamDetail(teamId, userId);
         return ResponseEntity.ok(ApiResponse.success(response, "팀 정보를 조회했습니다"));
     }
 
     @GetMapping
     public ResponseEntity<ApiResponse<TeamListResponse>> getMyTeams(Authentication authentication) {
-        String loginId = authentication.getName();
-        TeamListResponse response = teamService.getMyTeams(loginId);
+        String userId = authentication.getName();
+        TeamListResponse response = teamService.getMyTeams(userId);
         return ResponseEntity.ok(ApiResponse.success(response, "팀 목록을 조회했습니다"));
     }
 
@@ -76,8 +76,8 @@ public class TeamController implements TeamControllerDocs {
             @Valid @RequestBody JoinTeamRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        JoinTeamResponse response = teamService.joinTeam(loginId, request);
+        String userId = authentication.getName();
+        JoinTeamResponse response = teamService.joinTeam(userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "팀 참여가 완료되었습니다"));
     }
 
@@ -87,8 +87,8 @@ public class TeamController implements TeamControllerDocs {
             @Valid @RequestBody InviteTeamRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        InviteTeamResponse response = teamService.inviteTeamMembers(loginId, teamId, request);
+        String userId = authentication.getName();
+        InviteTeamResponse response = teamService.inviteTeamMembers(userId, teamId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "팀 초대 메일이 발송되었습니다"));
     }
 
@@ -97,8 +97,8 @@ public class TeamController implements TeamControllerDocs {
             @Valid @RequestBody CreateTeamRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        CreateTeamResponse response = teamService.createTeam(loginId, request);
+        String userId = authentication.getName();
+        CreateTeamResponse response = teamService.createTeam(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(response, "팀 생성이 완료됐습니다"));
     }
@@ -109,8 +109,8 @@ public class TeamController implements TeamControllerDocs {
             @PathVariable Long targetUserId,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        teamService.removeMember(loginId, teamId, targetUserId);
+        String userId = authentication.getName();
+        teamService.removeMember(userId, teamId, targetUserId);
         return ResponseEntity.ok(ApiResponse.success(null, "팀원이 강퇴되었습니다"));
     }
 
@@ -119,8 +119,8 @@ public class TeamController implements TeamControllerDocs {
             @PathVariable Long teamId,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        teamService.leaveTeam(loginId, teamId);
+        String userId = authentication.getName();
+        teamService.leaveTeam(userId, teamId);
         return ResponseEntity.ok(ApiResponse.success(null, "그룹에서 나왔습니다"));
     }
 }

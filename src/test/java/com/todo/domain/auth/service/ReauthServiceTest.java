@@ -58,12 +58,12 @@ class ReauthServiceTest {
     void setUp() {
         Clock clock = Clock.fixed(NOW, KST);
         reauthService = new ReauthService(userRepository, reauthTokenRepository, passwordEncoder, rateLimiter, clock);
-        user = User.create("user1", "encodedPwd", "닉네임", null);
+        user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
     }
 
     private void givenPasswordMatches() {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(rateLimiter.tryAcquire(anyString(), anyInt(), any(Duration.class))).willReturn(true);
         given(passwordEncoder.matches("rawPwd", "encodedPwd")).willReturn(true);
     }
@@ -81,7 +81,7 @@ class ReauthServiceTest {
     void 비밀번호가_맞으면_토큰과_만료시각을_발급한다() {
         givenPasswordMatches();
 
-        ReauthResponse response = reauthService.reauthenticate("user1", new ReauthRequest("rawPwd", ReauthPurpose.WITHDRAWAL));
+        ReauthResponse response = reauthService.reauthenticate("1", new ReauthRequest("rawPwd", ReauthPurpose.WITHDRAWAL));
 
         assertThat(response.reauthToken()).isNotBlank();
         assertThat(response.expiresAt()).isEqualTo(
@@ -92,7 +92,7 @@ class ReauthServiceTest {
     void 발급한_토큰은_원문이_아니라_해시로_저장된다() {
         givenPasswordMatches();
 
-        ReauthResponse response = reauthService.reauthenticate("user1", new ReauthRequest("rawPwd", ReauthPurpose.WITHDRAWAL));
+        ReauthResponse response = reauthService.reauthenticate("1", new ReauthRequest("rawPwd", ReauthPurpose.WITHDRAWAL));
 
         ArgumentCaptor<ReauthToken> captor = ArgumentCaptor.forClass(ReauthToken.class);
         verify(reauthTokenRepository).save(captor.capture());
@@ -105,18 +105,18 @@ class ReauthServiceTest {
     void 재발급하면_같은_용도의_이전_토큰은_무효가_된다() {
         givenPasswordMatches();
 
-        reauthService.reauthenticate("user1", new ReauthRequest("rawPwd", ReauthPurpose.WITHDRAWAL));
+        reauthService.reauthenticate("1", new ReauthRequest("rawPwd", ReauthPurpose.WITHDRAWAL));
 
         verify(reauthTokenRepository).deleteByUserIdAndPurpose(1L, ReauthPurpose.WITHDRAWAL);
     }
 
     @Test
     void 비밀번호가_틀리면_토큰을_발급하지_않는다() {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(rateLimiter.tryAcquire(anyString(), anyInt(), any(Duration.class))).willReturn(true);
         given(passwordEncoder.matches("wrongPwd", "encodedPwd")).willReturn(false);
 
-        assertThatThrownBy(() -> reauthService.reauthenticate("user1", new ReauthRequest("wrongPwd", ReauthPurpose.WITHDRAWAL)))
+        assertThatThrownBy(() -> reauthService.reauthenticate("1", new ReauthRequest("wrongPwd", ReauthPurpose.WITHDRAWAL)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("비밀번호가 일치하지 않습니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -126,10 +126,10 @@ class ReauthServiceTest {
 
     @Test
     void 시도_한도를_넘으면_비밀번호를_대조하지_않는다() {
-        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(rateLimiter.tryAcquire(anyString(), anyInt(), any(Duration.class))).willReturn(false);
 
-        assertThatThrownBy(() -> reauthService.reauthenticate("user1", new ReauthRequest("rawPwd", ReauthPurpose.WITHDRAWAL)))
+        assertThatThrownBy(() -> reauthService.reauthenticate("1", new ReauthRequest("rawPwd", ReauthPurpose.WITHDRAWAL)))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
 
@@ -143,7 +143,7 @@ class ReauthServiceTest {
 
         given(reauthTokenRepository.markAsUsed(any(), any())).willReturn(1);
 
-        Long userId = reauthService.consume("user1", "raw-token", ReauthPurpose.WITHDRAWAL);
+        Long userId = reauthService.consume("1", "raw-token", ReauthPurpose.WITHDRAWAL);
 
         assertThat(userId).isEqualTo(1L);
         verify(reauthTokenRepository).markAsUsed(any(), any());
@@ -155,7 +155,7 @@ class ReauthServiceTest {
         token.markAsUsed(LocalDateTime.now(Clock.fixed(NOW, KST)).minusMinutes(1));
         given(reauthTokenRepository.findByTokenHash(hashOf("raw-token"))).willReturn(Optional.of(token));
 
-        assertThatThrownBy(() -> reauthService.consume("user1", "raw-token", ReauthPurpose.WITHDRAWAL))
+        assertThatThrownBy(() -> reauthService.consume("1", "raw-token", ReauthPurpose.WITHDRAWAL))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 사용된 재인증입니다");
     }
@@ -165,7 +165,7 @@ class ReauthServiceTest {
         ReauthToken token = storedToken("raw-token", ReauthPurpose.WITHDRAWAL, LocalDateTime.now(Clock.fixed(NOW, KST)).minusSeconds(1));
         given(reauthTokenRepository.findByTokenHash(hashOf("raw-token"))).willReturn(Optional.of(token));
 
-        assertThatThrownBy(() -> reauthService.consume("user1", "raw-token", ReauthPurpose.WITHDRAWAL))
+        assertThatThrownBy(() -> reauthService.consume("1", "raw-token", ReauthPurpose.WITHDRAWAL))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("재인증이 만료되었습니다");
     }
@@ -185,14 +185,14 @@ class ReauthServiceTest {
     void 존재하지_않는_토큰은_통과하지_못한다() {
         given(reauthTokenRepository.findByTokenHash(anyString())).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> reauthService.consume("user1", "없는토큰", ReauthPurpose.WITHDRAWAL))
+        assertThatThrownBy(() -> reauthService.consume("1", "없는토큰", ReauthPurpose.WITHDRAWAL))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("재인증이 필요합니다");
     }
 
     @Test
     void 토큰이_비어_있으면_조회하지_않고_거부한다() {
-        assertThatThrownBy(() -> reauthService.consume("user1", "  ", ReauthPurpose.WITHDRAWAL))
+        assertThatThrownBy(() -> reauthService.consume("1", "  ", ReauthPurpose.WITHDRAWAL))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("재인증이 필요합니다");
 
@@ -205,7 +205,7 @@ class ReauthServiceTest {
         ReflectionTestUtils.setField(token, "purpose", null);
         given(reauthTokenRepository.findByTokenHash(hashOf("raw-token"))).willReturn(Optional.of(token));
 
-        assertThatThrownBy(() -> reauthService.consume("user1", "raw-token", ReauthPurpose.WITHDRAWAL))
+        assertThatThrownBy(() -> reauthService.consume("1", "raw-token", ReauthPurpose.WITHDRAWAL))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이 작업에 사용할 수 없는 재인증입니다");
     }
@@ -217,7 +217,7 @@ class ReauthServiceTest {
         // 검증을 통과한 직후 다른 요청이 먼저 소비한 상황
         given(reauthTokenRepository.markAsUsed(any(), any())).willReturn(0);
 
-        assertThatThrownBy(() -> reauthService.consume("user1", "raw-token", ReauthPurpose.WITHDRAWAL))
+        assertThatThrownBy(() -> reauthService.consume("1", "raw-token", ReauthPurpose.WITHDRAWAL))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 사용된 재인증입니다");
     }

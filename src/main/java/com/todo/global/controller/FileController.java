@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/files")
@@ -51,25 +52,28 @@ public class FileController {
             HttpServletRequest httpRequest
     ) {
         if (request.type() != UploadType.PROFILE) {
-            if (authentication == null || !authentication.isAuthenticated()) {
-                throw new BusinessException("이미지 업로드는 로그인이 필요합니다.", HttpStatus.UNAUTHORIZED);
-            }
-            String loginId = authentication.getName();
-            User user = userRepository.findByLoginId(loginId)
-                    .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
+            User user = resolveAuthenticatedUser(authentication)
+                    .orElseThrow(() -> new BusinessException("이미지 업로드는 로그인이 필요합니다.", HttpStatus.UNAUTHORIZED));
             return ResponseEntity.ok(ApiResponse.success(fileService.generatePresignedPutUrl(user.getId(), request)));
         }
 
-        Long userId = null;
-        if (authentication != null && authentication.isAuthenticated()) {
-            userId = userRepository.findByLoginId(authentication.getName())
-                    .map(User::getId)
-                    .orElse(null);
-        }
+        Long userId = resolveAuthenticatedUser(authentication).map(User::getId).orElse(null);
         if (userId == null) {
             requireAnonymousIssueQuota(httpRequest);
         }
         return ResponseEntity.ok(ApiResponse.success(fileService.generatePresignedPutUrl(userId, request)));
+    }
+
+    /** principal 이름은 userId 숫자다. 익명 principal("anonymousUser") 등 숫자가 아니면 비로그인으로 본다. */
+    private Optional<User> resolveAuthenticatedUser(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return Optional.empty();
+        }
+        try {
+            return userRepository.findById(Long.parseLong(authentication.getName()));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
     }
 
     /**

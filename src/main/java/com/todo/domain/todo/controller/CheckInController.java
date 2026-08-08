@@ -31,8 +31,8 @@ public class CheckInController implements CheckInControllerDocs {
             @Valid @RequestBody CheckInRequest request,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        CheckInResponse response = workItemCheckInService.checkIn(loginId, workItemId, request);
+        String userId = authentication.getName();
+        CheckInResponse response = workItemCheckInService.checkIn(userId, workItemId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(response, "체크인이 등록되었습니다."));
     }
@@ -42,8 +42,8 @@ public class CheckInController implements CheckInControllerDocs {
             @PathVariable Long workItemId,
             Authentication authentication
     ) {
-        String loginId = authentication.getName();
-        List<CheckInResponse> response = workItemCheckInService.getCheckIns(loginId, workItemId);
+        String userId = authentication.getName();
+        List<CheckInResponse> response = workItemCheckInService.getCheckIns(userId, workItemId);
         return ResponseEntity.ok(ApiResponse.success(response, "체크인 목록을 조회했습니다"));
     }
 }
