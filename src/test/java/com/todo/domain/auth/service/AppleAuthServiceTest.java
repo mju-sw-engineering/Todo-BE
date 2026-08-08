@@ -64,6 +64,8 @@ class AppleAuthServiceTest {
         assertThat(result).isInstanceOf(AppleAuthService.AppleLoginResult.LoggedIn.class);
         AppleAuthService.AppleLoginResult.LoggedIn logged = (AppleAuthService.AppleLoginResult.LoggedIn) result;
         assertThat(logged.loginResult().accessToken()).isEqualTo("access-token");
+        assertThat(user.getAppleRefreshToken()).isEqualTo("apple-rt");
+        assertThat(user.getAppleClientId()).isEqualTo(CLIENT_ID);
         then(refreshTokenRepository).should().save(any(RefreshToken.class));
     }
 
@@ -101,6 +103,8 @@ class AppleAuthServiceTest {
         LoginResult result = appleAuthService.appleComplete(new AppleCompleteRequest("setup-token", "새닉네임"));
 
         assertThat(result.accessToken()).isEqualTo("access-token");
+        assertThat(saved.getAppleRefreshToken()).isEqualTo("apple-rt");
+        assertThat(saved.getAppleClientId()).isEqualTo(CLIENT_ID);
         then(refreshTokenRepository).should().save(any(RefreshToken.class));
     }
 
