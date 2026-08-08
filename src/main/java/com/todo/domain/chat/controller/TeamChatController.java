@@ -71,7 +71,7 @@ public class TeamChatController implements TeamChatControllerDocs {
             Authentication authentication
     ) {
         TeamChatMessagePageResponse response = teamChatService.getMessages(teamId, authentication.getName(), cursorId, size);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "채팅 메시지를 조회했습니다"));
     }
 
     @PatchMapping("/{teamId}/chat/read")
@@ -81,7 +81,7 @@ public class TeamChatController implements TeamChatControllerDocs {
             Authentication authentication
     ) {
         teamChatService.markAsRead(teamId, authentication.getName(), request);
-        return ResponseEntity.ok(ApiResponse.success(null));
+        return ResponseEntity.ok(ApiResponse.success(null, "읽음 처리되었습니다"));
     }
 
     @GetMapping("/{teamId}/chat/unread-count")
@@ -90,6 +90,6 @@ public class TeamChatController implements TeamChatControllerDocs {
             Authentication authentication
     ) {
         ChatUnreadCountResponse response = teamChatService.getUnreadCount(teamId, authentication.getName());
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "미읽음 메시지 수를 조회했습니다"));
     }
 }

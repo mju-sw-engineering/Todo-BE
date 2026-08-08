@@ -38,11 +38,11 @@ public class AppleAuthController implements AppleAuthControllerDocs {
         if (result instanceof AppleAuthService.AppleLoginResult.LoggedIn logged) {
             return ResponseEntity.ok()
                     .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(logged.loginResult().refreshToken()).toString())
-                    .body(ApiResponse.success(new LoginResponse(logged.loginResult().accessToken())));
+                    .body(ApiResponse.success(new LoginResponse(logged.loginResult().accessToken()), "로그인되었습니다"));
         }
         AppleAuthService.AppleLoginResult.SetupRequired setup = (AppleAuthService.AppleLoginResult.SetupRequired) result;
         return ResponseEntity.accepted()
-                .body(ApiResponse.success(new AppleSetupResponse(setup.setupToken())));
+                .body(ApiResponse.success(new AppleSetupResponse(setup.setupToken()), "추가 정보 입력이 필요합니다"));
     }
 
     @PostMapping("/complete")
@@ -50,7 +50,7 @@ public class AppleAuthController implements AppleAuthControllerDocs {
         LoginResult result = appleAuthService.appleComplete(request);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(result.refreshToken()).toString())
-                .body(ApiResponse.success(new LoginResponse(result.accessToken())));
+                .body(ApiResponse.success(new LoginResponse(result.accessToken()), "회원가입이 완료되었습니다"));
     }
 
     private ResponseCookie buildRefreshCookie(String value) {

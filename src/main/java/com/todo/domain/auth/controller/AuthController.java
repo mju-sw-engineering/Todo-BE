@@ -52,12 +52,12 @@ public class AuthController implements AuthControllerDocs {
     @PostMapping("/email/verify")
     public ResponseEntity<ApiResponse<EmailVerifyResponse>> verifyEmailCode(@Valid @RequestBody EmailVerifyRequest request) {
         String token = emailVerificationService.verifyCode(request.email(), request.code());
-        return ResponseEntity.ok(ApiResponse.success(new EmailVerifyResponse(token)));
+        return ResponseEntity.ok(ApiResponse.success(new EmailVerifyResponse(token), "이메일 인증이 완료되었습니다"));
     }
 
     @PostMapping("/signup")
     public ResponseEntity<ApiResponse<SignupResponse>> signup(@Valid @RequestBody SignupRequest request) {
-        return ResponseEntity.ok(ApiResponse.success(authService.signup(request)));
+        return ResponseEntity.ok(ApiResponse.success(authService.signup(request), "회원가입이 완료되었습니다"));
     }
 
     @PostMapping("/login")
@@ -65,7 +65,7 @@ public class AuthController implements AuthControllerDocs {
         LoginResult result = authService.login(request);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(result.refreshToken()).toString())
-                .body(ApiResponse.success(new LoginResponse(result.accessToken())));
+                .body(ApiResponse.success(new LoginResponse(result.accessToken()), "로그인되었습니다"));
     }
 
     @PostMapping("/refresh")
@@ -75,7 +75,7 @@ public class AuthController implements AuthControllerDocs {
         LoginResult result = authService.refresh(refreshToken);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(result.refreshToken()).toString())
-                .body(ApiResponse.success(new LoginResponse(result.accessToken())));
+                .body(ApiResponse.success(new LoginResponse(result.accessToken()), "토큰이 갱신되었습니다"));
     }
 
     @PostMapping("/reauth")
@@ -84,7 +84,7 @@ public class AuthController implements AuthControllerDocs {
             Authentication authentication
     ) {
         String loginId = authentication.getName();
-        return ResponseEntity.ok(ApiResponse.success(reauthService.reauthenticate(loginId, request)));
+        return ResponseEntity.ok(ApiResponse.success(reauthService.reauthenticate(loginId, request), "재인증이 완료되었습니다"));
     }
 
     @PostMapping("/logout")

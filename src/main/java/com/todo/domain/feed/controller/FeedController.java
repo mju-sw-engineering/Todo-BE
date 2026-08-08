@@ -39,7 +39,7 @@ public class FeedController implements FeedControllerDocs {
         int targetMonth = month != null ? month : today.getMonthValue();
         MonthlyHiveResponse response =
                 feedService.getMonthlyHive(authentication.getName(), targetYear, targetMonth);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "월간 벌집 현황을 조회했습니다"));
     }
 
     @GetMapping("/hive/archive")
@@ -49,18 +49,18 @@ public class FeedController implements FeedControllerDocs {
     ) {
         List<HiveArchiveMonthResponse> response =
                 feedService.getHiveArchive(authentication.getName(), months);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "보관함을 조회했습니다"));
     }
 
     @GetMapping("/team-rhythm")
     public ResponseEntity<ApiResponse<List<TeamRhythmResponse>>> getTeamRhythm(Authentication authentication) {
         String loginId = authentication.getName();
-        return ResponseEntity.ok(ApiResponse.success(feedService.getTeamRhythm(loginId)));
+        return ResponseEntity.ok(ApiResponse.success(feedService.getTeamRhythm(loginId), "팀 리듬을 조회했습니다"));
     }
 
     @GetMapping("/badges")
     public ResponseEntity<ApiResponse<List<BadgeResponse>>> getBadges(Authentication authentication) {
-        return ResponseEntity.ok(ApiResponse.success(feedService.getBadges(authentication.getName())));
+        return ResponseEntity.ok(ApiResponse.success(feedService.getBadges(authentication.getName()), "뱃지 목록을 조회했습니다"));
     }
 
     @GetMapping("/my-streak")
@@ -70,6 +70,6 @@ public class FeedController implements FeedControllerDocs {
             Authentication authentication
     ) {
         String loginId = authentication.getName();
-        return ResponseEntity.ok(ApiResponse.success(feedService.getMyStreak(loginId, startDate, endDate)));
+        return ResponseEntity.ok(ApiResponse.success(feedService.getMyStreak(loginId, startDate, endDate), "잔디를 조회했습니다"));
     }
 }
