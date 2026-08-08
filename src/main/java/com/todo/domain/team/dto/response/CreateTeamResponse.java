@@ -10,6 +10,7 @@ import java.time.ZoneOffset;
 public record CreateTeamResponse(
         @Schema(description = "팀 ID") Long teamId,
         @Schema(description = "팀 이름") String teamName,
+        @Schema(description = "팀 설명") String description,
         @Schema(description = "팀 이미지 URL") String teamImage,
         @Schema(description = "초대 코드") String inviteCode,
         @Schema(description = "팀장 ID") Long leaderId,
@@ -19,6 +20,7 @@ public record CreateTeamResponse(
         return new CreateTeamResponse(
                 team.getId(),
                 team.getTeamName(),
+                team.getDescription(),
                 team.getTeamImage(),
                 team.getInviteCode(),
                 leaderId,
@@ -27,7 +29,7 @@ public record CreateTeamResponse(
     }
 
     public CreateTeamResponse withImageUrl(String resolvedImageUrl) {
-        return new CreateTeamResponse(teamId, teamName, resolvedImageUrl, inviteCode, leaderId, createdAt);
+        return new CreateTeamResponse(teamId, teamName, description, resolvedImageUrl, inviteCode, leaderId, createdAt);
     }
 
     private static OffsetDateTime toKstOffset(LocalDateTime dateTime) {

@@ -7,5 +7,7 @@ description = "테스트 더미 값과 검사 스크립트 자체의 패턴 문�
 paths = [
   '''src/test/resources/application-test\.yml''',
   '''\.githooks/.*''',
+  # 런타임에 KeyPairGenerator로 생성하는 테스트용 키를 PEM 마커로 감싸는 코드 등
+  # 테스트 더미 값이 소스 룰에 오탐되는 경우가 있어 test 하위 전체를 허용한다.
   '''src/test/java/.*''',
 ]

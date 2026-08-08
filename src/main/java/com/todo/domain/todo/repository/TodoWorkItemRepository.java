@@ -239,4 +239,28 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
               AND wi.status = com.todo.domain.todo.entity.WorkItemStatus.IN_PROGRESS
             """)
     List<TodoWorkItem> findInProgressByAssigneeId(@Param("assigneeId") Long assigneeId);
+
+
+    @Query("""
+            SELECT wi.submittedAt AS occurredAt, wi.assignee.id AS userId, wi.todo.id AS todoId
+            FROM TodoWorkItem wi
+            WHERE wi.todo.team.id = :teamId
+              AND wi.assignee IS NOT NULL
+              AND wi.submittedAt >= :from
+            """)
+    List<UserActivityRecord> findSubmissionActivityByTeamId(
+            @Param("teamId") Long teamId,
+            @Param("from") LocalDateTime from
+    );
+
+    @Query("""
+            SELECT wi.submittedAt AS occurredAt, wi.assignee.id AS userId, wi.todo.id AS todoId
+            FROM TodoWorkItem wi
+            WHERE wi.assignee.id = :userId
+              AND wi.submittedAt >= :from
+            """)
+    List<UserActivityRecord> findSubmissionActivityByAssigneeId(
+            @Param("userId") Long userId,
+            @Param("from") LocalDateTime from
+    );
 }

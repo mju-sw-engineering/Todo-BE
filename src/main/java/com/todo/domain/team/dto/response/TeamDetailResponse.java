@@ -8,6 +8,7 @@ import java.util.List;
 public record TeamDetailResponse(
         @Schema(description = "팀 ID") Long teamId,
         @Schema(description = "팀 이름") String teamName,
+        @Schema(description = "팀 설명") String description,
         @Schema(description = "팀 이미지 URL") String teamImageUrl,
         @Schema(description = "초대 코드") String inviteCode,
         @Schema(description = "팀원 수") int memberCount,
@@ -18,6 +19,7 @@ public record TeamDetailResponse(
         return new TeamDetailResponse(
                 team.getId(),
                 team.getTeamName(),
+                team.getDescription(),
                 team.getTeamImage(),
                 team.getInviteCode(),
                 members.size(),
@@ -27,6 +29,7 @@ public record TeamDetailResponse(
     }
 
     public TeamDetailResponse withImageUrl(String resolvedImageUrl) {
-        return new TeamDetailResponse(teamId, teamName, resolvedImageUrl, inviteCode, memberCount, successCount, members);
+        return new TeamDetailResponse(
+                teamId, teamName, description, resolvedImageUrl, inviteCode, memberCount, successCount, members);
     }
 }
