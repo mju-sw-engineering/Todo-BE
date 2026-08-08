@@ -6,6 +6,7 @@ import com.todo.domain.auth.repository.ReauthTokenRepository;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.auth.service.ReauthService;
+import com.todo.domain.auth.service.apple.AppleTokenClient;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.notification.repository.NotificationRepository;
@@ -93,6 +94,8 @@ class UserServiceTest {
     private ReauthService reauthService;
     @Mock
     private FileDeletionOutboxService fileDeletionOutboxService;
+    @Mock
+    private AppleTokenClient appleTokenClient;
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {
@@ -295,8 +298,49 @@ class UserServiceTest {
         verify(userRepository, never()).flush();
     }
 
+    @Test
+    void 회원탈퇴는_Apple_유저면_저장된_client_id로_revoke를_호출한다() {
+        User withdrawing = appleWithdrawingUser("apple-rt", "com.test.app");
+        givenWithdrawalUser(withdrawing);
+
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
+
+        verify(appleTokenClient).revokeRefreshToken("apple-rt", "com.test.app");
+        verify(userRepository).delete(withdrawing);
+    }
+
+    @Test
+    void 회원탈퇴는_revoke가_실패해도_탈퇴를_계속_진행한다() {
+        User withdrawing = appleWithdrawingUser("apple-rt", "com.test.app");
+        givenWithdrawalUser(withdrawing);
+        willThrow(new BusinessException("Apple 토큰 revoke 중 오류가 발생했습니다.", HttpStatus.BAD_REQUEST))
+                .given(appleTokenClient).revokeRefreshToken("apple-rt", "com.test.app");
+
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
+
+        verify(userRepository).delete(withdrawing);
+        verify(userRepository).flush();
+    }
+
+    @Test
+    void 회원탈퇴는_이메일_유저면_revoke를_호출하지_않는다() {
+        User withdrawing = withdrawingUser();
+        givenWithdrawalUser(withdrawing);
+
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
+
+        verifyNoInteractions(appleTokenClient);
+    }
+
     private User withdrawingUser() {
         return user(1L, "1", "닉네임", null);
+    }
+
+    private User appleWithdrawingUser(String appleRefreshToken, String appleClientId) {
+        User user = User.createAppleUser("apple-social-1", "닉네임");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        user.saveAppleCredentials(appleRefreshToken, appleClientId);
+        return user;
     }
 
     private User user(Long id, String loginId, String nickname, String profileImageUrl) {

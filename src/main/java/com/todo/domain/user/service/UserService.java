@@ -1,5 +1,6 @@
 package com.todo.domain.user.service;
 
+import com.todo.domain.auth.entity.AuthProvider;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
@@ -19,6 +20,7 @@ import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
 import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
 import com.todo.domain.auth.service.ReauthService;
+import com.todo.domain.auth.service.apple.AppleTokenClient;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
@@ -29,6 +31,7 @@ import com.todo.global.file.service.FileDeletionOutboxService;
 import com.todo.global.mail.repository.MailOutboxRepository;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +41,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class UserService {
 
@@ -59,6 +63,7 @@ public class UserService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final ReauthService reauthService;
     private final FileDeletionOutboxService fileDeletionOutboxService;
+    private final AppleTokenClient appleTokenClient;
 
     public MyPageResponse getMyPage(String userId) {
         User user = userRepository.findById(Long.parseLong(userId))
@@ -90,6 +95,14 @@ public class UserService {
         // 복구 유예기간이 없어 오조작과 토큰 탈취를 되돌릴 수 없으므로 재인증을 요구한다.
         // 토큰은 여기서 소비되며 같은 토큰으로 다시 탈퇴를 시도할 수 없다.
         reauthService.consume(userId, request.reauthToken(), ReauthPurpose.WITHDRAWAL);
+
+        if (user.getProvider() == AuthProvider.APPLE && user.getAppleRefreshToken() != null) {
+            try {
+                appleTokenClient.revokeRefreshToken(user.getAppleRefreshToken(), user.getAppleClientId());
+            } catch (Exception e) {
+                log.warn("Apple revoke 실패, 탈퇴는 계속 진행: userId={}", user.getId(), e);
+            }
+        }
 
         Long id = user.getId();
         String email = user.getEmail();
