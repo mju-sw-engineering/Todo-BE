@@ -88,7 +88,7 @@ class TeamServiceTest {
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null));
+        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null, null));
 
         assertThat(response.teamName()).isEqualTo("우리팀");
         assertThat(response.teamImage()).isNull();
@@ -105,16 +105,45 @@ class TeamServiceTest {
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
         given(fileService.resolveImageUrl(imageKey)).willReturn("https://minio.example.com/image.jpg");
 
-        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", imageKey));
+        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null, imageKey));
 
         assertThat(response.teamImage()).isEqualTo("https://minio.example.com/image.jpg");
+    }
+
+    @Test
+    void 팀_생성_시_설명이_저장된다() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
+        given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
+        given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
+
+        CreateTeamResponse response = teamService.createTeam(
+                "user1", new CreateTeamRequest("우리팀", "  매일 한 문제씩 푸는 스터디  ", null));
+
+        // 앞뒤 공백은 정리해 저장한다
+        assertThat(response.description()).isEqualTo("매일 한 문제씩 푸는 스터디");
+    }
+
+    @Test
+    void 공백뿐인_설명은_저장하지_않는다() {
+        User user = User.create("user1", "encodedPwd", "닉네임", null);
+        given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
+        given(teamRepository.existsByInviteCode(anyString())).willReturn(false);
+        given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
+        given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
+
+        CreateTeamResponse response = teamService.createTeam(
+                "user1", new CreateTeamRequest("우리팀", "   ", null));
+
+        assertThat(response.description()).isNull();
     }
 
     @Test
     void 팀_생성_실패_존재하지_않는_사용자() {
         given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> teamService.createTeam("unknown", new CreateTeamRequest("팀", null)))
+        assertThatThrownBy(() -> teamService.createTeam("unknown", new CreateTeamRequest("팀", null, null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("사용자를 찾을 수 없습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
@@ -128,7 +157,7 @@ class TeamServiceTest {
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        teamService.createTeam("user1", new CreateTeamRequest("우리팀", null));
+        teamService.createTeam("user1", new CreateTeamRequest("우리팀", null, null));
 
         then(teamMemberRepository).should().save(argThat(member -> member.getRole() == TeamMemberRole.LEADER));
     }
@@ -143,7 +172,7 @@ class TeamServiceTest {
         given(teamRepository.save(any(Team.class))).willAnswer(inv -> inv.getArgument(0));
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
 
-        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null));
+        CreateTeamResponse response = teamService.createTeam("user1", new CreateTeamRequest("우리팀", null, null));
 
         assertThat(response.inviteCode()).hasSize(8);
     }
