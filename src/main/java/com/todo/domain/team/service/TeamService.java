@@ -73,7 +73,8 @@ public class TeamService {
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
         String inviteCode = generateUniqueInviteCode();
-        Team team = teamRepository.save(Team.create(request.teamName(), request.teamImageKey(), inviteCode));
+        Team team = teamRepository.save(
+                Team.create(request.teamName(), normalizeDescription(request.description()), request.teamImageKey(), inviteCode));
         teamMemberRepository.save(TeamMember.create(team, user, TeamMemberRole.LEADER));
 
         return CreateTeamResponse.from(team, user.getId())
@@ -268,6 +269,14 @@ public class TeamService {
             return "";
         }
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    /** 공백만 있는 설명은 저장하지 않는다 — 목록·상세에서 빈 문자열 노출을 막는다. */
+    private String normalizeDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return null;
+        }
+        return description.strip();
     }
 
     private String generateUniqueInviteCode() {
