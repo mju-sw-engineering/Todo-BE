@@ -1,5 +1,6 @@
 package com.todo.domain.feed.service;
 
+import com.todo.domain.feed.dto.response.BadgeResponse;
 import com.todo.domain.feed.dto.response.HiveArchiveMonthResponse;
 import com.todo.domain.feed.dto.response.MonthlyHiveResponse;
 import com.todo.domain.feed.dto.response.MyStreakDayResponse;
@@ -173,6 +174,88 @@ public class FeedService {
     }
 
     /**
+     * 마일스톤 배지. 획득 여부를 저장하지 않고 최근 1년(STREAK_LOOKBACK_DAYS) 활동으로
+     * 조회 시점에 판정한다. 활동 기준은 잔디·벌집과 같고, 스트릭 배지는 현재 스트릭이 아니라
+     * 조회 범위 안의 최장 스트릭으로 판정해 기록이 끊겨도 배지가 사라지지 않게 한다.
+     */
+    public List<BadgeResponse> getBadges(String loginId) {
+        User user = findAuthenticatedUser(loginId);
+        LocalDate today = LocalDate.now(clock);
+        LocalDate from = today.minusDays(STREAK_LOOKBACK_DAYS);
+
+        Set<LocalDate> activeDates = collectDailyActivity(user.getId(), from).keySet();
+        int longestStreak = longestStreak(activeDates);
+        int completeMonths = countCompleteMonths(activeDates, from, YearMonth.from(today));
+        boolean teamAllIn = hasTeamFullParticipationDay(user.getId(), from);
+
+        return List.of(
+                BadgeResponse.of(BadgeType.FIRST_HONEY, !activeDates.isEmpty()),
+                BadgeResponse.of(BadgeType.STREAK_7, longestStreak >= 7),
+                BadgeResponse.of(BadgeType.FIRST_FULL_HIVE, completeMonths >= 1),
+                BadgeResponse.of(BadgeType.STREAK_30, longestStreak >= 30),
+                BadgeResponse.of(BadgeType.FULL_HIVE_3, completeMonths >= 3),
+                BadgeResponse.of(BadgeType.TEAM_ALL_IN, teamAllIn)
+        );
+    }
+
+    /** 조회 범위 안에서 가장 길었던 연속 활동 일수 */
+    private int longestStreak(Set<LocalDate> activeDates) {
+        int longest = 0;
+        for (LocalDate date : activeDates) {
+            if (activeDates.contains(date.minusDays(1))) {
+                continue; // 연속 구간의 시작점에서만 길이를 잰다
+            }
+            int length = 1;
+            while (activeDates.contains(date.plusDays(length))) {
+                length++;
+            }
+            longest = Math.max(longest, length);
+        }
+        return longest;
+    }
+
+    /** 조회 범위에 온전히 들어오는 지난 달(이번 달 제외) 중 모든 날에 활동한 달 수 */
+    private int countCompleteMonths(Set<LocalDate> activeDates, LocalDate from, YearMonth currentMonth) {
+        YearMonth first = from.getDayOfMonth() == 1
+                ? YearMonth.from(from)
+                : YearMonth.from(from).plusMonths(1);
+
+        int complete = 0;
+        for (YearMonth ym = first; ym.isBefore(currentMonth); ym = ym.plusMonths(1)) {
+            boolean allDaysActive = true;
+            for (int day = 1; day <= ym.lengthOfMonth(); day++) {
+                if (!activeDates.contains(ym.atDay(day))) {
+                    allDaysActive = false;
+                    break;
+                }
+            }
+            if (allDaysActive) {
+                complete++;
+            }
+        }
+        return complete;
+    }
+
+    /** 2인 이상 팀에서 현재 팀원 전원이 같은 날 기록을 남긴 날이 있는지 (혼자인 팀은 제외) */
+    private boolean hasTeamFullParticipationDay(Long userId, LocalDate from) {
+        for (Team team : teamMemberRepository.findTeamsByUserId(userId)) {
+            List<TeamMember> members = teamMemberRepository.findByTeamIdWithUser(team.getId());
+            if (members.size() < 2) {
+                continue;
+            }
+            Set<Long> memberIds = new HashSet<>();
+            members.forEach(member -> memberIds.add(member.getUser().getId()));
+
+            boolean allIn = collectTeamDailyActivity(team.getId(), from).values().stream()
+                    .anyMatch(active -> active.containsAll(memberIds));
+            if (allIn) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 사용자의 일자별 활동 투두 집합 — 투두 생성, 제출, 체크인을 "그날 손댄 투두"로 합산한다.
      * 잔디·벌집·스트릭이 모두 이 하나의 정의를 공유한다.
      */
@@ -187,6 +270,18 @@ public class FeedService {
         return todosByDate;
     }
 
+    /** 팀의 일자별 활동 팀원 집합 — 개인 활동과 같은 기준(생성·제출·체크인)을 팀 단위로 합산한다. */
+    private Map<LocalDate, Set<Long>> collectTeamDailyActivity(Long teamId, LocalDate from) {
+        Map<LocalDate, Set<Long>> activeByDate = new HashMap<>();
+        todoRepository.findCreationActivityByTeamId(teamId, from.atStartOfDay())
+                .forEach(r -> add(activeByDate, r.getOccurredAt().toLocalDate(), r.getUserId()));
+        todoWorkItemRepository.findSubmissionActivityByTeamId(teamId, from.atStartOfDay())
+                .forEach(r -> add(activeByDate, r.getOccurredAt().toLocalDate(), r.getUserId()));
+        workItemCheckInRepository.findActivityByTeamId(teamId, from)
+                .forEach(r -> add(activeByDate, r.getOccurredOn(), r.getUserId()));
+        return activeByDate;
+    }
+
     private YearMonth toYearMonth(int year, int month) {
         try {
             return YearMonth.of(year, month);
@@ -197,14 +292,7 @@ public class FeedService {
 
     private TeamRhythmResponse buildTeamRhythm(Team team, LocalDate today, LocalDate from) {
         List<TeamMember> members = teamMemberRepository.findByTeamIdWithUser(team.getId());
-
-        Map<LocalDate, Set<Long>> activeByDate = new HashMap<>();
-        todoRepository.findCreationActivityByTeamId(team.getId(), from.atStartOfDay())
-                .forEach(r -> add(activeByDate, r.getOccurredAt().toLocalDate(), r.getUserId()));
-        todoWorkItemRepository.findSubmissionActivityByTeamId(team.getId(), from.atStartOfDay())
-                .forEach(r -> add(activeByDate, r.getOccurredAt().toLocalDate(), r.getUserId()));
-        workItemCheckInRepository.findActivityByTeamId(team.getId(), from)
-                .forEach(r -> add(activeByDate, r.getOccurredOn(), r.getUserId()));
+        Map<LocalDate, Set<Long>> activeByDate = collectTeamDailyActivity(team.getId(), from);
 
         LocalDate thisMonday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         List<TeamWeekRhythmResponse> weeks = new ArrayList<>();
