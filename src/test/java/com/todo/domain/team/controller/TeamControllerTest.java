@@ -47,7 +47,7 @@ class TeamControllerTest {
     void 팀_상세_응답을_반환한다() {
         TeamController controller = new TeamController(teamService);
         TeamDetailResponse serviceResponse = new TeamDetailResponse(
-                1L, "팀", null, "ABCDEFGH", 0, 0, List.of()
+                1L, "팀", null, null, "ABCDEFGH", 0, 0, List.of()
         );
         given(teamService.getTeamDetail(1L, "user1")).willReturn(serviceResponse);
 
@@ -98,9 +98,9 @@ class TeamControllerTest {
     @Test
     void 팀_생성_응답을_반환한다() {
         TeamController controller = new TeamController(teamService);
-        CreateTeamRequest request = new CreateTeamRequest("팀", null);
+        CreateTeamRequest request = new CreateTeamRequest("팀", null, null);
         CreateTeamResponse serviceResponse = new CreateTeamResponse(
-                1L, "팀", null, "ABCDEFGH", 1L, null
+                1L, "팀", null, null, "ABCDEFGH", 1L, null
         );
         given(teamService.createTeam("user1", request)).willReturn(serviceResponse);
 

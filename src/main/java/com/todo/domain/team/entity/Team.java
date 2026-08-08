@@ -19,6 +19,9 @@ public class Team extends BaseTimeEntity {
     @Column(nullable = false)
     private String teamName;
 
+    @Column(length = 255)
+    private String description;
+
     private String teamImage;
 
     @Column(nullable = false, unique = true)
@@ -32,8 +35,13 @@ public class Team extends BaseTimeEntity {
     }
 
     public static Team create(String teamName, String teamImage, String inviteCode) {
+        return create(teamName, null, teamImage, inviteCode);
+    }
+
+    public static Team create(String teamName, String description, String teamImage, String inviteCode) {
         Team team = new Team();
         team.teamName = teamName;
+        team.description = description;
         team.teamImage = teamImage;
         team.inviteCode = inviteCode;
         return team;
