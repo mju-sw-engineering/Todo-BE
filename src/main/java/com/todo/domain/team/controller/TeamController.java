@@ -8,7 +8,9 @@ import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamAchievementResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
+import com.todo.domain.team.dto.response.TeamHiveResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
+import com.todo.domain.team.service.TeamHiveService;
 import com.todo.domain.team.service.TeamService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -31,6 +33,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class TeamController implements TeamControllerDocs {
 
     private final TeamService teamService;
+    private final TeamHiveService teamHiveService;
+
+    @GetMapping("/{teamId}/hive")
+    public ResponseEntity<ApiResponse<TeamHiveResponse>> getTeamHive(
+            @PathVariable Long teamId,
+            Authentication authentication
+    ) {
+        String loginId = authentication.getName();
+        return ResponseEntity.ok(ApiResponse.success(teamHiveService.getTeamHive(teamId, loginId)));
+    }
 
     @GetMapping("/{teamId}/achievements")
     public ResponseEntity<ApiResponse<TeamAchievementResponse>> getTeamAchievement(

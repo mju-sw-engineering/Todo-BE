@@ -8,6 +8,7 @@ import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamAchievementResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
+import com.todo.domain.team.dto.response.TeamHiveResponse;
 import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +20,23 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 @Tag(name = "Team", description = "팀 API")
 public interface TeamControllerDocs {
+
+    @Operation(summary = "팀 벌집 성장 조회",
+            description = "팀이 함께 모은 누적 기록 수와 벌집 레벨(1~4)을 조회합니다. "
+                    + "기록은 피드와 같은 활동 기준(투두 생성·제출·체크인)이며 (팀원, 날짜, 투두) 단위로 중복 없이 셉니다. "
+                    + "레벨 문턱값은 0 / 30 / 100 / 300입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
+                    content = @Content(schema = @Schema(implementation = TeamHiveResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 접근 권한 없음",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<ApiResponse<TeamHiveResponse>> getTeamHive(Long teamId, Authentication authentication);
 
     @Operation(summary = "팀 달성 통계 조회", description = "팀의 누적 성공 투두 수와 연속 완료 횟수를 조회합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponses({
