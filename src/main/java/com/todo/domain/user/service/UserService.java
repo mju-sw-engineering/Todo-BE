@@ -19,8 +19,8 @@ import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
 import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
+import com.todo.domain.auth.event.AppleAccountRevokeRequestedEvent;
 import com.todo.domain.auth.service.ReauthService;
-import com.todo.domain.auth.service.apple.AppleTokenClient;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
@@ -32,6 +32,7 @@ import com.todo.global.mail.repository.MailOutboxRepository;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,7 +64,7 @@ public class UserService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final ReauthService reauthService;
     private final FileDeletionOutboxService fileDeletionOutboxService;
-    private final AppleTokenClient appleTokenClient;
+    private final ApplicationEventPublisher eventPublisher;
 
     public MyPageResponse getMyPage(String userId) {
         User user = userRepository.findById(Long.parseLong(userId))
@@ -96,12 +97,12 @@ public class UserService {
         // 토큰은 여기서 소비되며 같은 토큰으로 다시 탈퇴를 시도할 수 없다.
         reauthService.consume(userId, request.reauthToken(), ReauthPurpose.WITHDRAWAL);
 
+        // Apple revoke는 탈퇴 트랜잭션이 커밋된 뒤에만 시도한다 (AppleAccountRevokeEventListener).
+        // 커밋 전에 부르면 Apple 호출이 끝날 때까지 DB 커넥션을 붙잡아두게 되고,
+        // 반대로 revoke가 성공한 뒤 탈퇴가 실패하면 Apple 연동만 끊기고 계정은 남는 불일치가 생긴다.
         if (user.getProvider() == AuthProvider.APPLE && user.getAppleRefreshToken() != null) {
-            try {
-                appleTokenClient.revokeRefreshToken(user.getAppleRefreshToken(), user.getAppleClientId());
-            } catch (Exception e) {
-                log.warn("Apple revoke 실패, 탈퇴는 계속 진행: userId={}", user.getId(), e);
-            }
+            eventPublisher.publishEvent(
+                    new AppleAccountRevokeRequestedEvent(user.getId(), user.getAppleRefreshToken(), user.getAppleClientId()));
         }
 
         Long id = user.getId();
