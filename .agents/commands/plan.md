@@ -10,17 +10,31 @@ $ARGUMENTS - 구현할 기능 설명
 ## 실행 순서
 
 ### 1. 컨텍스트 파악
+- `git fetch origin main`으로 원격 main을 최신화하고, 현재 브랜치가 최신 main을 포함하는지 확인한다.
+  ```bash
+  git fetch origin main
+  git merge-base --is-ancestor origin/main HEAD
+  ```
+  뒤처져 있으면(포함하지 않으면) 사용자에게 알리고 `git merge origin/main`(또는 `git pull`)로 최신화한 뒤 계획을 이어간다. 확인 결과와 조치 내용은 아래 "브랜치 계획"에 기록한다.
 - AGENTS.md를 읽어 프로젝트 컨벤션, 패키지 구조, 절대 규칙 확인
 - $ARGUMENTS와 관련된 기존 코드 파악 (연관 도메인, 서비스, 엔티티, DTO)
 
 ### 2. 계획 수립
 다음 항목을 분석하여 계획을 작성한다.
 
+**브랜치 계획**
+- origin/main 대비 최신 상태인지 (위 1단계 확인 결과와 조치 내용)
+- 현재 브랜치를 그대로 써도 되는지 (이미 다른 이슈로 PR이 나가 리뷰 대기 중인 브랜치가 아닌지 확인)
+- 새 브랜치가 필요하면 base와 브랜치 이름
+
 **변경/생성 파일 목록**
 - 파일 경로, 변경 유형(신규/수정), 변경 이유
 
 **작업 순서**
 - 의존성 순서를 고려한 단계별 구현 순서 (예: Entity -> Repository -> Service -> Controller -> DTO)
+
+**커밋 계획**
+- 몇 개 커밋으로 나눌지, 각 커밋이 어떤 관심사를 담는지 (commit.md의 관심사 분리 기준과 동일)
 
 **엣지 케이스**
 - 예외 상황, 경계값, 누락될 수 있는 케이스
@@ -54,3 +68,4 @@ $ARGUMENTS - 구현할 기능 설명
 - AGENTS.md의 코딩 컨벤션 기준으로 계획 수립
 - 보안 관련 파일(SecurityConfig, JwtUtil, JwtAuthenticationFilter, WebSocketAuthChannelInterceptor) 수정 포함 시 계획에 명시
 - 현재 브랜치와 HEAD를 확인하지 않은 계획은 저장하지 않는다
+- origin/main 대비 최신화 여부를 확인하지 않은 계획은 저장하지 않는다
