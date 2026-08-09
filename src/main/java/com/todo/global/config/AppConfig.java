@@ -28,8 +28,15 @@ public class AppConfig {
     }
 
     @Bean("appleRestClient")
-    public RestClient appleRestClient() {
-        return RestClient.create();
+    public RestClient appleRestClient(
+            @Value("${apple.connect-timeout:3s}") Duration connectTimeout,
+            @Value("${apple.read-timeout:5s}") Duration readTimeout
+    ) {
+        ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.defaults()
+                .withConnectTimeout(connectTimeout)
+                .withReadTimeout(readTimeout);
+        ClientHttpRequestFactory requestFactory = ClientHttpRequestFactoryBuilder.detect().build(settings);
+        return RestClient.builder().requestFactory(requestFactory).build();
     }
 
     @Bean
