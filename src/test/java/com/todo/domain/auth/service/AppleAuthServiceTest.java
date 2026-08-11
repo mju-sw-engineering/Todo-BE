@@ -3,8 +3,6 @@ package com.todo.domain.auth.service;
 import com.todo.domain.auth.dto.request.AppleCompleteRequest;
 import com.todo.domain.auth.dto.request.AppleLoginRequest;
 import com.todo.domain.auth.dto.response.LoginResult;
-import com.todo.domain.auth.entity.RefreshToken;
-import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.service.apple.AppleIdentityTokenService;
 import com.todo.domain.auth.service.apple.AppleIdentityTokenService.VerifyResult;
 import com.todo.domain.auth.service.apple.AppleTokenClient;
@@ -47,7 +45,7 @@ class AppleAuthServiceTest {
     @Mock private AppleIdentityTokenService identityTokenService;
     @Mock private AppleTokenClient appleTokenClient;
     @Mock private UserRepository userRepository;
-    @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private SessionService sessionService;
     @Mock private UserConsentRecorder userConsentRecorder;
     @Mock private JwtUtil jwtUtil;
     @Mock private TransactionTemplate transactionTemplate;
@@ -82,7 +80,8 @@ class AppleAuthServiceTest {
         given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
         given(jwtUtil.generateToken(1L)).willReturn("access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
-        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
+        given(jwtUtil.refreshTokenExpiresAt()).willReturn(expiresAt);
 
         AppleAuthService.AppleLoginResult result = appleAuthService.appleLogin(loginRequest());
 
@@ -91,7 +90,7 @@ class AppleAuthServiceTest {
         assertThat(logged.loginResult().accessToken()).isEqualTo("access-token");
         assertThat(user.getAppleRefreshToken()).isEqualTo("apple-rt");
         assertThat(user.getAppleClientId()).isEqualTo(CLIENT_ID);
-        then(refreshTokenRepository).should().save(any(RefreshToken.class));
+        then(sessionService).should().issueRefreshToken(user, "refresh-uuid", "device-1", expiresAt);
     }
 
     @Test
@@ -113,7 +112,7 @@ class AppleAuthServiceTest {
         given(userRepository.existsByEmail(EMAIL)).willReturn(false);
 
         User saved = stubSavedUser();
-        givenTokenIssuance();
+        LocalDateTime expiresAt = givenTokenIssuance();
 
         LoginResult result = appleAuthService.appleComplete(completeRequest("profile-key.png", true));
 
@@ -127,7 +126,7 @@ class AppleAuthServiceTest {
 
         // 이메일 가입과 같은 동의 이력을 남겨야 한다.
         then(userConsentRecorder).should().recordSignupConsents(saved, true);
-        then(refreshTokenRepository).should().save(any(RefreshToken.class));
+        then(sessionService).should().issueRefreshToken(saved, "refresh-uuid", "device-1", expiresAt);
     }
 
     @Test
@@ -160,7 +159,7 @@ class AppleAuthServiceTest {
         given(jwtUtil.parseSetupToken("invalid-token")).willThrow(new RuntimeException("expired"));
 
         assertThatThrownBy(() -> appleAuthService.appleComplete(
-                new AppleCompleteRequest("invalid-token", "닉네임", null, true, true, false)))
+                new AppleCompleteRequest("invalid-token", "닉네임", null, true, true, false, null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("setup token");
     }
@@ -206,18 +205,20 @@ class AppleAuthServiceTest {
         return saved;
     }
 
-    private void givenTokenIssuance() {
+    private LocalDateTime givenTokenIssuance() {
         given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
         given(jwtUtil.generateToken(2L)).willReturn("access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
-        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
+        given(jwtUtil.refreshTokenExpiresAt()).willReturn(expiresAt);
+        return expiresAt;
     }
 
     private AppleCompleteRequest completeRequest(String profileImageKey, boolean marketingAgreed) {
-        return new AppleCompleteRequest("setup-token", "새닉네임", profileImageKey, true, true, marketingAgreed);
+        return new AppleCompleteRequest("setup-token", "새닉네임", profileImageKey, true, true, marketingAgreed, "device-1");
     }
 
     private AppleLoginRequest loginRequest() {
-        return new AppleLoginRequest("identity-token", AUTH_CODE, NONCE);
+        return new AppleLoginRequest("identity-token", AUTH_CODE, NONCE, "device-1");
     }
 }

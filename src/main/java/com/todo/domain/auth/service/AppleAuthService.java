@@ -3,8 +3,6 @@ package com.todo.domain.auth.service;
 import com.todo.domain.auth.dto.request.AppleCompleteRequest;
 import com.todo.domain.auth.dto.request.AppleLoginRequest;
 import com.todo.domain.auth.dto.response.LoginResult;
-import com.todo.domain.auth.entity.RefreshToken;
-import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.service.apple.AppleIdentityTokenService;
 import com.todo.domain.auth.service.apple.AppleIdentityTokenService.VerifyResult;
 import com.todo.domain.auth.service.apple.AppleTokenClient;
@@ -31,7 +29,7 @@ public class AppleAuthService {
     private final AppleIdentityTokenService identityTokenService;
     private final AppleTokenClient appleTokenClient;
     private final UserRepository userRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
+    private final SessionService sessionService;
     private final UserConsentRecorder userConsentRecorder;
     private final JwtUtil jwtUtil;
     private final TransactionTemplate transactionTemplate;
@@ -68,7 +66,7 @@ public class AppleAuthService {
             User user = userRepository.findBySocialId(socialId)
                     .orElseThrow(() -> new BusinessException("Apple 계정을 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
             user.saveAppleCredentials(appleRefreshToken, clientId);
-            return issueTokens(user);
+            return issueTokens(user, request.deviceId());
         });
         return new AppleLoginResult.LoggedIn(loginResult);
     }
@@ -114,7 +112,7 @@ public class AppleAuthService {
             userConsentRecorder.recordSignupConsents(user, Boolean.TRUE.equals(request.marketingAgreed()));
 
             user.saveAppleCredentials(appleRefreshToken, clientId);
-            return issueTokens(user);
+            return issueTokens(user, request.deviceId());
         });
     }
 
@@ -136,12 +134,10 @@ public class AppleAuthService {
         user.assignEmail(email);
     }
 
-    private LoginResult issueTokens(User user) {
+    private LoginResult issueTokens(User user, String deviceId) {
         String accessToken = jwtUtil.generateToken(user.getId());
         String rawRefreshToken = jwtUtil.generateRefreshToken();
-        refreshTokenRepository.save(
-                RefreshToken.create(user, rawRefreshToken, jwtUtil.refreshTokenExpiresAt())
-        );
+        sessionService.issueRefreshToken(user, rawRefreshToken, deviceId, jwtUtil.refreshTokenExpiresAt());
         return new LoginResult(accessToken, rawRefreshToken);
     }
 }
