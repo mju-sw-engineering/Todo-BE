@@ -42,11 +42,18 @@ public class JwtUtil {
         return Long.parseLong(getClaims(token).getSubject());
     }
 
-    public String generateSetupToken(String socialId, String authorizationCode, String clientId) {
+    /**
+     * 애플 가입 2단계까지 1단계의 정보를 넘긴다.
+     *
+     * <p>{@code email}은 Apple이 최초 인증에만 실어주므로 여기서 붙들어두지 않으면
+     * 2단계에서 되찾을 방법이 없다. 재로그인으로 들어온 경우에는 null일 수 있다.
+     */
+    public String generateSetupToken(String socialId, String authorizationCode, String clientId, String email) {
         return Jwts.builder()
                 .subject(socialId)
                 .claim("authCode", authorizationCode)
                 .claim("clientId", clientId)
+                .claim("email", email)
                 .claim("type", "SETUP")
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + SETUP_TOKEN_EXPIRATION))

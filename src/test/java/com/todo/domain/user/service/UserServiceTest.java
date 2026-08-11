@@ -362,7 +362,7 @@ class UserServiceTest {
     }
 
     private User appleWithdrawingUser(String appleRefreshToken, String appleClientId) {
-        User user = User.createAppleUser("apple-social-1", "닉네임");
+        User user = User.createAppleUser("apple-social-1", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
         user.saveAppleCredentials(appleRefreshToken, appleClientId);
         return user;

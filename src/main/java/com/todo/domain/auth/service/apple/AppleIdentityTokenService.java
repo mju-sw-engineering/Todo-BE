@@ -39,7 +39,10 @@ public class AppleIdentityTokenService {
         this.objectMapper = objectMapper;
     }
 
-    public record VerifyResult(String socialId, String matchedClientId) {}
+    /**
+     * @param email Apple이 최초 인증에만 실어주는 이메일. 재로그인 시에는 null이다.
+     */
+    public record VerifyResult(String socialId, String matchedClientId, String email) {}
 
     public VerifyResult verify(String identityToken, String nonce) {
         String kid = extractKid(identityToken);
@@ -85,7 +88,7 @@ public class AppleIdentityTokenService {
 
         validateNonce(nonce, claims.get("nonce", String.class));
 
-        return new VerifyResult(claims.getSubject(), matchedClientId);
+        return new VerifyResult(claims.getSubject(), matchedClientId, claims.get("email", String.class));
     }
 
     private void validateNonce(String rawNonce, String tokenNonce) {

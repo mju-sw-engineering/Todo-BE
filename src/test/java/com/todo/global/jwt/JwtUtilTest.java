@@ -30,13 +30,16 @@ class JwtUtilTest {
 
     @Test
     void setup_token을_생성하고_파싱한다() {
-        String token = jwtUtil.generateSetupToken("apple-social-id", "auth-code-xyz", "com.test.app");
+        String token = jwtUtil.generateSetupToken(
+                "apple-social-id", "auth-code-xyz", "com.test.app", "someone@example.com");
 
         assertThat(token).isNotBlank();
         Claims claims = jwtUtil.parseSetupToken(token);
         assertThat(claims.getSubject()).isEqualTo("apple-social-id");
         assertThat(claims.get("authCode", String.class)).isEqualTo("auth-code-xyz");
         assertThat(claims.get("clientId", String.class)).isEqualTo("com.test.app");
+        // Apple이 최초 인증에만 주는 이메일이라 여기 실리지 않으면 2단계에서 되찾을 수 없다.
+        assertThat(claims.get("email", String.class)).isEqualTo("someone@example.com");
     }
 
     @Test

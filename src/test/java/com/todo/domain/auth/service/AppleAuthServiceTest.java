@@ -15,6 +15,8 @@ import com.todo.global.jwt.JwtUtil;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -26,6 +28,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -40,19 +43,23 @@ class AppleAuthServiceTest {
     @Mock private AppleTokenClient appleTokenClient;
     @Mock private UserRepository userRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private UserConsentRecorder userConsentRecorder;
     @Mock private JwtUtil jwtUtil;
+
+    @Captor private ArgumentCaptor<User> userCaptor;
 
     private static final String SOCIAL_ID = "apple-user-001";
     private static final String AUTH_CODE = "auth-code-xyz";
     private static final String NONCE = "random-nonce";
     private static final String CLIENT_ID = "com.test.app";
+    private static final String EMAIL = "someone@privaterelay.appleid.com";
 
     @Test
     void 기존_Apple_유저_로그인_성공() {
-        User user = User.createAppleUser(SOCIAL_ID, "기존닉네임");
+        User user = User.createAppleUser(SOCIAL_ID, "기존닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        given(identityTokenService.verify(any(), any())).willReturn(new VerifyResult(SOCIAL_ID, CLIENT_ID));
+        given(identityTokenService.verify(any(), any())).willReturn(new VerifyResult(SOCIAL_ID, CLIENT_ID, null));
         given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.of(user));
         given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
         given(jwtUtil.generateToken(1L)).willReturn("access-token");
@@ -71,9 +78,9 @@ class AppleAuthServiceTest {
 
     @Test
     void 신규_Apple_유저_로그인시_setup_token을_반환한다() {
-        given(identityTokenService.verify(any(), any())).willReturn(new VerifyResult(SOCIAL_ID, CLIENT_ID));
+        given(identityTokenService.verify(any(), any())).willReturn(new VerifyResult(SOCIAL_ID, CLIENT_ID, EMAIL));
         given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.empty());
-        given(jwtUtil.generateSetupToken(SOCIAL_ID, AUTH_CODE, CLIENT_ID)).willReturn("setup-token-abc");
+        given(jwtUtil.generateSetupToken(SOCIAL_ID, AUTH_CODE, CLIENT_ID, EMAIL)).willReturn("setup-token-abc");
 
         AppleAuthService.AppleLoginResult result = appleAuthService.appleLogin(loginRequest());
 
@@ -83,53 +90,100 @@ class AppleAuthServiceTest {
     }
 
     @Test
-    void Apple_가입_완료_성공() {
-        Claims claims = mock(Claims.class);
-        given(claims.getSubject()).willReturn(SOCIAL_ID);
-        given(claims.get("authCode", String.class)).willReturn(AUTH_CODE);
-        given(claims.get("clientId", String.class)).willReturn(CLIENT_ID);
+    void Apple_가입_완료시_프로필과_이메일과_동의가_함께_저장된다() {
+        givenSetupToken(EMAIL);
+        given(userRepository.existsByEmail(EMAIL)).willReturn(false);
 
-        given(jwtUtil.parseSetupToken("setup-token")).willReturn(claims);
-        given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.empty());
+        User saved = stubSavedUser();
+        givenTokenIssuance();
 
-        User saved = User.createAppleUser(SOCIAL_ID, "새닉네임");
-        ReflectionTestUtils.setField(saved, "id", 2L);
-        given(userRepository.save(any(User.class))).willReturn(saved);
-        given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
-        given(jwtUtil.generateToken(2L)).willReturn("access-token");
-        given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
-        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
-
-        LoginResult result = appleAuthService.appleComplete(new AppleCompleteRequest("setup-token", "새닉네임"));
+        LoginResult result = appleAuthService.appleComplete(completeRequest("profile-key.png", true));
 
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(saved.getAppleRefreshToken()).isEqualTo("apple-rt");
         assertThat(saved.getAppleClientId()).isEqualTo(CLIENT_ID);
+
+        then(userRepository).should().save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getEmail()).isEqualTo(EMAIL);
+        assertThat(userCaptor.getValue().getProfileImageUrl()).isEqualTo("profile-key.png");
+
+        // 이메일 가입과 같은 동의 이력을 남겨야 한다.
+        then(userConsentRecorder).should().recordSignupConsents(saved, true);
         then(refreshTokenRepository).should().save(any(RefreshToken.class));
+    }
+
+    @Test
+    void 마케팅_미동의시_동의_기록에도_그대로_전달된다() {
+        givenSetupToken(null);
+        stubSavedUser();
+        givenTokenIssuance();
+
+        appleAuthService.appleComplete(completeRequest(null, false));
+
+        then(userConsentRecorder).should().recordSignupConsents(any(User.class), eq(false));
+    }
+
+    @Test
+    void 이미_쓰이는_이메일이면_이메일_없이_가입시킨다() {
+        givenSetupToken(EMAIL);
+        given(userRepository.existsByEmail(EMAIL)).willReturn(true);
+        stubSavedUser();
+        givenTokenIssuance();
+
+        appleAuthService.appleComplete(completeRequest(null, false));
+
+        // 409로 막으면 그 사람은 Apple 로그인을 영영 못 쓰게 되므로 이메일만 비운다.
+        then(userRepository).should().save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getEmail()).isNull();
     }
 
     @Test
     void 유효하지_않은_setup_token으로_complete시_예외를_던진다() {
         given(jwtUtil.parseSetupToken("invalid-token")).willThrow(new RuntimeException("expired"));
 
-        assertThatThrownBy(() -> appleAuthService.appleComplete(new AppleCompleteRequest("invalid-token", "닉네임")))
+        assertThatThrownBy(() -> appleAuthService.appleComplete(
+                new AppleCompleteRequest("invalid-token", "닉네임", null, true, true, false)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("setup token");
     }
 
     @Test
     void 이미_가입된_소셜_ID로_complete시_예외를_던진다() {
+        givenSetupToken(null);
+        given(userRepository.findBySocialId(SOCIAL_ID))
+                .willReturn(Optional.of(User.createAppleUser(SOCIAL_ID, "기존", null)));
+
+        assertThatThrownBy(() -> appleAuthService.appleComplete(completeRequest(null, false)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 가입된");
+    }
+
+    private void givenSetupToken(String email) {
         Claims claims = mock(Claims.class);
         given(claims.getSubject()).willReturn(SOCIAL_ID);
         given(claims.get("authCode", String.class)).willReturn(AUTH_CODE);
         given(claims.get("clientId", String.class)).willReturn(CLIENT_ID);
-
+        given(claims.get("email", String.class)).willReturn(email);
         given(jwtUtil.parseSetupToken("setup-token")).willReturn(claims);
-        given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.of(User.createAppleUser(SOCIAL_ID, "기존")));
+    }
 
-        assertThatThrownBy(() -> appleAuthService.appleComplete(new AppleCompleteRequest("setup-token", "닉네임")))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("이미 가입된");
+    private User stubSavedUser() {
+        given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.empty());
+        User saved = User.createAppleUser(SOCIAL_ID, "새닉네임", null);
+        ReflectionTestUtils.setField(saved, "id", 2L);
+        given(userRepository.save(any(User.class))).willReturn(saved);
+        return saved;
+    }
+
+    private void givenTokenIssuance() {
+        given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
+        given(jwtUtil.generateToken(2L)).willReturn("access-token");
+        given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
+        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
+    }
+
+    private AppleCompleteRequest completeRequest(String profileImageKey, boolean marketingAgreed) {
+        return new AppleCompleteRequest("setup-token", "새닉네임", profileImageKey, true, true, marketingAgreed);
     }
 
     private AppleLoginRequest loginRequest() {
