@@ -1,5 +1,6 @@
 package com.todo.domain.auth.event;
 
+import com.todo.domain.auth.service.AppleRevokeOutboxService;
 import com.todo.domain.auth.service.apple.AppleTokenClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,13 +14,15 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class AppleAccountRevokeEventListener {
 
     private final AppleTokenClient appleTokenClient;
+    private final AppleRevokeOutboxService appleRevokeOutboxService;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onAppleAccountRevokeRequested(AppleAccountRevokeRequestedEvent event) {
         try {
             appleTokenClient.revokeRefreshToken(event.appleRefreshToken(), event.appleClientId());
         } catch (Exception e) {
-            log.warn("Apple revoke 실패, 탈퇴는 이미 완료된 상태라 재시도 없이 넘어감: userId={}", event.userId(), e);
+            log.warn("Apple revoke 첫 시도 실패, 재시도를 위해 outbox에 적재함: userId={}", event.userId(), e);
+            appleRevokeOutboxService.enqueue(event.userId(), event.appleRefreshToken(), event.appleClientId());
         }
     }
 }
