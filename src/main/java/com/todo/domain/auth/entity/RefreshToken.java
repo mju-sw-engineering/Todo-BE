@@ -22,6 +22,8 @@ public class RefreshToken {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    private String deviceId;
+
     @Column(nullable = false, unique = true)
     private String token;
 
@@ -34,10 +36,11 @@ public class RefreshToken {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    public static RefreshToken create(User user, String token, LocalDateTime expiresAt) {
+    public static RefreshToken create(User user, String token, String deviceId, LocalDateTime expiresAt) {
         RefreshToken rt = new RefreshToken();
         rt.user = user;
         rt.token = token;
+        rt.deviceId = deviceId;
         rt.isUsed = false;
         rt.expiresAt = expiresAt;
         rt.createdAt = LocalDateTime.now();

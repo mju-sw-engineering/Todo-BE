@@ -14,5 +14,8 @@ public record AppleLoginRequest(
 
         @NotBlank
         @Schema(description = "클라이언트가 생성한 nonce (CSRF 방어)")
-        String nonce
+        String nonce,
+
+        @Schema(description = "클라이언트가 생성한 기기 고유 ID (선택, 세션 목록/기기별 관리에 사용)")
+        String deviceId
 ) {}
