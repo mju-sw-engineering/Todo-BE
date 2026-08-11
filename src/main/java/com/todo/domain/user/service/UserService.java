@@ -1,5 +1,6 @@
 package com.todo.domain.user.service;
 
+import com.todo.domain.auth.entity.AuthProvider;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
@@ -18,6 +19,7 @@ import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
 import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
+import com.todo.domain.auth.event.AppleAccountRevokeRequestedEvent;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
@@ -30,6 +32,8 @@ import com.todo.global.file.service.FileDeletionOutboxService;
 import com.todo.global.mail.repository.MailOutboxRepository;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +43,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class UserService {
 
@@ -60,6 +65,7 @@ public class UserService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final ReauthService reauthService;
     private final FileDeletionOutboxService fileDeletionOutboxService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public MyPageResponse getMyPage(String userId) {
         User user = userRepository.findById(Long.parseLong(userId))
@@ -103,6 +109,14 @@ public class UserService {
         // 복구 유예기간이 없어 오조작과 토큰 탈취를 되돌릴 수 없으므로 재인증을 요구한다.
         // 토큰은 여기서 소비되며 같은 토큰으로 다시 탈퇴를 시도할 수 없다.
         reauthService.consume(userId, request.reauthToken(), ReauthPurpose.WITHDRAWAL);
+
+        // Apple revoke는 탈퇴 트랜잭션이 커밋된 뒤에만 시도한다 (AppleAccountRevokeEventListener).
+        // 커밋 전에 부르면 Apple 호출이 끝날 때까지 DB 커넥션을 붙잡아두게 되고,
+        // 반대로 revoke가 성공한 뒤 탈퇴가 실패하면 Apple 연동만 끊기고 계정은 남는 불일치가 생긴다.
+        if (user.getProvider() == AuthProvider.APPLE && user.getAppleRefreshToken() != null) {
+            eventPublisher.publishEvent(
+                    new AppleAccountRevokeRequestedEvent(user.getId(), user.getAppleRefreshToken(), user.getAppleClientId()));
+        }
 
         Long id = user.getId();
         String email = user.getEmail();
