@@ -2,8 +2,10 @@ package com.todo.domain.team.controller;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
+import com.todo.domain.team.dto.request.JoinByInviteLinkRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.InviteLinkResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamAchievementResponse;
@@ -91,6 +93,40 @@ public interface TeamControllerDocs {
     })
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<ApiResponse<JoinTeamResponse>> joinTeam(JoinTeamRequest request, Authentication authentication);
+
+    @Operation(
+            summary = "팀 초대 링크 조회/발급",
+            description = "공유용 초대 링크를 반환합니다. 유효한 링크가 있으면 그대로 반환하고, 없거나 만료됐으면 "
+                    + "새로 발급합니다(7일 유효). 팀 멤버라면 누구나 호출할 수 있습니다."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회/발급 성공",
+                    content = @Content(schema = @Schema(implementation = InviteLinkResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 접근 권한 없음",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<ApiResponse<InviteLinkResponse>> getOrCreateInviteLink(Long teamId, Authentication authentication);
+
+    @Operation(summary = "초대 링크로 팀 참여", description = "공유받은 초대 링크의 token으로 팀에 참여합니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "팀 참여 성공",
+                    content = @Content(schema = @Schema(implementation = JoinTeamResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "토큰 미입력",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "유효하지 않거나 만료된 초대 링크",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이미 참여한 팀",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<ApiResponse<JoinTeamResponse>> joinTeamByInviteLink(JoinByInviteLinkRequest request, Authentication authentication);
 
     @Operation(
             summary = "팀 이메일 초대",

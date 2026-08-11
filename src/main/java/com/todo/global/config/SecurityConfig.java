@@ -92,6 +92,7 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/.well-known/apple-app-site-association").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/terms").permitAll()
                         .anyRequest().authenticated()
                 )

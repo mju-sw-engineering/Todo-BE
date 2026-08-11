@@ -2,8 +2,10 @@ package com.todo.domain.team.controller;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
+import com.todo.domain.team.dto.request.JoinByInviteLinkRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.InviteLinkResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamAchievementResponse;
@@ -78,6 +80,26 @@ public class TeamController implements TeamControllerDocs {
     ) {
         String userId = authentication.getName();
         JoinTeamResponse response = teamService.joinTeam(userId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "팀 참여가 완료되었습니다"));
+    }
+
+    @PostMapping("/{teamId}/invite-link")
+    public ResponseEntity<ApiResponse<InviteLinkResponse>> getOrCreateInviteLink(
+            @PathVariable Long teamId,
+            Authentication authentication
+    ) {
+        String userId = authentication.getName();
+        InviteLinkResponse response = teamService.getOrCreateInviteLink(userId, teamId);
+        return ResponseEntity.ok(ApiResponse.success(response, "초대 링크를 조회했습니다"));
+    }
+
+    @PostMapping("/invite-link/join")
+    public ResponseEntity<ApiResponse<JoinTeamResponse>> joinTeamByInviteLink(
+            @Valid @RequestBody JoinByInviteLinkRequest request,
+            Authentication authentication
+    ) {
+        String userId = authentication.getName();
+        JoinTeamResponse response = teamService.joinTeamByInviteLink(userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "팀 참여가 완료되었습니다"));
     }
 

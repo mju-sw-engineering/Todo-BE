@@ -48,7 +48,7 @@ minio:
   api-call-attempt-timeout: ${MINIO_API_CALL_ATTEMPT_TIMEOUT:10s}
 
 app:
-  api-server-url: ${API_SERVER_URL:https://api.swe.bluerack.org}
+  api-server-url: ${API_SERVER_URL:https://api.todo.bluerack.org}
   frontend-base-url: ${FRONTEND_BASE_URL}
   team-invite-path: ${TEAM_INVITE_PATH:/teams/join}
 

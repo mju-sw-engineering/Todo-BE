@@ -14,6 +14,8 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
 
     Optional<Team> findByInviteCode(String inviteCode);
 
+    Optional<Team> findByInviteLinkToken(String inviteLinkToken);
+
     @Modifying
     @Query("""
             UPDATE Team t
