@@ -5,6 +5,7 @@ import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
+import com.todo.domain.auth.event.AppleAccountRevokeRequestedEvent;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
@@ -33,6 +34,7 @@ import org.mockito.InjectMocks;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -93,6 +95,8 @@ class UserServiceTest {
     private ReauthService reauthService;
     @Mock
     private FileDeletionOutboxService fileDeletionOutboxService;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {
@@ -295,8 +299,36 @@ class UserServiceTest {
         verify(userRepository, never()).flush();
     }
 
+    @Test
+    void 회원탈퇴는_Apple_유저면_저장된_client_id로_revoke_이벤트를_발행한다() {
+        User withdrawing = appleWithdrawingUser("apple-rt", "com.test.app");
+        givenWithdrawalUser(withdrawing);
+
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
+
+        verify(eventPublisher).publishEvent(new AppleAccountRevokeRequestedEvent(1L, "apple-rt", "com.test.app"));
+        verify(userRepository).delete(withdrawing);
+    }
+
+    @Test
+    void 회원탈퇴는_이메일_유저면_revoke_이벤트를_발행하지_않는다() {
+        User withdrawing = withdrawingUser();
+        givenWithdrawalUser(withdrawing);
+
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
+
+        verifyNoInteractions(eventPublisher);
+    }
+
     private User withdrawingUser() {
         return user(1L, "1", "닉네임", null);
+    }
+
+    private User appleWithdrawingUser(String appleRefreshToken, String appleClientId) {
+        User user = User.createAppleUser("apple-social-1", "닉네임");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        user.saveAppleCredentials(appleRefreshToken, appleClientId);
+        return user;
     }
 
     private User user(Long id, String loginId, String nickname, String profileImageUrl) {

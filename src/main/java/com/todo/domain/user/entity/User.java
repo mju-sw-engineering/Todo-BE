@@ -40,6 +40,8 @@ public class User extends BaseTimeEntity {
     @Column(columnDefinition = "TEXT")
     private String appleRefreshToken;
 
+    private String appleClientId;
+
     public static User create(String loginId, String password, String nickname, String profileImageUrl) {
         User user = new User();
         user.loginId = loginId;
@@ -66,7 +68,8 @@ public class User extends BaseTimeEntity {
         this.nickname = nickname;
     }
 
-    public void saveAppleRefreshToken(String appleRefreshToken) {
+    public void saveAppleCredentials(String appleRefreshToken, String appleClientId) {
         this.appleRefreshToken = appleRefreshToken;
+        this.appleClientId = appleClientId;
     }
 }

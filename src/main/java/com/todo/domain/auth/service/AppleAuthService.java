@@ -43,7 +43,7 @@ public class AppleAuthService {
         return userRepository.findBySocialId(socialId)
                 .map(user -> {
                     String appleRefreshToken = appleTokenClient.exchangeForAppleRefreshToken(request.authorizationCode(), clientId);
-                    user.saveAppleRefreshToken(appleRefreshToken);
+                    user.saveAppleCredentials(appleRefreshToken, clientId);
                     return (AppleLoginResult) new AppleLoginResult.LoggedIn(issueTokens(user));
                 })
                 .orElseGet(() -> {
@@ -72,7 +72,7 @@ public class AppleAuthService {
         User user = userRepository.save(User.createAppleUser(socialId, request.nickname()));
 
         String appleRefreshToken = appleTokenClient.exchangeForAppleRefreshToken(authorizationCode, clientId);
-        user.saveAppleRefreshToken(appleRefreshToken);
+        user.saveAppleCredentials(appleRefreshToken, clientId);
 
         return issueTokens(user);
     }

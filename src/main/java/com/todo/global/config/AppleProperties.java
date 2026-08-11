@@ -13,5 +13,6 @@ public record AppleProperties(
         @NotBlank String keyId,
         @NotBlank String privateKey,
         @NotBlank String publicKeyUrl,
-        @NotBlank String tokenUrl
+        @NotBlank String tokenUrl,
+        @NotBlank String revokeUrl
 ) {}

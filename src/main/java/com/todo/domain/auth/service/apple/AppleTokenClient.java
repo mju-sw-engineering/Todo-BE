@@ -35,13 +35,7 @@ public class AppleTokenClient {
     }
 
     public String exchangeForAppleRefreshToken(String authorizationCode, String clientId) {
-        if (privateKey == null) {
-            synchronized (this) {
-                if (privateKey == null) {
-                    this.privateKey = parsePrivateKey(appleProperties.privateKey());
-                }
-            }
-        }
+        ensurePrivateKeyLoaded();
         String clientSecret = generateClientSecret(clientId);
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
@@ -66,6 +60,38 @@ public class AppleTokenClient {
             throw e;
         } catch (Exception e) {
             throw new BusinessException("Apple 토큰 교환 중 오류가 발생했습니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    public void revokeRefreshToken(String refreshToken, String clientId) {
+        ensurePrivateKeyLoaded();
+        String clientSecret = generateClientSecret(clientId);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("client_id", clientId);
+        body.add("client_secret", clientSecret);
+        body.add("token", refreshToken);
+        body.add("token_type_hint", "refresh_token");
+
+        try {
+            restClient.post()
+                    .uri(appleProperties.revokeUrl())
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception e) {
+            throw new BusinessException("Apple 토큰 revoke 중 오류가 발생했습니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private void ensurePrivateKeyLoaded() {
+        if (privateKey == null) {
+            synchronized (this) {
+                if (privateKey == null) {
+                    this.privateKey = parsePrivateKey(appleProperties.privateKey());
+                }
+            }
         }
     }
 
