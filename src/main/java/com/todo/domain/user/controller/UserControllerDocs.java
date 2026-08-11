@@ -2,6 +2,7 @@ package com.todo.domain.user.controller;
 
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
+import com.todo.domain.user.dto.request.UpdateProfileImageRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.global.response.ApiResponse;
@@ -51,6 +52,25 @@ public interface UserControllerDocs {
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<ApiResponse<MyPageResponse>> updateNickname(
             UpdateNicknameRequest request,
+            Authentication authentication
+    );
+
+    @Operation(
+            summary = "내 프로필 사진 변경",
+            description = "presigned-upload로 업로드한 프로필 이미지의 object key를 전달받아 프로필 사진을 변경합니다. "
+                    + "이메일 계정/Apple 계정 공통으로 사용합니다. 기존 이미지가 있었다면 삭제 대상으로 예약됩니다."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "프로필 사진 변경 성공",
+                    content = @Content(schema = @Schema(implementation = MyPageResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "입력값 오류",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<ApiResponse<MyPageResponse>> updateProfileImage(
+            UpdateProfileImageRequest request,
             Authentication authentication
     );
 
