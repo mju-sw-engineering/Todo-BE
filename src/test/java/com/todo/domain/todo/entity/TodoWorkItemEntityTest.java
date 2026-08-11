@@ -42,6 +42,23 @@ class TodoWorkItemEntityTest {
     }
 
     @Test
+    void TASK_WorkItem은_개별_마감이_없으면_투두_마감을_유효_마감으로_사용한다() {
+        Todo todo = todo(LocalDateTime.of(2026, 8, 2, 18, 0));
+
+        TodoWorkItem workItem = TodoWorkItem.createTask(
+                todo,
+                user(),
+                "발표 자료 만들기",
+                null,
+                null,
+                0
+        );
+
+        assertThat(workItem.getDeadline()).isNull();
+        assertThat(workItem.getEffectiveDeadline()).isEqualTo(todo.getDeadline());
+    }
+
+    @Test
     void TASK_마감은_부모_Todo_마감을_넘을_수_없다() {
         Todo todo = todo(LocalDateTime.of(2026, 8, 2, 18, 0));
 

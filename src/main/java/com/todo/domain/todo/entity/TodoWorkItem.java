@@ -143,10 +143,7 @@ public class TodoWorkItem extends BaseTimeEntity {
         if (taskTitle == null || taskTitle.isBlank()) {
             throw new BusinessException("Task 제목은 필수입니다.", HttpStatus.BAD_REQUEST);
         }
-        if (deadline == null) {
-            throw new BusinessException("Task 마감일은 필수입니다.", HttpStatus.BAD_REQUEST);
-        }
-        if (deadline.isAfter(todo.getDeadline())) {
+        if (deadline != null && deadline.isAfter(todo.getDeadline())) {
             throw new BusinessException("Task 마감일은 Todo 마감일을 넘을 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
     }

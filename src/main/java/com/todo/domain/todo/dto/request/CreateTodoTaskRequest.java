@@ -20,7 +20,7 @@ public record CreateTodoTaskRequest(
         @Schema(description = "담당자 ID", example = "1")
         Long assigneeId,
 
-        @NotNull
-        @Schema(description = "작업 마감 시간 (ISO-8601 오프셋 포함)", example = "2026-08-10T15:00:00+09:00")
+        @Schema(description = "작업 마감 시간 (ISO-8601 오프셋 포함, 선택 — 비우면 Todo 전체 마감시간을 그대로 사용)",
+                example = "2026-08-10T15:00:00+09:00")
         OffsetDateTime deadline
 ) {}
