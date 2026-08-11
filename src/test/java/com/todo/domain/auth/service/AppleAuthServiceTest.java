@@ -13,6 +13,7 @@ import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.jwt.JwtUtil;
 import io.jsonwebtoken.Claims;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,7 +21,10 @@ import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -31,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,8 +50,21 @@ class AppleAuthServiceTest {
     @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private UserConsentRecorder userConsentRecorder;
     @Mock private JwtUtil jwtUtil;
+    @Mock private TransactionTemplate transactionTemplate;
 
     @Captor private ArgumentCaptor<User> userCaptor;
+
+    /**
+     * appleLogin/appleComplete가 TransactionTemplate으로 직접 트랜잭션을 감싸므로,
+     * execute()가 실제로 콜백을 실행하도록 매 테스트마다 이어준다.
+     */
+    @BeforeEach
+    void stubTransactionTemplate() {
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+    }
 
     private static final String SOCIAL_ID = "apple-user-001";
     private static final String AUTH_CODE = "auth-code-xyz";
@@ -152,6 +170,19 @@ class AppleAuthServiceTest {
         givenSetupToken(null);
         given(userRepository.findBySocialId(SOCIAL_ID))
                 .willReturn(Optional.of(User.createAppleUser(SOCIAL_ID, "기존", null)));
+
+        assertThatThrownBy(() -> appleAuthService.appleComplete(completeRequest(null, false)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 가입된");
+    }
+
+    @Test
+    void 존재확인_이후_저장_시점에_경합으로_유니크_제약을_위반하면_409를_던진다() {
+        givenSetupToken(null);
+        given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.empty());
+        given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
+        given(userRepository.save(any(User.class)))
+                .willThrow(new DataIntegrityViolationException("uk_users_social_id"));
 
         assertThatThrownBy(() -> appleAuthService.appleComplete(completeRequest(null, false)))
                 .isInstanceOf(BusinessException.class)
