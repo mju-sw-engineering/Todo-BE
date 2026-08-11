@@ -1,10 +1,14 @@
 package com.todo.domain.auth.service;
 
+import com.todo.domain.auth.dto.request.AppleReauthRequest;
 import com.todo.domain.auth.dto.request.ReauthRequest;
 import com.todo.domain.auth.dto.response.ReauthResponse;
+import com.todo.domain.auth.entity.AuthProvider;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.entity.ReauthToken;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
+import com.todo.domain.auth.service.apple.AppleIdentityTokenService;
+import com.todo.domain.auth.service.apple.AppleIdentityTokenService.VerifyResult;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -38,12 +42,14 @@ public class ReauthService {
     static final Duration TOKEN_TTL = Duration.ofMinutes(5);
 
     private static final String RATE_LIMIT_PREFIX = "reauth:password:";
+    private static final String APPLE_RATE_LIMIT_PREFIX = "reauth:apple:";
     private static final int PASSWORD_ATTEMPT_LIMIT = 5;
     private static final Duration PASSWORD_ATTEMPT_WINDOW = Duration.ofMinutes(1);
     private static final int TOKEN_BYTE_LENGTH = 32;
 
     private final UserRepository userRepository;
     private final ReauthTokenRepository reauthTokenRepository;
+    private final AppleIdentityTokenService appleIdentityTokenService;
     private final PasswordEncoder passwordEncoder;
     private final SimpleRateLimiter rateLimiter;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -54,6 +60,12 @@ public class ReauthService {
         User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
 
+        // 소셜 계정은 password가 null이라 아래 비교가 의미 없이 실패한다. 무슨 일인지 알 수 없는
+        // 401 대신, 애플 재인증 경로를 쓰라고 분명히 알려준다.
+        if (user.getProvider() != AuthProvider.LOCAL) {
+            throw new BusinessException("소셜 로그인 계정은 비밀번호로 재인증할 수 없습니다", HttpStatus.BAD_REQUEST);
+        }
+
         if (!rateLimiter.tryAcquire(RATE_LIMIT_PREFIX + user.getId(), PASSWORD_ATTEMPT_LIMIT, PASSWORD_ATTEMPT_WINDOW)) {
             throw new BusinessException("잠시 후 다시 시도해 주세요", HttpStatus.TOO_MANY_REQUESTS);
         }
@@ -61,12 +73,46 @@ public class ReauthService {
             throw new BusinessException("비밀번호가 일치하지 않습니다", HttpStatus.UNAUTHORIZED);
         }
 
+        return issueReauthToken(user, request.purpose());
+    }
+
+    /**
+     * Apple 계정의 재인증.
+     *
+     * <p>비밀번호가 없으므로 Apple 인증 시트를 새로 통과했다는 증거(identity token)를 요구한다.
+     * 시트는 Face ID/암호를 거치므로 비밀번호 확인보다 약하지 않다. 검사를 건너뛰고 통과시키면
+     * 토큰만 탈취해도 탈퇴가 가능해져 재인증을 두는 의미가 사라진다.
+     */
+    @Transactional
+    public ReauthResponse reauthenticateWithApple(String userId, AppleReauthRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+
+        if (user.getProvider() != AuthProvider.APPLE) {
+            throw new BusinessException("Apple 계정이 아닙니다", HttpStatus.BAD_REQUEST);
+        }
+
+        if (!rateLimiter.tryAcquire(APPLE_RATE_LIMIT_PREFIX + user.getId(), PASSWORD_ATTEMPT_LIMIT, PASSWORD_ATTEMPT_WINDOW)) {
+            throw new BusinessException("잠시 후 다시 시도해 주세요", HttpStatus.TOO_MANY_REQUESTS);
+        }
+
+        VerifyResult verified = appleIdentityTokenService.verify(request.identityToken(), request.nonce());
+
+        // 남의 Apple 계정으로 받은 토큰을 자기 탈퇴에 쓰지 못하게 소유자를 확인한다.
+        if (!verified.socialId().equals(user.getSocialId())) {
+            throw new BusinessException("로그인한 계정과 다른 Apple 계정입니다", HttpStatus.UNAUTHORIZED);
+        }
+
+        return issueReauthToken(user, request.purpose());
+    }
+
+    private ReauthResponse issueReauthToken(User user, ReauthPurpose purpose) {
         // 재발급하면 같은 용도의 이전 토큰은 무효가 된다.
-        reauthTokenRepository.deleteByUserIdAndPurpose(user.getId(), request.purpose());
+        reauthTokenRepository.deleteByUserIdAndPurpose(user.getId(), purpose);
 
         String rawToken = generateToken();
         LocalDateTime expiresAt = LocalDateTime.now(clock).plus(TOKEN_TTL);
-        reauthTokenRepository.save(ReauthToken.create(user, hash(rawToken), request.purpose(), expiresAt));
+        reauthTokenRepository.save(ReauthToken.create(user, hash(rawToken), purpose, expiresAt));
 
         return ReauthResponse.of(rawToken, expiresAt);
     }

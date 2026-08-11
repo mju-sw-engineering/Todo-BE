@@ -5,11 +5,8 @@ import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.LoginResult;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
-import com.todo.domain.auth.entity.ConsentType;
 import com.todo.domain.auth.entity.RefreshToken;
-import com.todo.domain.auth.entity.UserConsent;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
-import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -24,18 +21,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AuthService implements UserDetailsService {
 
-    private static final String TERMS_VERSION = "v1.0";
-
     private final UserRepository userRepository;
-    private final UserConsentRepository userConsentRepository;
+    private final UserConsentRecorder userConsentRecorder;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
@@ -62,13 +54,7 @@ public class AuthService implements UserDetailsService {
         created.assignEmail(request.email());
         User user = userRepository.save(created);
 
-        List<UserConsent> consents = new ArrayList<>();
-        consents.add(UserConsent.create(user, ConsentType.TERMS, TERMS_VERSION));
-        consents.add(UserConsent.create(user, ConsentType.PRIVACY, TERMS_VERSION));
-        if (Boolean.TRUE.equals(request.marketingAgreed())) {
-            consents.add(UserConsent.create(user, ConsentType.MARKETING, TERMS_VERSION));
-        }
-        userConsentRepository.saveAll(consents);
+        userConsentRecorder.recordSignupConsents(user, Boolean.TRUE.equals(request.marketingAgreed()));
 
         return SignupResponse.from(user).withImageUrl(fileService.resolveImageUrl(user.getProfileImageUrl()));
     }

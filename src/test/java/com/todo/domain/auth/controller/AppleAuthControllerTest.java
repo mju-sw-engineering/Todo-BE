@@ -60,7 +60,8 @@ class AppleAuthControllerTest {
 
     @Test
     void Apple_회원가입_완료_후_액세스_토큰을_반환한다() {
-        AppleCompleteRequest request = new AppleCompleteRequest("setup-token", "닉네임");
+        AppleCompleteRequest request =
+                new AppleCompleteRequest("setup-token", "닉네임", null, true, true, false);
         given(appleAuthService.appleComplete(request))
                 .willReturn(new LoginResult("access-token", "refresh-uuid"));
 

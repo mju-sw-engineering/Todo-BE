@@ -4,11 +4,8 @@ import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.LoginResult;
 import com.todo.domain.auth.dto.response.SignupResponse;
-import com.todo.domain.auth.entity.ConsentType;
 import com.todo.domain.auth.entity.RefreshToken;
-import com.todo.domain.auth.entity.UserConsent;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
-import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -33,6 +30,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -46,7 +44,7 @@ class AuthServiceTest {
     @Mock
     private UserRepository userRepository;
     @Mock
-    private UserConsentRepository userConsentRepository;
+    private UserConsentRecorder userConsentRecorder;
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
@@ -83,12 +81,8 @@ class AuthServiceTest {
         then(userRepository).should().save(userCaptor.capture());
         assertThat(userCaptor.getValue().getPassword()).isEqualTo("encoded");
 
-        ArgumentCaptor<List<UserConsent>> consentCaptor = ArgumentCaptor.forClass(List.class);
-        then(userConsentRepository).should().saveAll(consentCaptor.capture());
-        List<UserConsent> savedConsents = consentCaptor.getValue();
-        assertThat(savedConsents).hasSize(2);
-        assertThat(savedConsents).extracting(UserConsent::getConsentType)
-                .containsExactlyInAnyOrder(ConsentType.TERMS, ConsentType.PRIVACY);
+        // 어떤 레코드가 남는지는 UserConsentRecorderTest가 검증한다. 여기서는 위임과 마케팅 플래그만 본다.
+        then(userConsentRecorder).should().recordSignupConsents(userCaptor.getValue(), false);
     }
 
     @Test
@@ -104,12 +98,7 @@ class AuthServiceTest {
 
         authService.signup(request);
 
-        ArgumentCaptor<List<UserConsent>> consentCaptor = ArgumentCaptor.forClass(List.class);
-        then(userConsentRepository).should().saveAll(consentCaptor.capture());
-        List<UserConsent> savedConsents = consentCaptor.getValue();
-        assertThat(savedConsents).hasSize(3);
-        assertThat(savedConsents).extracting(UserConsent::getConsentType)
-                .containsExactlyInAnyOrder(ConsentType.TERMS, ConsentType.PRIVACY, ConsentType.MARKETING);
+        then(userConsentRecorder).should().recordSignupConsents(any(User.class), eq(true));
     }
 
     @Test
