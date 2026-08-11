@@ -22,6 +22,7 @@ import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
+import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -159,6 +160,42 @@ class UserServiceTest {
         given(userRepository.findById(999L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> userService.updateNickname("999", new UpdateNicknameRequest("새닉네임")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("로그인이 필요합니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
+    @Test
+    void 프로필_조회는_팀_조회_없이_경량_응답을_반환한다() {
+        User user = user(1L, "1", "닉네임", "profiles/user1.png");
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(fileService.resolveImageUrl("profiles/user1.png")).willReturn("https://example.com/profiles/user1.png");
+
+        UserProfileResponse response = userService.getMyProfile("1");
+
+        assertThat(response.userId()).isEqualTo(1L);
+        assertThat(response.loginId()).isEqualTo("1");
+        assertThat(response.nickname()).isEqualTo("닉네임");
+        assertThat(response.profileImageUrl()).isEqualTo("https://example.com/profiles/user1.png");
+        verifyNoInteractions(teamMemberRepository);
+    }
+
+    @Test
+    void 프로필_조회는_프로필_이미지가_없어도_정상_동작한다() {
+        User user = user(1L, "1", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(fileService.resolveImageUrl(null)).willReturn(null);
+
+        UserProfileResponse response = userService.getMyProfile("1");
+
+        assertThat(response.profileImageUrl()).isNull();
+    }
+
+    @Test
+    void 프로필_조회_실패_존재하지_않는_사용자() {
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getMyProfile("999"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("로그인이 필요합니다")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));

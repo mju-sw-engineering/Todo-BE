@@ -3,6 +3,7 @@ package com.todo.domain.user.controller;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
+import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.domain.user.service.UserService;
 import com.todo.global.response.ApiResponse;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,18 @@ class UserControllerTest {
         ResponseEntity<ApiResponse<MyPageResponse>> response = controller.getMyPage(auth());
 
         assertThat(response.getBody().getData()).isEqualTo(myPageResponse);
+    }
+
+    @Test
+    void 프로필_조회_응답을_반환한다() {
+        UserController controller = new UserController(userService);
+        UserProfileResponse profileResponse = new UserProfileResponse(1L, "user1", "닉네임", null);
+        given(userService.getMyProfile("user1")).willReturn(profileResponse);
+
+        ResponseEntity<ApiResponse<UserProfileResponse>> response = controller.getMyProfile(auth());
+
+        assertThat(response.getBody().getData()).isEqualTo(profileResponse);
+        assertThat(response.getBody().getMessage()).isEqualTo("내 프로필을 조회했습니다");
     }
 
     @Test

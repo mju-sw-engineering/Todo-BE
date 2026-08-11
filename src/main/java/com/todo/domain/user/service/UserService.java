@@ -24,6 +24,7 @@ import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
+import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -71,6 +72,18 @@ public class UserService {
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
 
         return buildMyPageResponse(user);
+    }
+
+    /**
+     * 팀 목록 없이 프로필 필드만 반환한다. 로그인 직후처럼 팀 목록이 필요 없는 시점에
+     * getMyPage 대신 사용해 불필요한 팀 조회 쿼리를 없앤다.
+     */
+    public UserProfileResponse getMyProfile(String userId) {
+        User user = userRepository.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+
+        return UserProfileResponse.from(user)
+                .withProfileImageUrl(fileService.resolveImageUrl(user.getProfileImageUrl()));
     }
 
     @Transactional

@@ -3,6 +3,7 @@ package com.todo.domain.user.controller;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
+import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.domain.user.service.UserService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -28,6 +29,13 @@ public class UserController implements UserControllerDocs {
         String userId = authentication.getName();
         MyPageResponse response = userService.getMyPage(userId);
         return ResponseEntity.ok(ApiResponse.success(response, "내 정보를 조회했습니다"));
+    }
+
+    @GetMapping("/me/profile")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> getMyProfile(Authentication authentication) {
+        String userId = authentication.getName();
+        UserProfileResponse response = userService.getMyProfile(userId);
+        return ResponseEntity.ok(ApiResponse.success(response, "내 프로필을 조회했습니다"));
     }
 
     @PatchMapping("/me/nickname")
