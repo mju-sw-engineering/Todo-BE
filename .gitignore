@@ -28,3 +28,5 @@ application-local.yml
 .ai-workspace/
 .claude/settings.local.json
 chat-test.html
+docs/coverage-report.html
+scripts/coverage-report.py
