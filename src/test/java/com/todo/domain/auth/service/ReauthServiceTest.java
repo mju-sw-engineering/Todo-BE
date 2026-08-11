@@ -1,10 +1,12 @@
 package com.todo.domain.auth.service;
 
+import com.todo.domain.auth.dto.request.AppleReauthRequest;
 import com.todo.domain.auth.dto.request.ReauthRequest;
 import com.todo.domain.auth.dto.response.ReauthResponse;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.entity.ReauthToken;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
+import com.todo.domain.auth.service.apple.AppleIdentityTokenService;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -47,6 +49,8 @@ class ReauthServiceTest {
     @Mock
     private ReauthTokenRepository reauthTokenRepository;
     @Mock
+    private AppleIdentityTokenService appleIdentityTokenService;
+    @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
     private SimpleRateLimiter rateLimiter;
@@ -57,7 +61,8 @@ class ReauthServiceTest {
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW, KST);
-        reauthService = new ReauthService(userRepository, reauthTokenRepository, passwordEncoder, rateLimiter, clock);
+        reauthService = new ReauthService(
+                userRepository, reauthTokenRepository, appleIdentityTokenService, passwordEncoder, rateLimiter, clock);
         user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
     }
@@ -75,6 +80,62 @@ class ReauthServiceTest {
 
     private String hashOf(String rawToken) {
         return (String) ReflectionTestUtils.invokeMethod(reauthService, "hash", rawToken);
+    }
+
+    private User appleUser() {
+        User apple = User.createAppleUser("apple-social-1", "닉네임", null);
+        ReflectionTestUtils.setField(apple, "id", 1L);
+        return apple;
+    }
+
+    @Test
+    void 소셜_계정은_비밀번호_재인증을_거부한다() {
+        // password가 null이라 그냥 두면 정체불명의 401로 끝나고, 탈퇴 자체가 막힌다.
+        given(userRepository.findById(1L)).willReturn(Optional.of(appleUser()));
+
+        assertThatThrownBy(() -> reauthService.reauthenticate("1", new ReauthRequest("rawPwd", ReauthPurpose.WITHDRAWAL)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("소셜 로그인 계정");
+        verify(reauthTokenRepository, never()).save(any(ReauthToken.class));
+    }
+
+    @Test
+    void Apple_재인증에_성공하면_토큰을_발급한다() {
+        User apple = appleUser();
+        given(userRepository.findById(1L)).willReturn(Optional.of(apple));
+        given(rateLimiter.tryAcquire(anyString(), anyInt(), any(Duration.class))).willReturn(true);
+        given(appleIdentityTokenService.verify("id-token", "nonce"))
+                .willReturn(new AppleIdentityTokenService.VerifyResult("apple-social-1", "com.test.app", null));
+
+        ReauthResponse response = reauthService.reauthenticateWithApple(
+                "1", new AppleReauthRequest("id-token", "nonce", ReauthPurpose.WITHDRAWAL));
+
+        assertThat(response.reauthToken()).isNotBlank();
+        verify(reauthTokenRepository).deleteByUserIdAndPurpose(1L, ReauthPurpose.WITHDRAWAL);
+    }
+
+    @Test
+    void 다른_Apple_계정의_토큰으로는_재인증할_수_없다() {
+        given(userRepository.findById(1L)).willReturn(Optional.of(appleUser()));
+        given(rateLimiter.tryAcquire(anyString(), anyInt(), any(Duration.class))).willReturn(true);
+        given(appleIdentityTokenService.verify("id-token", "nonce"))
+                .willReturn(new AppleIdentityTokenService.VerifyResult("someone-else", "com.test.app", null));
+
+        assertThatThrownBy(() -> reauthService.reauthenticateWithApple(
+                "1", new AppleReauthRequest("id-token", "nonce", ReauthPurpose.WITHDRAWAL)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("다른 Apple 계정");
+        verify(reauthTokenRepository, never()).save(any(ReauthToken.class));
+    }
+
+    @Test
+    void 로컬_계정은_Apple_재인증을_쓸_수_없다() {
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> reauthService.reauthenticateWithApple(
+                "1", new AppleReauthRequest("id-token", "nonce", ReauthPurpose.WITHDRAWAL)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Apple 계정이 아닙니다");
     }
 
     @Test

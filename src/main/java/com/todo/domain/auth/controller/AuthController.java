@@ -1,5 +1,6 @@
 package com.todo.domain.auth.controller;
 
+import com.todo.domain.auth.dto.request.AppleReauthRequest;
 import com.todo.domain.auth.dto.request.EmailSendRequest;
 import com.todo.domain.auth.dto.request.EmailVerifyRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
@@ -85,6 +86,16 @@ public class AuthController implements AuthControllerDocs {
     ) {
         String userId = authentication.getName();
         return ResponseEntity.ok(ApiResponse.success(reauthService.reauthenticate(userId, request), "재인증이 완료되었습니다"));
+    }
+
+    @PostMapping("/reauth/apple")
+    public ResponseEntity<ApiResponse<ReauthResponse>> reauthenticateWithApple(
+            @Valid @RequestBody AppleReauthRequest request,
+            Authentication authentication
+    ) {
+        String userId = authentication.getName();
+        return ResponseEntity.ok(
+                ApiResponse.success(reauthService.reauthenticateWithApple(userId, request), "재인증이 완료되었습니다"));
     }
 
     @PostMapping("/logout")

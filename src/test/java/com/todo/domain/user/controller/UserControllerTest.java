@@ -5,6 +5,7 @@ import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.domain.user.service.UserService;
+import com.todo.domain.auth.entity.AuthProvider;
 import com.todo.global.response.ApiResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,7 +29,7 @@ class UserControllerTest {
     @Test
     void 마이페이지_응답을_반환한다() {
         UserController controller = new UserController(userService);
-        MyPageResponse myPageResponse = new MyPageResponse(1L, "user1", "닉네임", null, List.of());
+        MyPageResponse myPageResponse = new MyPageResponse(1L, "user1", "닉네임", null, AuthProvider.LOCAL, List.of());
         given(userService.getMyPage("user1")).willReturn(myPageResponse);
 
         ResponseEntity<ApiResponse<MyPageResponse>> response = controller.getMyPage(auth());
@@ -39,7 +40,7 @@ class UserControllerTest {
     @Test
     void 프로필_조회_응답을_반환한다() {
         UserController controller = new UserController(userService);
-        UserProfileResponse profileResponse = new UserProfileResponse(1L, "user1", "닉네임", null);
+        UserProfileResponse profileResponse = new UserProfileResponse(1L, "user1", "닉네임", null, AuthProvider.LOCAL);
         given(userService.getMyProfile("user1")).willReturn(profileResponse);
 
         ResponseEntity<ApiResponse<UserProfileResponse>> response = controller.getMyProfile(auth());
@@ -52,7 +53,7 @@ class UserControllerTest {
     void 닉네임_수정_응답을_반환한다() {
         UserController controller = new UserController(userService);
         UpdateNicknameRequest request = new UpdateNicknameRequest("새닉네임");
-        MyPageResponse myPageResponse = new MyPageResponse(1L, "user1", "새닉네임", null, List.of());
+        MyPageResponse myPageResponse = new MyPageResponse(1L, "user1", "새닉네임", null, AuthProvider.LOCAL, List.of());
         given(userService.updateNickname("user1", request)).willReturn(myPageResponse);
 
         ResponseEntity<ApiResponse<MyPageResponse>> response = controller.updateNickname(request, auth());
