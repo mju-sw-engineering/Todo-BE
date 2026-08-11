@@ -2,6 +2,7 @@ package com.todo.domain.user.controller;
 
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
+import com.todo.domain.user.dto.request.UpdatePasswordRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.global.response.ApiResponse;
@@ -51,6 +52,24 @@ public interface UserControllerDocs {
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<ApiResponse<MyPageResponse>> updateNickname(
             UpdateNicknameRequest request,
+            Authentication authentication
+    );
+
+    @Operation(
+            summary = "내 비밀번호 변경",
+            description = "로그인 상태에서 현재 비밀번호를 확인하고 새 비밀번호로 변경합니다. LOCAL 계정만 가능합니다."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "비밀번호 변경 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400",
+                    description = "현재 비밀번호 불일치, 새 비밀번호 불일치, 또는 Apple 계정",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<ApiResponse<Void>> updatePassword(
+            UpdatePasswordRequest request,
             Authentication authentication
     );
 

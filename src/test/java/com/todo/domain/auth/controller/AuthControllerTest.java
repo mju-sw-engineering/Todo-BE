@@ -2,15 +2,21 @@ package com.todo.domain.auth.controller;
 
 import com.todo.domain.auth.dto.request.EmailSendRequest;
 import com.todo.domain.auth.dto.request.EmailVerifyRequest;
+import com.todo.domain.auth.dto.request.FindIdRequest;
+import com.todo.domain.auth.dto.request.FindPasswordRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.ReauthRequest;
+import com.todo.domain.auth.dto.request.ResetPasswordRequest;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.EmailVerifyResponse;
+import com.todo.domain.auth.dto.response.FindIdResponse;
+import com.todo.domain.auth.dto.response.FindPasswordResponse;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.LoginResult;
 import com.todo.domain.auth.dto.response.ReauthResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
+import com.todo.domain.auth.service.AccountRecoveryService;
 import com.todo.domain.auth.service.AuthService;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.service.EmailVerificationService;
@@ -44,13 +50,48 @@ class AuthControllerTest {
     private ReauthService reauthService;
     @Mock
     private EmailVerificationService emailVerificationService;
+    @Mock
+    private AccountRecoveryService accountRecoveryService;
 
     private AuthController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AuthController(authService, emailVerificationService, reauthService);
+        controller = new AuthController(authService, emailVerificationService, reauthService, accountRecoveryService);
         ReflectionTestUtils.setField(controller, "cookieSecure", false);
+    }
+
+    @Test
+    void 아이디_찾기_응답을_반환한다() {
+        FindIdRequest request = new FindIdRequest("user@example.com", "email-token");
+        given(accountRecoveryService.findLoginId(request)).willReturn(new FindIdResponse("user1"));
+
+        ResponseEntity<ApiResponse<FindIdResponse>> response = controller.findId(request);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().getData().loginId()).isEqualTo("user1");
+    }
+
+    @Test
+    void 비밀번호_찾기_응답을_반환한다() {
+        FindPasswordRequest request = new FindPasswordRequest("user@example.com", "email-token");
+        given(accountRecoveryService.initiatePasswordReset(request)).willReturn(new FindPasswordResponse("reset-token"));
+
+        ResponseEntity<ApiResponse<FindPasswordResponse>> response = controller.findPassword(request);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().getData().passwordResetToken()).isEqualTo("reset-token");
+    }
+
+    @Test
+    void 비밀번호_재설정_응답을_반환한다() {
+        ResetPasswordRequest request = new ResetPasswordRequest("reset-token", "newPwd1!", "newPwd1!");
+
+        ResponseEntity<ApiResponse<Void>> response = controller.resetPassword(request);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().getMessage()).isEqualTo("비밀번호가 재설정되었습니다");
+        then(accountRecoveryService).should().resetPassword(request);
     }
 
     @Test
