@@ -53,9 +53,14 @@ public class User extends BaseTimeEntity {
     }
 
     public static User createAppleUser(String socialId, String nickname) {
+        return createAppleUser(socialId, nickname, null);
+    }
+
+    public static User createAppleUser(String socialId, String nickname, String profileImageUrl) {
         User user = new User();
         user.socialId = socialId;
         user.nickname = nickname;
+        user.profileImageUrl = profileImageUrl;
         user.provider = AuthProvider.APPLE;
         return user;
     }
