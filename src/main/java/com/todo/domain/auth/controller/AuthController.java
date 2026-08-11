@@ -14,6 +14,7 @@ import com.todo.domain.auth.dto.response.SignupResponse;
 import com.todo.domain.auth.service.AuthService;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.service.EmailVerificationService;
+import com.todo.domain.auth.service.SessionService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class AuthController implements AuthControllerDocs {
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
     private final ReauthService reauthService;
+    private final SessionService sessionService;
 
     @Value("${cookie.secure}")
     private boolean cookieSecure;
@@ -106,6 +108,15 @@ public class AuthController implements AuthControllerDocs {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, buildClearCookie().toString())
                 .body(ApiResponse.success(null, "로그아웃 되었습니다"));
+    }
+
+    @PostMapping("/logout-all")
+    public ResponseEntity<ApiResponse<Void>> logoutAll(Authentication authentication) {
+        String userId = authentication.getName();
+        sessionService.revokeAllSessions(userId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, buildClearCookie().toString())
+                .body(ApiResponse.success(null, "모든 기기에서 로그아웃 되었습니다"));
     }
 
     private ResponseCookie buildRefreshCookie(String value) {

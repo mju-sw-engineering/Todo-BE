@@ -48,6 +48,8 @@ class AuthServiceTest {
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
+    private SessionService sessionService;
+    @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
     private JwtUtil jwtUtil;
@@ -145,20 +147,21 @@ class AuthServiceTest {
         given(passwordEncoder.matches("password123!", "encoded")).willReturn(true);
         given(jwtUtil.generateToken(1L)).willReturn("access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
-        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
+        given(jwtUtil.refreshTokenExpiresAt()).willReturn(expiresAt);
 
-        LoginResult result = authService.login(new LoginRequest("user1", "password123!"));
+        LoginResult result = authService.login(new LoginRequest("user1", "password123!", "device-1"));
 
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(result.refreshToken()).isEqualTo("refresh-uuid");
-        then(refreshTokenRepository).should().save(any(RefreshToken.class));
+        then(sessionService).should().issueRefreshToken(user, "refresh-uuid", "device-1", expiresAt);
     }
 
     @Test
     void 로그인은_사용자가_없으면_예외를_던진다() {
         given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("unknown", "password123!")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("unknown", "password123!", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
@@ -169,7 +172,7 @@ class AuthServiceTest {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(passwordEncoder.matches("wrong", "encoded")).willReturn(false);
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("user1", "wrong")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("user1", "wrong", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
@@ -181,18 +184,19 @@ class AuthServiceTest {
         User user = User.create("user1", "encoded", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        RefreshToken token = RefreshToken.create(user, "old-uuid", LocalDateTime.now().plusDays(14));
+        RefreshToken token = RefreshToken.create(user, "old-uuid", "device-1", LocalDateTime.now().plusDays(14));
         given(refreshTokenRepository.findByToken("old-uuid")).willReturn(Optional.of(token));
         given(jwtUtil.generateToken(1L)).willReturn("new-access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("new-uuid");
-        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
+        given(jwtUtil.refreshTokenExpiresAt()).willReturn(expiresAt);
 
         LoginResult result = authService.refresh("old-uuid");
 
         assertThat(result.accessToken()).isEqualTo("new-access-token");
         assertThat(result.refreshToken()).isEqualTo("new-uuid");
         assertThat(token.isUsed()).isTrue();
-        then(refreshTokenRepository).should().save(any(RefreshToken.class));
+        then(sessionService).should().issueRefreshToken(user, "new-uuid", "device-1", expiresAt);
     }
 
     @Test
@@ -216,7 +220,7 @@ class AuthServiceTest {
         User user = User.create("user1", "encoded", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        RefreshToken usedToken = RefreshToken.create(user, "used-uuid", LocalDateTime.now().plusDays(14));
+        RefreshToken usedToken = RefreshToken.create(user, "used-uuid", null, LocalDateTime.now().plusDays(14));
         usedToken.markAsUsed();
         given(refreshTokenRepository.findByToken("used-uuid")).willReturn(Optional.of(usedToken));
 
@@ -231,7 +235,7 @@ class AuthServiceTest {
         User user = User.create("user1", "encoded", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
 
-        RefreshToken expiredToken = RefreshToken.create(user, "expired-uuid", LocalDateTime.now().minusSeconds(1));
+        RefreshToken expiredToken = RefreshToken.create(user, "expired-uuid", null, LocalDateTime.now().minusSeconds(1));
         given(refreshTokenRepository.findByToken("expired-uuid")).willReturn(Optional.of(expiredToken));
 
         assertThatThrownBy(() -> authService.refresh("expired-uuid"))
@@ -244,7 +248,7 @@ class AuthServiceTest {
     @Test
     void 로그아웃_성공() {
         User user = User.create("user1", "encoded", "닉네임", null);
-        RefreshToken token = RefreshToken.create(user, "my-uuid", LocalDateTime.now().plusDays(14));
+        RefreshToken token = RefreshToken.create(user, "my-uuid", null, LocalDateTime.now().plusDays(14));
         given(refreshTokenRepository.findByToken("my-uuid")).willReturn(Optional.of(token));
 
         authService.logout("my-uuid");
