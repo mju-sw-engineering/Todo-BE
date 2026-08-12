@@ -92,13 +92,18 @@ public class AccountRecoveryService {
             throw new BusinessException("만료되었거나 이미 사용된 재설정 토큰입니다.", HttpStatus.UNAUTHORIZED);
         }
 
+        // markAsUsed가 영속성 컨텍스트를 비우므로(clearAutomatically) 그 전에 읽어 둔다.
+        User user = token.getUser();
+
         // 실제 1회용 보장은 여기서 이뤄진다. 위 검증과 이 UPDATE 사이에 다른 요청이 먼저
         // 소비했다면 갱신 행이 0이 되고, 그 요청만 통과한다.
         if (passwordResetTokenRepository.markAsUsed(token.getId(), now) != 1) {
             throw new BusinessException("만료되었거나 이미 사용된 재설정 토큰입니다.", HttpStatus.UNAUTHORIZED);
         }
 
-        token.getUser().updatePassword(passwordEncoder.encode(request.newPassword()));
+        // user는 위 markAsUsed로 detach된 상태라, 변경 후 명시적으로 저장해야 반영된다.
+        user.updatePassword(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
     }
 
     private User findLocalUserByEmail(String email) {

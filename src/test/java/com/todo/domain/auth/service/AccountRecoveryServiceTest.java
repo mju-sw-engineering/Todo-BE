@@ -160,6 +160,9 @@ class AccountRecoveryServiceTest {
 
         assertThat(user.getPassword()).isEqualTo("encodedNewPassword");
         verify(passwordResetTokenRepository).markAsUsed(any(), any());
+        // markAsUsed(clearAutomatically=true)가 영속성 컨텍스트를 비워 user를 detach시키므로,
+        // 변경 후 명시적으로 저장하지 않으면 실제로는 DB에 반영되지 않는다.
+        verify(userRepository).save(user);
     }
 
     @Test
