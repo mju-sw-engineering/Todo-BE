@@ -77,4 +77,8 @@ public class User extends BaseTimeEntity {
         this.appleRefreshToken = appleRefreshToken;
         this.appleClientId = appleClientId;
     }
+
+    public void updatePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
 }

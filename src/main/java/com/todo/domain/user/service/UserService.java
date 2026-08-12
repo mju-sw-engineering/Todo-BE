@@ -3,6 +3,7 @@ package com.todo.domain.user.service;
 import com.todo.domain.auth.entity.AuthProvider;
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
+import com.todo.domain.auth.repository.PasswordResetTokenRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
@@ -23,6 +24,7 @@ import com.todo.domain.auth.event.AppleAccountRevokeRequestedEvent;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
+import com.todo.domain.user.dto.request.UpdatePasswordRequest;
 import com.todo.domain.user.dto.request.UpdateProfileImageRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.dto.response.UserProfileResponse;
@@ -36,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,10 +66,12 @@ public class UserService {
     private final EmailVerificationRepository emailVerificationRepository;
     private final MailOutboxRepository mailOutboxRepository;
     private final ReauthTokenRepository reauthTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final ReauthService reauthService;
     private final FileDeletionOutboxService fileDeletionOutboxService;
     private final ApplicationEventPublisher eventPublisher;
+    private final PasswordEncoder passwordEncoder;
 
     public MyPageResponse getMyPage(String userId) {
         User user = userRepository.findById(Long.parseLong(userId))
@@ -94,6 +99,30 @@ public class UserService {
 
         user.updateNickname(request.nickname());
         return buildMyPageResponse(user);
+    }
+
+    /**
+     * 로그인 상태에서 현재 비밀번호를 확인하고 새 비밀번호로 바꾼다. Apple 계정은
+     * 비밀번호 자체가 없으므로 이 경로를 이용할 수 없다.
+     */
+    @Transactional
+    public void updatePassword(String userId, UpdatePasswordRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+
+        if (user.getProvider() != AuthProvider.LOCAL) {
+            throw new BusinessException("이메일 계정 전용 기능입니다. Apple 계정은 이 방법을 이용할 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new BusinessException("현재 비밀번호가 일치하지 않습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        if (!request.newPassword().equals(request.newPasswordConfirm())) {
+            throw new BusinessException("비밀번호가 일치하지 않습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        user.updatePassword(passwordEncoder.encode(request.newPassword()));
     }
 
     /**
@@ -152,6 +181,7 @@ public class UserService {
         todoReactionRepository.deleteByUserId(id);
         userConsentRepository.deleteByUserId(id);
         reauthTokenRepository.deleteByUserId(id);
+        passwordResetTokenRepository.deleteByUserId(id);
         refreshTokenRepository.deleteByUserId(id);
         if (email != null) {
             emailVerificationRepository.deleteByEmail(email);

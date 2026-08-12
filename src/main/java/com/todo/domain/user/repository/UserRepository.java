@@ -14,6 +14,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
     Optional<User> findByLoginId(String loginId);
     Optional<User> findBySocialId(String socialId);
+    Optional<User> findByEmail(String email);
 
     /**
      * 같은 계정으로 동시에 로그인/재발급이 들어와도 세션 발급(저장 + 5개 초과분 정리)이

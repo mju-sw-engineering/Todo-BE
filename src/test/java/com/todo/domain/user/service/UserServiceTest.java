@@ -2,6 +2,7 @@ package com.todo.domain.user.service;
 
 import com.todo.domain.auth.entity.ReauthPurpose;
 import com.todo.domain.auth.repository.EmailVerificationRepository;
+import com.todo.domain.auth.repository.PasswordResetTokenRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
@@ -21,6 +22,7 @@ import com.todo.domain.todo.repository.TodoWorkItemRepository;
 import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
+import com.todo.domain.user.dto.request.UpdatePasswordRequest;
 import com.todo.domain.user.dto.request.UpdateProfileImageRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.dto.response.UserProfileResponse;
@@ -38,6 +40,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -92,6 +95,8 @@ class UserServiceTest {
     @Mock
     private ReauthTokenRepository reauthTokenRepository;
     @Mock
+    private PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
     private ReauthService reauthService;
@@ -99,6 +104,8 @@ class UserServiceTest {
     private FileDeletionOutboxService fileDeletionOutboxService;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private PasswordEncoder passwordEncoder;
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {
@@ -317,6 +324,7 @@ class UserServiceTest {
         verify(todoReactionRepository).deleteByUserId(1L);
         verify(userConsentRepository).deleteByUserId(1L);
         verify(reauthTokenRepository).deleteByUserId(1L);
+        verify(passwordResetTokenRepository).deleteByUserId(1L);
         verify(emailVerificationRepository).deleteByEmail("user1@example.com");
         verify(mailOutboxRepository).deleteByRecipient("user1@example.com");
         verify(teamMemberRepository).deleteByUserId(1L);
@@ -402,6 +410,53 @@ class UserServiceTest {
         userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
         verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void 비밀번호_변경_성공() {
+        User user = user(1L, "1", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("currentPwd", "encodedPwd")).willReturn(true);
+        given(passwordEncoder.encode("newPwd1!")).willReturn("encodedNewPwd");
+
+        userService.updatePassword("1", new UpdatePasswordRequest("currentPwd", "newPwd1!", "newPwd1!"));
+
+        assertThat(user.getPassword()).isEqualTo("encodedNewPwd");
+    }
+
+    @Test
+    void 비밀번호_변경은_Apple_계정이면_거부한다() {
+        User apple = appleWithdrawingUser("apple-rt", "com.test.app");
+        given(userRepository.findById(1L)).willReturn(Optional.of(apple));
+
+        assertThatThrownBy(() -> userService.updatePassword("1", new UpdatePasswordRequest("currentPwd", "newPwd1!", "newPwd1!")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Apple 계정");
+        verifyNoInteractions(passwordEncoder);
+    }
+
+    @Test
+    void 비밀번호_변경은_현재_비밀번호가_틀리면_거부한다() {
+        User user = user(1L, "1", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("wrongPwd", "encodedPwd")).willReturn(false);
+
+        assertThatThrownBy(() -> userService.updatePassword("1", new UpdatePasswordRequest("wrongPwd", "newPwd1!", "newPwd1!")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("현재 비밀번호가 일치하지 않습니다.");
+        assertThat(user.getPassword()).isEqualTo("encodedPwd");
+    }
+
+    @Test
+    void 비밀번호_변경은_새_비밀번호_확인이_다르면_거부한다() {
+        User user = user(1L, "1", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("currentPwd", "encodedPwd")).willReturn(true);
+
+        assertThatThrownBy(() -> userService.updatePassword("1", new UpdatePasswordRequest("currentPwd", "newPwd1!", "다름")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("비밀번호가 일치하지 않습니다.");
+        assertThat(user.getPassword()).isEqualTo("encodedPwd");
     }
 
     private User withdrawingUser() {
