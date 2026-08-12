@@ -29,6 +29,7 @@ public class AuthService implements UserDetailsService {
     private final UserRepository userRepository;
     private final UserConsentRecorder userConsentRecorder;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final SessionService sessionService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final FileService fileService;
@@ -70,9 +71,7 @@ public class AuthService implements UserDetailsService {
 
         String accessToken = jwtUtil.generateToken(user.getId());
         String rawRefreshToken = jwtUtil.generateRefreshToken();
-        refreshTokenRepository.save(
-                RefreshToken.create(user, rawRefreshToken, jwtUtil.refreshTokenExpiresAt())
-        );
+        sessionService.issueRefreshToken(user, rawRefreshToken, request.deviceId(), jwtUtil.refreshTokenExpiresAt());
         return new LoginResult(accessToken, rawRefreshToken);
     }
 
@@ -100,9 +99,7 @@ public class AuthService implements UserDetailsService {
 
         User user = token.getUser();
         String newRawToken = jwtUtil.generateRefreshToken();
-        refreshTokenRepository.save(
-                RefreshToken.create(user, newRawToken, jwtUtil.refreshTokenExpiresAt())
-        );
+        sessionService.issueRefreshToken(user, newRawToken, token.getDeviceId(), jwtUtil.refreshTokenExpiresAt());
 
         return new LoginResult(jwtUtil.generateToken(user.getId()), newRawToken);
     }

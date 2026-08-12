@@ -34,7 +34,7 @@ class AppleAuthControllerTest {
 
     @Test
     void Apple_로그인_기존_회원이면_200과_액세스_토큰을_반환한다() {
-        AppleLoginRequest request = new AppleLoginRequest("id-token", "auth-code", "nonce");
+        AppleLoginRequest request = new AppleLoginRequest("id-token", "auth-code", "nonce", null);
         given(appleAuthService.appleLogin(request))
                 .willReturn(new AppleAuthService.AppleLoginResult.LoggedIn(
                         new LoginResult("access-token", "refresh-uuid")));
@@ -48,7 +48,7 @@ class AppleAuthControllerTest {
 
     @Test
     void Apple_로그인_신규_회원이면_202와_setup_token을_반환한다() {
-        AppleLoginRequest request = new AppleLoginRequest("id-token", "auth-code", "nonce");
+        AppleLoginRequest request = new AppleLoginRequest("id-token", "auth-code", "nonce", null);
         given(appleAuthService.appleLogin(request))
                 .willReturn(new AppleAuthService.AppleLoginResult.SetupRequired("setup-token"));
 
@@ -61,7 +61,7 @@ class AppleAuthControllerTest {
     @Test
     void Apple_회원가입_완료_후_액세스_토큰을_반환한다() {
         AppleCompleteRequest request =
-                new AppleCompleteRequest("setup-token", "닉네임", null, true, true, false);
+                new AppleCompleteRequest("setup-token", "닉네임", null, true, true, false, null);
         given(appleAuthService.appleComplete(request))
                 .willReturn(new LoginResult("access-token", "refresh-uuid"));
 
