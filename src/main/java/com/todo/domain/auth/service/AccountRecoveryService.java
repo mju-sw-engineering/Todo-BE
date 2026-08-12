@@ -8,6 +8,8 @@ import com.todo.domain.auth.dto.response.FindPasswordResponse;
 import com.todo.domain.auth.entity.AuthProvider;
 import com.todo.domain.auth.entity.PasswordResetToken;
 import com.todo.domain.auth.repository.PasswordResetTokenRepository;
+import com.todo.domain.notification.message.NotificationMessageFactory;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -48,6 +50,8 @@ public class AccountRecoveryService {
     private final PasswordEncoder passwordEncoder;
     private final SecureRandom secureRandom = new SecureRandom();
     private final Clock clock;
+    private final NotificationService notificationService;
+    private final NotificationMessageFactory notificationMessageFactory;
 
     /**
      * emailVerificationService.validateAndConsume가 이메일 인증 토큰을 소비(쓰기)하므로
@@ -104,6 +108,7 @@ public class AccountRecoveryService {
         // user는 위 markAsUsed로 detach된 상태라, 변경 후 명시적으로 저장해야 반영된다.
         user.updatePassword(passwordEncoder.encode(request.newPassword()));
         userRepository.save(user);
+        notificationService.send(user, null, notificationMessageFactory.passwordChanged(), null);
     }
 
     private User findLocalUserByEmail(String email) {

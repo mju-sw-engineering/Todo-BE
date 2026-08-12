@@ -7,6 +7,10 @@ import com.todo.domain.auth.dto.response.FindIdResponse;
 import com.todo.domain.auth.dto.response.FindPasswordResponse;
 import com.todo.domain.auth.entity.PasswordResetToken;
 import com.todo.domain.auth.repository.PasswordResetTokenRepository;
+import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessage;
+import com.todo.domain.notification.message.NotificationMessageFactory;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
@@ -50,6 +54,10 @@ class AccountRecoveryServiceTest {
     private EmailVerificationService emailVerificationService;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private NotificationMessageFactory notificationMessageFactory;
 
     private AccountRecoveryService accountRecoveryService;
     private User user;
@@ -58,7 +66,8 @@ class AccountRecoveryServiceTest {
     void setUp() {
         Clock clock = Clock.fixed(NOW, KST);
         accountRecoveryService = new AccountRecoveryService(
-                userRepository, passwordResetTokenRepository, emailVerificationService, passwordEncoder, clock);
+                userRepository, passwordResetTokenRepository, emailVerificationService, passwordEncoder, clock,
+                notificationService, notificationMessageFactory);
         user = User.create("localUser", "encodedPwd", "닉네임", null);
         user.assignEmail(EMAIL);
         ReflectionTestUtils.setField(user, "id", 1L);
@@ -155,6 +164,8 @@ class AccountRecoveryServiceTest {
         given(passwordResetTokenRepository.findByTokenHash(hashOf("raw-token"))).willReturn(Optional.of(token));
         given(passwordResetTokenRepository.markAsUsed(any(), any())).willReturn(1);
         given(passwordEncoder.encode("newPassword1!")).willReturn("encodedNewPassword");
+        NotificationMessage message = new NotificationMessage(NotificationType.PASSWORD_CHANGED, "title", "content");
+        given(notificationMessageFactory.passwordChanged()).willReturn(message);
 
         accountRecoveryService.resetPassword(new ResetPasswordRequest("raw-token", "newPassword1!", "newPassword1!"));
 
@@ -163,6 +174,7 @@ class AccountRecoveryServiceTest {
         // markAsUsed(clearAutomatically=true)가 영속성 컨텍스트를 비워 user를 detach시키므로,
         // 변경 후 명시적으로 저장하지 않으면 실제로는 DB에 반영되지 않는다.
         verify(userRepository).save(user);
+        verify(notificationService).send(user, null, message, null);
     }
 
     @Test
