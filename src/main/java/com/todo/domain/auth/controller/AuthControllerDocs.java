@@ -2,10 +2,15 @@ package com.todo.domain.auth.controller;
 
 import com.todo.domain.auth.dto.request.EmailSendRequest;
 import com.todo.domain.auth.dto.request.EmailVerifyRequest;
+import com.todo.domain.auth.dto.request.FindIdRequest;
+import com.todo.domain.auth.dto.request.FindPasswordRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.ReauthRequest;
+import com.todo.domain.auth.dto.request.ResetPasswordRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.EmailVerifyResponse;
+import com.todo.domain.auth.dto.response.FindIdResponse;
+import com.todo.domain.auth.dto.response.FindPasswordResponse;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.ReauthResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
@@ -78,6 +83,48 @@ public interface AuthControllerDocs {
     })
     ResponseEntity<com.todo.global.response.ApiResponse<LoginResponse>> refresh(String refreshToken);
 
+    @Operation(
+            summary = "아이디 찾기",
+            description = "이메일 인증 토큰으로 이메일 소유를 확인하고 해당 이메일로 가입된 로그인 아이디를 반환합니다. LOCAL 계정만 가능합니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공",
+                    content = @Content(schema = @Schema(implementation = FindIdResponse.class))),
+            @ApiResponse(responseCode = "400", description = "인증 토큰 오류 또는 Apple 계정",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @ApiResponse(responseCode = "404", description = "해당 이메일로 가입된 계정 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<com.todo.global.response.ApiResponse<FindIdResponse>> findId(FindIdRequest request);
+
+    @Operation(
+            summary = "비밀번호 찾기 (재설정 토큰 발급)",
+            description = "이메일 인증 토큰으로 이메일 소유를 확인하고 비밀번호 재설정 토큰을 발급합니다. "
+                    + "토큰은 15분간 유효하며 PATCH /api/auth/password/reset에 사용합니다. LOCAL 계정만 가능합니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "발급 성공",
+                    content = @Content(schema = @Schema(implementation = FindPasswordResponse.class))),
+            @ApiResponse(responseCode = "400", description = "인증 토큰 오류 또는 Apple 계정",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @ApiResponse(responseCode = "404", description = "해당 이메일로 가입된 계정 없음",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<com.todo.global.response.ApiResponse<FindPasswordResponse>> findPassword(FindPasswordRequest request);
+
+    @Operation(
+            summary = "비밀번호 재설정",
+            description = "find-password로 발급받은 재설정 토큰으로 비밀번호를 변경합니다. 토큰은 1회용입니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "재설정 성공"),
+            @ApiResponse(responseCode = "400", description = "새 비밀번호 불일치",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @ApiResponse(responseCode = "401", description = "토큰이 유효하지 않음, 만료, 또는 이미 사용됨",
+                    content = @Content(schema = @Schema(hidden = true)))
+    })
+    ResponseEntity<com.todo.global.response.ApiResponse<Void>> resetPassword(ResetPasswordRequest request);
+
     @Operation(summary = "로그아웃", description = "refreshToken 쿠키를 삭제하고 해당 토큰을 무효화합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그아웃 성공"),
@@ -87,6 +134,17 @@ public interface AuthControllerDocs {
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<com.todo.global.response.ApiResponse<Void>> logout(String refreshToken);
 
+    @Operation(
+            summary = "전체 기기 로그아웃",
+            description = "이 계정으로 로그인된 모든 기기의 세션을 로그아웃합니다. 요청 중인 기기도 포함되며 쿠키도 함께 삭제됩니다."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "전체 로그아웃 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<com.todo.global.response.ApiResponse<Void>> logoutAll(Authentication authentication);
 
     @Operation(
             summary = "재인증",
