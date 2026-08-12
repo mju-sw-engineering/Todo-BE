@@ -13,7 +13,10 @@ import com.todo.domain.availability.entity.AvailabilityPollDate;
 import com.todo.domain.availability.entity.AvailabilitySlot;
 import com.todo.domain.availability.repository.AvailabilityPollRepository;
 import com.todo.domain.availability.repository.AvailabilitySlotRepository;
+import com.todo.domain.notification.message.NotificationMessageFactory;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
+import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.user.entity.User;
@@ -45,6 +48,8 @@ public class AvailabilityService {
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
+    private final NotificationMessageFactory notificationMessageFactory;
 
     public List<AvailabilityPollListResponse> getPolls(Long teamId, String userId) {
         User user = findUser(userId);
@@ -91,6 +96,19 @@ public class AvailabilityService {
         uniqueDates.forEach(date -> poll.getDates().add(AvailabilityPollDate.create(poll, date)));
 
         pollRepository.save(poll);
+        notifyPollCreated(poll, user);
+    }
+
+    private void notifyPollCreated(AvailabilityPoll poll, User creator) {
+        List<User> receivers = teamMemberRepository.findByTeamIdExcludingUser(poll.getTeam().getId(), creator.getId()).stream()
+                .map(TeamMember::getUser)
+                .toList();
+        notificationService.sendAll(
+                receivers,
+                creator,
+                notificationMessageFactory.availabilityPollCreated(poll.getTitle()),
+                poll.getId()
+        );
     }
 
     @Transactional
