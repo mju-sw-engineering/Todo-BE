@@ -17,7 +17,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -54,6 +56,7 @@ public class ReauthService {
     private final SimpleRateLimiter rateLimiter;
     private final SecureRandom secureRandom = new SecureRandom();
     private final Clock clock;
+    private final TransactionTemplate transactionTemplate;
 
     @Transactional
     public ReauthResponse reauthenticate(String userId, ReauthRequest request) {
@@ -82,11 +85,15 @@ public class ReauthService {
      * <p>비밀번호가 없으므로 Apple 인증 시트를 새로 통과했다는 증거(identity token)를 요구한다.
      * 시트는 Face ID/암호를 거치므로 비밀번호 확인보다 약하지 않다. 검사를 건너뛰고 통과시키면
      * 토큰만 탈취해도 탈퇴가 가능해져 재인증을 두는 의미가 사라진다.
+     *
+     * <p>{@link #appleIdentityTokenService}의 공개키 조회는 캐시 미스 시 Apple 서버로 나가는
+     * 외부 호출이라, DB 조회/저장만 {@link #transactionTemplate}로 감싸고 이 메서드 자체는
+     * 트랜잭션 밖에서 실행한다 ({@link AppleAuthService}와 같은 이유).
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ReauthResponse reauthenticateWithApple(String userId, AppleReauthRequest request) {
-        User user = userRepository.findById(Long.parseLong(userId))
-                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+        User user = transactionTemplate.execute(status -> userRepository.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED)));
 
         if (user.getProvider() != AuthProvider.APPLE) {
             throw new BusinessException("Apple 계정이 아닙니다", HttpStatus.BAD_REQUEST);
@@ -103,7 +110,7 @@ public class ReauthService {
             throw new BusinessException("로그인한 계정과 다른 Apple 계정입니다", HttpStatus.UNAUTHORIZED);
         }
 
-        return issueReauthToken(user, request.purpose());
+        return transactionTemplate.execute(status -> issueReauthToken(user, request.purpose()));
     }
 
     private ReauthResponse issueReauthToken(User user, ReauthPurpose purpose) {

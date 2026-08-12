@@ -25,5 +25,8 @@ public record AppleCompleteRequest(
         Boolean privacyAgreed,
 
         @Schema(description = "마케팅 정보 수신 동의 (선택)")
-        Boolean marketingAgreed
+        Boolean marketingAgreed,
+
+        @Schema(description = "클라이언트가 생성한 기기 고유 ID (선택, 세션 목록/기기별 관리에 사용)")
+        String deviceId
 ) {}

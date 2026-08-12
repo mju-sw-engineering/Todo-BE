@@ -23,6 +23,7 @@ import com.todo.domain.todo.service.TodoWorkItemLifecycleService;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.request.UpdatePasswordRequest;
+import com.todo.domain.user.dto.request.UpdateProfileImageRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.domain.user.entity.User;
@@ -150,6 +151,52 @@ class UserServiceTest {
 
         assertThat(user.getNickname()).isEqualTo("새닉네임");
         assertThat(response.nickname()).isEqualTo("새닉네임");
+    }
+
+    @Test
+    void 프로필_사진_변경_성공_이전_이미지가_있으면_삭제_예약한다() {
+        User user = user(1L, "1", "닉네임", "profiles/1/old.png");
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of());
+        given(fileService.resolveImageUrl("profiles/1/new.png")).willReturn("https://example.com/profiles/1/new.png");
+
+        MyPageResponse response = userService.updateProfileImage("1", new UpdateProfileImageRequest("profiles/1/new.png"));
+
+        assertThat(user.getProfileImageUrl()).isEqualTo("profiles/1/new.png");
+        assertThat(response.profileImageUrl()).isEqualTo("https://example.com/profiles/1/new.png");
+        verify(fileDeletionOutboxService).enqueueAll(List.of("profiles/1/old.png"));
+    }
+
+    @Test
+    void 프로필_사진_변경은_이전_이미지가_없으면_삭제를_예약하지_않는다() {
+        User user = user(1L, "1", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of());
+
+        userService.updateProfileImage("1", new UpdateProfileImageRequest("profiles/1/new.png"));
+
+        verify(fileDeletionOutboxService, never()).enqueueAll(anyList());
+    }
+
+    @Test
+    void 프로필_사진_변경은_같은_키를_다시_보내면_삭제를_예약하지_않는다() {
+        User user = user(1L, "1", "닉네임", "profiles/1/same.png");
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamMemberRepository.findTeamsByUserId(1L)).willReturn(List.of());
+
+        userService.updateProfileImage("1", new UpdateProfileImageRequest("profiles/1/same.png"));
+
+        verify(fileDeletionOutboxService, never()).enqueueAll(anyList());
+    }
+
+    @Test
+    void 프로필_사진_변경_실패_존재하지_않는_사용자() {
+        given(userRepository.findById(999L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.updateProfileImage("999", new UpdateProfileImageRequest("profiles/1/new.png")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("로그인이 필요합니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 
     @Test

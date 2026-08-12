@@ -25,6 +25,7 @@ import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.request.UpdatePasswordRequest;
+import com.todo.domain.user.dto.request.UpdateProfileImageRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.domain.user.entity.User;
@@ -122,6 +123,25 @@ public class UserService {
         }
 
         user.updatePassword(passwordEncoder.encode(request.newPassword()));
+    }
+
+    /**
+     * 이전 이미지가 있고 새 키와 다를 때만 삭제 예약한다. 같은 키를 다시 보낸 경우까지 지우면
+     * 방금 설정한 이미지가 삭제 대상이 되는 사고가 난다.
+     */
+    @Transactional
+    public MyPageResponse updateProfileImage(String userId, UpdateProfileImageRequest request) {
+        User user = userRepository.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
+
+        String oldImageKey = user.getProfileImageUrl();
+        user.updateProfileImage(request.profileImageKey());
+
+        if (oldImageKey != null && !oldImageKey.equals(request.profileImageKey())) {
+            fileDeletionOutboxService.enqueueAll(List.of(oldImageKey));
+        }
+
+        return buildMyPageResponse(user);
     }
 
     /**

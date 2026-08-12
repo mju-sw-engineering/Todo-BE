@@ -3,6 +3,7 @@ package com.todo.domain.auth.service.apple;
 import com.todo.global.config.AppleProperties;
 import com.todo.global.exception.BusinessException;
 import io.jsonwebtoken.Jwts;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.security.KeyFactory;
 import java.security.PrivateKey;
@@ -18,6 +20,7 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
 
+@Slf4j
 @Service
 public class AppleTokenClient {
 
@@ -58,7 +61,17 @@ public class AppleTokenClient {
             return (String) response.get("refresh_token");
         } catch (BusinessException e) {
             throw e;
+        } catch (RestClientResponseException e) {
+            // 애플은 실패 원인을 응답 본문의 error/error_description에만 담아준다. 이걸 버리면
+            // invalid_client(키·App ID 설정 문제)와 invalid_grant(code 만료·재사용)를 구분할 수 없어,
+            // 클라이언트에 내려가는 문구만으로는 원인을 좁힐 수 없다. authorization code는
+            // 단명·1회용이라 본문에 남아도 재사용 가치가 없다.
+            log.warn("Apple 토큰 교환 실패. clientId={}, status={}, body={}",
+                    clientId, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new BusinessException("Apple 토큰 교환 중 오류가 발생했습니다.", HttpStatus.BAD_REQUEST);
         } catch (Exception e) {
+            // 네트워크·TLS·역직렬화 실패는 응답 본문이 없다. 스택까지 남겨야 구분된다.
+            log.warn("Apple 토큰 교환 중 예외. clientId={}", clientId, e);
             throw new BusinessException("Apple 토큰 교환 중 오류가 발생했습니다.", HttpStatus.BAD_REQUEST);
         }
     }
@@ -80,7 +93,12 @@ public class AppleTokenClient {
                     .body(body)
                     .retrieve()
                     .toBodilessEntity();
+        } catch (RestClientResponseException e) {
+            log.warn("Apple 토큰 revoke 실패. clientId={}, status={}, body={}",
+                    clientId, e.getStatusCode(), e.getResponseBodyAsString());
+            throw new BusinessException("Apple 토큰 revoke 중 오류가 발생했습니다.", HttpStatus.BAD_REQUEST);
         } catch (Exception e) {
+            log.warn("Apple 토큰 revoke 중 예외. clientId={}", clientId, e);
             throw new BusinessException("Apple 토큰 revoke 중 오류가 발생했습니다.", HttpStatus.BAD_REQUEST);
         }
     }

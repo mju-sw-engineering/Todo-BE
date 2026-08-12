@@ -20,6 +20,7 @@ import com.todo.domain.auth.service.AccountRecoveryService;
 import com.todo.domain.auth.service.AuthService;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.service.EmailVerificationService;
+import com.todo.domain.auth.service.SessionService;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.response.ApiResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,12 +53,14 @@ class AuthControllerTest {
     private EmailVerificationService emailVerificationService;
     @Mock
     private AccountRecoveryService accountRecoveryService;
+    @Mock
+    private SessionService sessionService;
 
     private AuthController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AuthController(authService, emailVerificationService, reauthService, accountRecoveryService);
+        controller = new AuthController(authService, emailVerificationService, reauthService, accountRecoveryService, sessionService);
         ReflectionTestUtils.setField(controller, "cookieSecure", false);
     }
 
@@ -148,7 +151,7 @@ class AuthControllerTest {
 
     @Test
     void 로그인_응답을_반환하고_쿠키를_설정한다() {
-        LoginRequest request = new LoginRequest("user1", "password");
+        LoginRequest request = new LoginRequest("user1", "password", null);
         given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
 
         ResponseEntity<ApiResponse<LoginResponse>> response = controller.login(request);
@@ -193,7 +196,7 @@ class AuthControllerTest {
 
     @Test
     void 로그인_쿠키는_보안_속성을_모두_포함한다() {
-        LoginRequest request = new LoginRequest("user1", "password");
+        LoginRequest request = new LoginRequest("user1", "password", null);
         given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
 
         String cookie = controller.login(request).getHeaders().getFirst(HttpHeaders.SET_COOKIE);
@@ -221,6 +224,21 @@ class AuthControllerTest {
     }
 
     @Test
+    void 전체_로그아웃_응답을_반환하고_쿠키를_삭제한다() {
+        org.springframework.security.authentication.TestingAuthenticationToken auth =
+                new org.springframework.security.authentication.TestingAuthenticationToken("user1", null);
+
+        ResponseEntity<ApiResponse<Void>> response = controller.logoutAll(auth);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody().getMessage()).isEqualTo("모든 기기에서 로그아웃 되었습니다");
+        String cookie = response.getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+        assertThat(cookie).contains("refreshToken=");
+        assertThat(cookie).contains("Max-Age=0");
+        then(sessionService).should().revokeAllSessions("user1");
+    }
+
+    @Test
     void 로그아웃_쿠키는_같은_속성으로_즉시_만료된다() {
         String cookie = controller.logout("my-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE);
 
@@ -235,7 +253,7 @@ class AuthControllerTest {
     @Test
     void cookieSecure가_true면_세_경로의_쿠키에_모두_Secure가_붙는다() {
         ReflectionTestUtils.setField(controller, "cookieSecure", true);
-        LoginRequest request = new LoginRequest("user1", "password");
+        LoginRequest request = new LoginRequest("user1", "password", null);
         given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
         given(authService.refresh("old-uuid")).willReturn(new LoginResult("new-access", "new-uuid"));
 
@@ -246,7 +264,7 @@ class AuthControllerTest {
 
     @Test
     void cookieSecure가_false면_세_경로의_쿠키에_Secure가_붙지_않는다() {
-        LoginRequest request = new LoginRequest("user1", "password");
+        LoginRequest request = new LoginRequest("user1", "password", null);
         given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
         given(authService.refresh("old-uuid")).willReturn(new LoginResult("new-access", "new-uuid"));
 

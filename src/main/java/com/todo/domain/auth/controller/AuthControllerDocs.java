@@ -134,6 +134,17 @@ public interface AuthControllerDocs {
     @SecurityRequirement(name = "bearerAuth")
     ResponseEntity<com.todo.global.response.ApiResponse<Void>> logout(String refreshToken);
 
+    @Operation(
+            summary = "전체 기기 로그아웃",
+            description = "이 계정으로 로그인된 모든 기기의 세션을 로그아웃합니다. 요청 중인 기기도 포함되며 쿠키도 함께 삭제됩니다."
+    )
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "전체 로그아웃 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @io.swagger.v3.oas.annotations.media.Content(schema = @io.swagger.v3.oas.annotations.media.Schema(hidden = true)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    ResponseEntity<com.todo.global.response.ApiResponse<Void>> logoutAll(Authentication authentication);
 
     @Operation(
             summary = "재인증",

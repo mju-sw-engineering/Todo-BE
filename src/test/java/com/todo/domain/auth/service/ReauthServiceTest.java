@@ -20,6 +20,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -34,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -54,6 +57,8 @@ class ReauthServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private SimpleRateLimiter rateLimiter;
+    @Mock
+    private TransactionTemplate transactionTemplate;
 
     private ReauthService reauthService;
     private User user;
@@ -62,9 +67,17 @@ class ReauthServiceTest {
     void setUp() {
         Clock clock = Clock.fixed(NOW, KST);
         reauthService = new ReauthService(
-                userRepository, reauthTokenRepository, appleIdentityTokenService, passwordEncoder, rateLimiter, clock);
+                userRepository, reauthTokenRepository, appleIdentityTokenService, passwordEncoder, rateLimiter,
+                clock, transactionTemplate);
         user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
+
+        // reauthenticateWithApple이 TransactionTemplate으로 직접 트랜잭션을 감싸므로,
+        // execute()가 실제로 콜백을 실행하도록 이어준다.
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
     }
 
     private void givenPasswordMatches() {

@@ -3,6 +3,7 @@ package com.todo.domain.user.controller;
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
 import com.todo.domain.user.dto.request.UpdatePasswordRequest;
+import com.todo.domain.user.dto.request.UpdateProfileImageRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.domain.user.service.UserService;
@@ -57,6 +58,16 @@ public class UserController implements UserControllerDocs {
         String userId = authentication.getName();
         userService.updatePassword(userId, request);
         return ResponseEntity.ok(ApiResponse.success(null, "비밀번호가 변경되었습니다"));
+    }
+
+    @PatchMapping("/me/profile-image")
+    public ResponseEntity<ApiResponse<MyPageResponse>> updateProfileImage(
+            @Valid @RequestBody UpdateProfileImageRequest request,
+            Authentication authentication
+    ) {
+        String userId = authentication.getName();
+        MyPageResponse response = userService.updateProfileImage(userId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "프로필 사진이 변경되었습니다"));
     }
 
     @DeleteMapping("/me")
