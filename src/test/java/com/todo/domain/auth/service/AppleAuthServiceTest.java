@@ -3,8 +3,6 @@ package com.todo.domain.auth.service;
 import com.todo.domain.auth.dto.request.AppleCompleteRequest;
 import com.todo.domain.auth.dto.request.AppleLoginRequest;
 import com.todo.domain.auth.dto.response.LoginResult;
-import com.todo.domain.auth.entity.RefreshToken;
-import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.service.apple.AppleIdentityTokenService;
 import com.todo.domain.auth.service.apple.AppleIdentityTokenService.VerifyResult;
 import com.todo.domain.auth.service.apple.AppleTokenClient;
@@ -13,6 +11,7 @@ import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.jwt.JwtUtil;
 import io.jsonwebtoken.Claims;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,7 +19,10 @@ import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -31,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,11 +45,24 @@ class AppleAuthServiceTest {
     @Mock private AppleIdentityTokenService identityTokenService;
     @Mock private AppleTokenClient appleTokenClient;
     @Mock private UserRepository userRepository;
-    @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private SessionService sessionService;
     @Mock private UserConsentRecorder userConsentRecorder;
     @Mock private JwtUtil jwtUtil;
+    @Mock private TransactionTemplate transactionTemplate;
 
     @Captor private ArgumentCaptor<User> userCaptor;
+
+    /**
+     * appleLogin/appleComplete가 TransactionTemplate으로 직접 트랜잭션을 감싸므로,
+     * execute()가 실제로 콜백을 실행하도록 매 테스트마다 이어준다.
+     */
+    @BeforeEach
+    void stubTransactionTemplate() {
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+    }
 
     private static final String SOCIAL_ID = "apple-user-001";
     private static final String AUTH_CODE = "auth-code-xyz";
@@ -64,7 +80,8 @@ class AppleAuthServiceTest {
         given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
         given(jwtUtil.generateToken(1L)).willReturn("access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
-        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
+        given(jwtUtil.refreshTokenExpiresAt()).willReturn(expiresAt);
 
         AppleAuthService.AppleLoginResult result = appleAuthService.appleLogin(loginRequest());
 
@@ -73,7 +90,7 @@ class AppleAuthServiceTest {
         assertThat(logged.loginResult().accessToken()).isEqualTo("access-token");
         assertThat(user.getAppleRefreshToken()).isEqualTo("apple-rt");
         assertThat(user.getAppleClientId()).isEqualTo(CLIENT_ID);
-        then(refreshTokenRepository).should().save(any(RefreshToken.class));
+        then(sessionService).should().issueRefreshToken(user, "refresh-uuid", "device-1", expiresAt);
     }
 
     @Test
@@ -95,7 +112,7 @@ class AppleAuthServiceTest {
         given(userRepository.existsByEmail(EMAIL)).willReturn(false);
 
         User saved = stubSavedUser();
-        givenTokenIssuance();
+        LocalDateTime expiresAt = givenTokenIssuance();
 
         LoginResult result = appleAuthService.appleComplete(completeRequest("profile-key.png", true));
 
@@ -109,7 +126,7 @@ class AppleAuthServiceTest {
 
         // 이메일 가입과 같은 동의 이력을 남겨야 한다.
         then(userConsentRecorder).should().recordSignupConsents(saved, true);
-        then(refreshTokenRepository).should().save(any(RefreshToken.class));
+        then(sessionService).should().issueRefreshToken(saved, "refresh-uuid", "device-1", expiresAt);
     }
 
     @Test
@@ -142,7 +159,7 @@ class AppleAuthServiceTest {
         given(jwtUtil.parseSetupToken("invalid-token")).willThrow(new RuntimeException("expired"));
 
         assertThatThrownBy(() -> appleAuthService.appleComplete(
-                new AppleCompleteRequest("invalid-token", "닉네임", null, true, true, false)))
+                new AppleCompleteRequest("invalid-token", "닉네임", null, true, true, false, null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("setup token");
     }
@@ -152,6 +169,19 @@ class AppleAuthServiceTest {
         givenSetupToken(null);
         given(userRepository.findBySocialId(SOCIAL_ID))
                 .willReturn(Optional.of(User.createAppleUser(SOCIAL_ID, "기존", null)));
+
+        assertThatThrownBy(() -> appleAuthService.appleComplete(completeRequest(null, false)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 가입된");
+    }
+
+    @Test
+    void 존재확인_이후_저장_시점에_경합으로_유니크_제약을_위반하면_409를_던진다() {
+        givenSetupToken(null);
+        given(userRepository.findBySocialId(SOCIAL_ID)).willReturn(Optional.empty());
+        given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
+        given(userRepository.save(any(User.class)))
+                .willThrow(new DataIntegrityViolationException("uk_users_social_id"));
 
         assertThatThrownBy(() -> appleAuthService.appleComplete(completeRequest(null, false)))
                 .isInstanceOf(BusinessException.class)
@@ -175,18 +205,20 @@ class AppleAuthServiceTest {
         return saved;
     }
 
-    private void givenTokenIssuance() {
+    private LocalDateTime givenTokenIssuance() {
         given(appleTokenClient.exchangeForAppleRefreshToken(AUTH_CODE, CLIENT_ID)).willReturn("apple-rt");
         given(jwtUtil.generateToken(2L)).willReturn("access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("refresh-uuid");
-        given(jwtUtil.refreshTokenExpiresAt()).willReturn(LocalDateTime.now().plusDays(14));
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
+        given(jwtUtil.refreshTokenExpiresAt()).willReturn(expiresAt);
+        return expiresAt;
     }
 
     private AppleCompleteRequest completeRequest(String profileImageKey, boolean marketingAgreed) {
-        return new AppleCompleteRequest("setup-token", "새닉네임", profileImageKey, true, true, marketingAgreed);
+        return new AppleCompleteRequest("setup-token", "새닉네임", profileImageKey, true, true, marketingAgreed, "device-1");
     }
 
     private AppleLoginRequest loginRequest() {
-        return new AppleLoginRequest("identity-token", AUTH_CODE, NONCE);
+        return new AppleLoginRequest("identity-token", AUTH_CODE, NONCE, "device-1");
     }
 }

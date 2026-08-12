@@ -3,17 +3,24 @@ package com.todo.domain.auth.controller;
 import com.todo.domain.auth.dto.request.AppleReauthRequest;
 import com.todo.domain.auth.dto.request.EmailSendRequest;
 import com.todo.domain.auth.dto.request.EmailVerifyRequest;
+import com.todo.domain.auth.dto.request.FindIdRequest;
+import com.todo.domain.auth.dto.request.FindPasswordRequest;
 import com.todo.domain.auth.dto.request.LoginRequest;
 import com.todo.domain.auth.dto.request.ReauthRequest;
+import com.todo.domain.auth.dto.request.ResetPasswordRequest;
 import com.todo.domain.auth.dto.request.SignupRequest;
 import com.todo.domain.auth.dto.response.EmailVerifyResponse;
+import com.todo.domain.auth.dto.response.FindIdResponse;
+import com.todo.domain.auth.dto.response.FindPasswordResponse;
 import com.todo.domain.auth.dto.response.LoginResponse;
 import com.todo.domain.auth.dto.response.LoginResult;
 import com.todo.domain.auth.dto.response.ReauthResponse;
 import com.todo.domain.auth.dto.response.SignupResponse;
+import com.todo.domain.auth.service.AccountRecoveryService;
 import com.todo.domain.auth.service.AuthService;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.service.EmailVerificationService;
+import com.todo.domain.auth.service.SessionService;
 import com.todo.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +30,7 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,6 +47,8 @@ public class AuthController implements AuthControllerDocs {
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
     private final ReauthService reauthService;
+    private final AccountRecoveryService accountRecoveryService;
+    private final SessionService sessionService;
 
     @Value("${cookie.secure}")
     private boolean cookieSecure;
@@ -98,6 +108,23 @@ public class AuthController implements AuthControllerDocs {
                 ApiResponse.success(reauthService.reauthenticateWithApple(userId, request), "재인증이 완료되었습니다"));
     }
 
+    @PostMapping("/find-id")
+    public ResponseEntity<ApiResponse<FindIdResponse>> findId(@Valid @RequestBody FindIdRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(accountRecoveryService.findLoginId(request), "아이디를 조회했습니다"));
+    }
+
+    @PostMapping("/find-password")
+    public ResponseEntity<ApiResponse<FindPasswordResponse>> findPassword(@Valid @RequestBody FindPasswordRequest request) {
+        return ResponseEntity.ok(
+                ApiResponse.success(accountRecoveryService.initiatePasswordReset(request), "비밀번호 재설정 토큰이 발급되었습니다"));
+    }
+
+    @PatchMapping("/password/reset")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        accountRecoveryService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.success(null, "비밀번호가 재설정되었습니다"));
+    }
+
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(
             @CookieValue(name = REFRESH_TOKEN_COOKIE, required = false) String refreshToken
@@ -106,6 +133,15 @@ public class AuthController implements AuthControllerDocs {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, buildClearCookie().toString())
                 .body(ApiResponse.success(null, "로그아웃 되었습니다"));
+    }
+
+    @PostMapping("/logout-all")
+    public ResponseEntity<ApiResponse<Void>> logoutAll(Authentication authentication) {
+        String userId = authentication.getName();
+        sessionService.revokeAllSessions(userId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, buildClearCookie().toString())
+                .body(ApiResponse.success(null, "모든 기기에서 로그아웃 되었습니다"));
     }
 
     private ResponseCookie buildRefreshCookie(String value) {

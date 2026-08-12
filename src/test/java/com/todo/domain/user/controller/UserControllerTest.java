@@ -2,6 +2,8 @@ package com.todo.domain.user.controller;
 
 import com.todo.domain.user.dto.request.DeleteUserRequest;
 import com.todo.domain.user.dto.request.UpdateNicknameRequest;
+import com.todo.domain.user.dto.request.UpdatePasswordRequest;
+import com.todo.domain.user.dto.request.UpdateProfileImageRequest;
 import com.todo.domain.user.dto.response.MyPageResponse;
 import com.todo.domain.user.dto.response.UserProfileResponse;
 import com.todo.domain.user.service.UserService;
@@ -59,6 +61,30 @@ class UserControllerTest {
         ResponseEntity<ApiResponse<MyPageResponse>> response = controller.updateNickname(request, auth());
 
         assertThat(response.getBody().getData()).isEqualTo(myPageResponse);
+    }
+
+    @Test
+    void 비밀번호_변경_응답을_반환한다() {
+        UserController controller = new UserController(userService);
+        UpdatePasswordRequest request = new UpdatePasswordRequest("currentPwd", "newPwd1!", "newPwd1!");
+
+        ResponseEntity<ApiResponse<Void>> response = controller.updatePassword(request, auth());
+
+        assertThat(response.getBody().getMessage()).isEqualTo("비밀번호가 변경되었습니다");
+        then(userService).should().updatePassword("user1", request);
+    }
+
+    @Test
+    void 프로필_사진_변경_응답을_반환한다() {
+        UserController controller = new UserController(userService);
+        UpdateProfileImageRequest request = new UpdateProfileImageRequest("profiles/1/new.png");
+        MyPageResponse myPageResponse = new MyPageResponse(1L, "user1", "닉네임", "profiles/1/new.png", AuthProvider.LOCAL, List.of());
+        given(userService.updateProfileImage("user1", request)).willReturn(myPageResponse);
+
+        ResponseEntity<ApiResponse<MyPageResponse>> response = controller.updateProfileImage(request, auth());
+
+        assertThat(response.getBody().getData()).isEqualTo(myPageResponse);
+        assertThat(response.getBody().getMessage()).isEqualTo("프로필 사진이 변경되었습니다");
     }
 
     @Test

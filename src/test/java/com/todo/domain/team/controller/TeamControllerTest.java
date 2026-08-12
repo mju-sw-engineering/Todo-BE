@@ -2,8 +2,10 @@ package com.todo.domain.team.controller;
 
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
+import com.todo.domain.team.dto.request.JoinByInviteLinkRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.InviteLinkResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamAchievementResponse;
@@ -21,6 +23,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -91,6 +95,32 @@ class TeamControllerTest {
         given(teamService.joinTeam("user1", request)).willReturn(serviceResponse);
 
         ResponseEntity<ApiResponse<JoinTeamResponse>> response = controller.joinTeam(request, auth());
+
+        assertThat(response.getBody().getMessage()).isEqualTo("팀 참여가 완료되었습니다");
+        assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
+    }
+
+    @Test
+    void 초대_링크_응답을_반환한다() {
+        TeamController controller = new TeamController(teamService, teamHiveService);
+        InviteLinkResponse serviceResponse = new InviteLinkResponse(
+                "https://backend.example.com/invite?token=abc", OffsetDateTime.now(ZoneOffset.ofHours(9)).plusDays(7));
+        given(teamService.getOrCreateInviteLink("user1", 1L)).willReturn(serviceResponse);
+
+        ResponseEntity<ApiResponse<InviteLinkResponse>> response = controller.getOrCreateInviteLink(1L, auth());
+
+        assertThat(response.getBody().getMessage()).isEqualTo("초대 링크를 조회했습니다");
+        assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
+    }
+
+    @Test
+    void 초대_링크_참여_응답을_반환한다() {
+        TeamController controller = new TeamController(teamService, teamHiveService);
+        JoinByInviteLinkRequest request = new JoinByInviteLinkRequest("abc");
+        JoinTeamResponse serviceResponse = new JoinTeamResponse(1L);
+        given(teamService.joinTeamByInviteLink("user1", request)).willReturn(serviceResponse);
+
+        ResponseEntity<ApiResponse<JoinTeamResponse>> response = controller.joinTeamByInviteLink(request, auth());
 
         assertThat(response.getBody().getMessage()).isEqualTo("팀 참여가 완료되었습니다");
         assertThat(response.getBody().getData()).isEqualTo(serviceResponse);

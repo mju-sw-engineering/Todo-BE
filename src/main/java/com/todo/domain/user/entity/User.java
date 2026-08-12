@@ -69,8 +69,16 @@ public class User extends BaseTimeEntity {
         this.nickname = nickname;
     }
 
+    public void updateProfileImage(String profileImageUrl) {
+        this.profileImageUrl = profileImageUrl;
+    }
+
     public void saveAppleCredentials(String appleRefreshToken, String appleClientId) {
         this.appleRefreshToken = appleRefreshToken;
         this.appleClientId = appleClientId;
+    }
+
+    public void updatePassword(String encodedPassword) {
+        this.password = encodedPassword;
     }
 }

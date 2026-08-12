@@ -88,10 +88,12 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/refresh", "/api/auth/email/**", "/api/auth/apple/**").permitAll()
+                        .requestMatchers("/api/auth/find-id", "/api/auth/find-password", "/api/auth/password/reset").permitAll()
                         .requestMatchers("/api/files/presigned-upload").permitAll()
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/.well-known/apple-app-site-association").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/terms").permitAll()
                         .anyRequest().authenticated()
                 )

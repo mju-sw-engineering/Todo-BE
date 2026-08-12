@@ -8,8 +8,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.spec.ECGenParameterSpec;
@@ -124,5 +127,73 @@ class AppleTokenClientTest {
         assertThatThrownBy(() -> appleTokenClient.revokeRefreshToken("apple-rt-xyz", CLIENT_ID))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Apple 토큰 revoke 중 오류가 발생했습니다.");
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void 교환_요청이_에러_응답을_받으면_예외를_던진다() {
+        given(appleProperties.privateKey()).willReturn(ecPrivateKeyPem);
+        given(appleProperties.teamId()).willReturn("TEAM123456");
+        given(appleProperties.keyId()).willReturn("KEY1234567");
+        given(appleProperties.tokenUrl()).willReturn(TOKEN_URL);
+
+        RestClient.RequestBodyUriSpec uriSpec = mock(RestClient.RequestBodyUriSpec.class, Mockito.RETURNS_SELF);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        given(restClient.post()).willReturn(uriSpec);
+        given(uriSpec.retrieve()).willReturn(responseSpec);
+        given(responseSpec.body(Map.class)).willThrow(appleErrorResponse("invalid_client"));
+
+        assertThatThrownBy(() -> appleTokenClient.exchangeForAppleRefreshToken("auth-code-123", CLIENT_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Apple 토큰 교환 중 오류가 발생했습니다.");
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void 교환_요청이_응답_없이_실패하면_예외를_던진다() {
+        given(appleProperties.privateKey()).willReturn(ecPrivateKeyPem);
+        given(appleProperties.teamId()).willReturn("TEAM123456");
+        given(appleProperties.keyId()).willReturn("KEY1234567");
+        given(appleProperties.tokenUrl()).willReturn(TOKEN_URL);
+
+        RestClient.RequestBodyUriSpec uriSpec = mock(RestClient.RequestBodyUriSpec.class, Mockito.RETURNS_SELF);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        given(restClient.post()).willReturn(uriSpec);
+        given(uriSpec.retrieve()).willReturn(responseSpec);
+        given(responseSpec.body(Map.class)).willThrow(new ResourceAccessException("connect timed out"));
+
+        assertThatThrownBy(() -> appleTokenClient.exchangeForAppleRefreshToken("auth-code-123", CLIENT_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Apple 토큰 교환 중 오류가 발생했습니다.");
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void revoke_요청이_에러_응답을_받으면_예외를_던진다() {
+        given(appleProperties.privateKey()).willReturn(ecPrivateKeyPem);
+        given(appleProperties.teamId()).willReturn("TEAM123456");
+        given(appleProperties.keyId()).willReturn("KEY1234567");
+        given(appleProperties.revokeUrl()).willReturn(REVOKE_URL);
+
+        RestClient.RequestBodyUriSpec uriSpec = mock(RestClient.RequestBodyUriSpec.class, Mockito.RETURNS_SELF);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        given(restClient.post()).willReturn(uriSpec);
+        given(uriSpec.retrieve()).willReturn(responseSpec);
+        given(responseSpec.toBodilessEntity()).willThrow(appleErrorResponse("invalid_client"));
+
+        assertThatThrownBy(() -> appleTokenClient.revokeRefreshToken("apple-rt-xyz", CLIENT_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Apple 토큰 revoke 중 오류가 발생했습니다.");
+    }
+
+    /** 애플이 실패 원인을 담아 주는 형태 — 본문이 있는 4xx 응답. */
+    private RestClientResponseException appleErrorResponse(String error) {
+        return new RestClientResponseException(
+                "400 Bad Request", 400, "Bad Request", null,
+                ("{\"error\":\"" + error + "\"}").getBytes(StandardCharsets.UTF_8),
+                StandardCharsets.UTF_8);
     }
 }

@@ -4,8 +4,10 @@ import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
+import com.todo.domain.team.dto.request.JoinByInviteLinkRequest;
 import com.todo.domain.team.dto.request.JoinTeamRequest;
 import com.todo.domain.team.dto.response.CreateTeamResponse;
+import com.todo.domain.team.dto.response.InviteLinkResponse;
 import com.todo.domain.team.dto.response.InviteTeamResponse;
 import com.todo.domain.team.dto.response.JoinTeamResponse;
 import com.todo.domain.team.dto.response.TeamDetailResponse;
@@ -357,6 +359,151 @@ class TeamServiceTest {
     }
 
     @Test
+    void 초대_링크가_없으면_새로_발급한다() {
+        setupTeamInviteLinkProperties();
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        TeamMember member = TeamMember.create(team, user, TeamMemberRole.MEMBER);
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
+
+        InviteLinkResponse response = teamService.getOrCreateInviteLink("1", 10L);
+
+        assertThat(response.inviteLink()).startsWith("https://backend.example.com/invite?token=");
+        assertThat(team.getInviteLinkToken()).isNotBlank();
+        assertThat(response.expiresAt()).isAfter(java.time.OffsetDateTime.now().plusDays(6));
+    }
+
+    @Test
+    void 유효한_초대_링크가_있으면_재발급하지_않는다() {
+        setupTeamInviteLinkProperties();
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        team.updateInviteLink("existing-token", java.time.LocalDateTime.now().plusDays(3));
+        TeamMember member = TeamMember.create(team, user, TeamMemberRole.MEMBER);
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
+
+        InviteLinkResponse response = teamService.getOrCreateInviteLink("1", 10L);
+
+        assertThat(response.inviteLink()).isEqualTo("https://backend.example.com/invite?token=existing-token");
+        assertThat(team.getInviteLinkToken()).isEqualTo("existing-token");
+    }
+
+    @Test
+    void 만료된_초대_링크는_재발급한다() {
+        setupTeamInviteLinkProperties();
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        team.updateInviteLink("expired-token", java.time.LocalDateTime.now().minusSeconds(1));
+        TeamMember member = TeamMember.create(team, user, TeamMemberRole.MEMBER);
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
+
+        teamService.getOrCreateInviteLink("1", 10L);
+
+        assertThat(team.getInviteLinkToken()).isNotEqualTo("expired-token");
+    }
+
+    @Test
+    void 초대_링크_발급은_팀_멤버가_아니면_거부한다() {
+        setupTeamInviteLinkProperties();
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamRepository.findById(10L)).willReturn(Optional.of(team));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.getOrCreateInviteLink("1", 10L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("팀에 접근할 권한이 없습니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void 초대_링크_토큰으로_참여한다() {
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        team.updateInviteLink("valid-token", java.time.LocalDateTime.now().plusDays(3));
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamRepository.findByInviteLinkToken("valid-token")).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(false);
+        given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
+
+        JoinTeamResponse response = teamService.joinTeamByInviteLink("1", new JoinByInviteLinkRequest("valid-token"));
+
+        assertThat(response.teamId()).isEqualTo(10L);
+        then(teamMemberRepository).should().save(argThat(m -> m.getRole() == TeamMemberRole.MEMBER));
+    }
+
+    @Test
+    void 존재하지_않는_초대_링크_토큰은_거부한다() {
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamRepository.findByInviteLinkToken("unknown-token")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamService.joinTeamByInviteLink("1", new JoinByInviteLinkRequest("unknown-token")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("유효하지 않거나 만료된 초대 링크입니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void 만료된_초대_링크_토큰은_거부한다() {
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        team.updateInviteLink("expired-token", java.time.LocalDateTime.now().minusSeconds(1));
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamRepository.findByInviteLinkToken("expired-token")).willReturn(Optional.of(team));
+
+        assertThatThrownBy(() -> teamService.joinTeamByInviteLink("1", new JoinByInviteLinkRequest("expired-token")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("유효하지 않거나 만료된 초대 링크입니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void 초대_링크로_이미_참여한_팀에는_다시_참여할_수_없다() {
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        team.updateInviteLink("valid-token", java.time.LocalDateTime.now().plusDays(3));
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamRepository.findByInviteLinkToken("valid-token")).willReturn(Optional.of(team));
+        given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
+
+        assertThatThrownBy(() -> teamService.joinTeamByInviteLink("1", new JoinByInviteLinkRequest("valid-token")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 참여한 팀입니다")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
     void 팀장이_이메일로_팀원을_초대한다() {
         setupInviteLinkProperties();
         User user = User.create("1", "encodedPwd", "닉네임", null);
@@ -701,5 +848,10 @@ class TeamServiceTest {
     private void setupInviteLinkProperties() {
         ReflectionTestUtils.setField(teamService, "frontendBaseUrl", "https://todo.example.com/");
         ReflectionTestUtils.setField(teamService, "teamInvitePath", "/teams/join");
+    }
+
+    private void setupTeamInviteLinkProperties() {
+        ReflectionTestUtils.setField(teamService, "apiServerUrl", "https://backend.example.com/");
+        ReflectionTestUtils.setField(teamService, "teamInviteLinkPath", "/invite");
     }
 }
