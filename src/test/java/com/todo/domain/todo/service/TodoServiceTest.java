@@ -173,6 +173,33 @@ class TodoServiceTest {
     }
 
     @Test
+    void TASK_생성시_개별_마감을_비우면_투두_전체_마감시간이_응답에_그대로_반영된다() {
+        User creator = user(1L);
+        User assignee = user(2L);
+        Team team = team();
+        givenCreateAccess(creator, team);
+        given(todoRepository.save(any(Todo.class))).willAnswer(invocation -> {
+            Todo todo = invocation.getArgument(0);
+            setId(todo, TODO_ID);
+            return todo;
+        });
+        given(userRepository.findById(2L)).willReturn(Optional.of(assignee));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
+        OffsetDateTime todoDeadline = futureOffset(3);
+
+        CreateTodoResponse response = todoService.createTodo("1", TEAM_ID, new CreateTodoRequest(
+                "발표 준비",
+                null,
+                todoDeadline,
+                null,
+                List.of(new CreateTodoTaskRequest("자료 조사", null, 2L, null))
+        ));
+
+        assertThat(response.tasks()).hasSize(1);
+        assertThat(response.tasks().get(0).deadline()).isEqualTo(response.deadline());
+    }
+
+    @Test
     void 생성은_DIRECT_담당자와_TASK를_함께_요청하면_거절한다() {
         User creator = user(1L);
         givenCreateAccess(creator, team());

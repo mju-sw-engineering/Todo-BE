@@ -205,7 +205,7 @@ public class TodoService {
                 .filter(workItem -> workItem.getType() == WorkItemType.TASK)
                 .map(workItem -> TodoTaskResponse.from(
                         workItem,
-                        toKstOffset(workItem.getDeadline()),
+                        toKstOffset(workItem.getEffectiveDeadline()),
                         toKstOffset(workItem.getSubmittedAt()),
                         resolveThumbnailUrl(workItem),
                         reactionCounts.getOrDefault(workItem.getId(), Map.of()),
@@ -345,7 +345,7 @@ public class TodoService {
         for (int position = 0; position < tasks.size(); position++) {
             CreateTodoTaskRequest task = tasks.get(position);
             LocalDateTime taskDeadline = toKstLocalDateTime(task.deadline());
-            if (taskDeadline == null || !taskDeadline.isAfter(LocalDateTime.now(KST))) {
+            if (taskDeadline != null && !taskDeadline.isAfter(LocalDateTime.now(KST))) {
                 throw new BusinessException("Task 마감은 현재보다 미래여야 합니다.", HttpStatus.BAD_REQUEST);
             }
             workItems.add(TodoWorkItem.createTask(
@@ -438,7 +438,7 @@ public class TodoService {
                 .filter(workItem -> workItem.getType() == WorkItemType.TASK)
                 .map(workItem -> TodoTaskResponse.from(
                         workItem,
-                        toKstOffset(workItem.getDeadline()),
+                        toKstOffset(workItem.getEffectiveDeadline()),
                         null,
                         null,
                         Map.of(),

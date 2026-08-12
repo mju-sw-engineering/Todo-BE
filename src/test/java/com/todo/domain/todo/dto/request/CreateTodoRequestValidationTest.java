@@ -45,6 +45,26 @@ class CreateTodoRequestValidationTest {
 
         assertThat(validator.validate(request))
                 .extracting(violation -> violation.getPropertyPath().toString())
-                .contains("tasks[0].title", "tasks[0].assigneeId", "tasks[0].deadline");
+                .contains("tasks[0].title", "tasks[0].assigneeId");
+    }
+
+    @Test
+    void tasks_원소의_deadline은_비워도_검증에_걸리지_않는다() {
+        CreateTodoRequest request = new CreateTodoRequest(
+                "발표",
+                null,
+                OffsetDateTime.parse("2026-08-10T18:00:00+09:00"),
+                null,
+                List.of(new CreateTodoTaskRequest(
+                        "자료 조사",
+                        null,
+                        1L,
+                        null
+                ))
+        );
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getPropertyPath().toString())
+                .doesNotContain("tasks[0].deadline");
     }
 }
