@@ -3,6 +3,7 @@ package com.todo.global.controller;
 import com.todo.global.config.AppleProperties;
 import com.todo.global.dto.response.AppleAppSiteAssociationResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,13 +17,19 @@ import java.util.List;
 @RequiredArgsConstructor
 public class WellKnownController {
 
-    private static final List<String> INVITE_LINK_PATHS = List.of("/invite*");
-
     private final AppleProperties appleProperties;
+
+    /**
+     * TeamService가 초대 링크를 만드는 경로(app.team-invite-link-path)와 반드시 같아야 한다.
+     * 하드코딩하면 배포 시 이 값만 바꿨을 때 Universal Links가 조용히 깨진다.
+     */
+    @Value("${app.team-invite-link-path:/invite}")
+    private String teamInviteLinkPath;
 
     @GetMapping("/.well-known/apple-app-site-association")
     public AppleAppSiteAssociationResponse getAppleAppSiteAssociation() {
         String appId = appleProperties.teamId() + "." + appleProperties.iosClientId();
-        return AppleAppSiteAssociationResponse.of(appId, INVITE_LINK_PATHS);
+        String path = teamInviteLinkPath.startsWith("/") ? teamInviteLinkPath : "/" + teamInviteLinkPath;
+        return AppleAppSiteAssociationResponse.of(appId, List.of(path + "*"));
     }
 }
