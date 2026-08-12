@@ -59,6 +59,90 @@ public class NotificationMessageFactory {
         ));
     }
 
+    /**
+     * 인증 사진(작업 완료 증거)이 제출됨. 제출자를 제외한 팀 전체에게 발송한다.
+     */
+    public NotificationMessage todoSubmitted(String todoTitle) {
+        return build(NotificationType.TODO_SUBMITTED, Map.of("todoTitle", todoTitle));
+    }
+
+    /**
+     * WorkItem 마감 30분 전. 담당자에게 발송한다.
+     */
+    public NotificationMessage todoDeadlineApproaching(String todoTitle) {
+        return build(NotificationType.TODO_DEADLINE_APPROACHING, Map.of("todoTitle", todoTitle));
+    }
+
+    /**
+     * WorkItem이 마감을 넘겨 실패 처리됨. 담당자에게 발송한다.
+     */
+    public NotificationMessage todoWorkItemExpired(String todoTitle) {
+        return build(NotificationType.TODO_WORK_ITEM_EXPIRED, Map.of("todoTitle", todoTitle));
+    }
+
+    /**
+     * 제출물에 이모지 반응이 남음. 제출자에게 발송한다.
+     */
+    public NotificationMessage todoReactionAdded(String todoTitle) {
+        return build(NotificationType.TODO_REACTION_ADDED, Map.of("todoTitle", todoTitle));
+    }
+
+    /**
+     * 한 Todo 안의 모든 WorkItem이 성공으로 끝남. 팀 전체에게 발송한다.
+     */
+    public NotificationMessage todoAllCompleted(String todoTitle) {
+        return build(NotificationType.TODO_ALL_COMPLETED, Map.of("todoTitle", todoTitle));
+    }
+
+    /**
+     * 새 팀원이 합류함. 기존 팀원에게 발송한다.
+     */
+    public NotificationMessage teamMemberJoined() {
+        return build(NotificationType.TEAM_MEMBER_JOINED, Map.of());
+    }
+
+    /**
+     * 팀원이 스스로 나감(자발적 탈퇴 또는 회원 탈퇴). 남은 팀원에게 발송한다.
+     */
+    public NotificationMessage teamMemberLeft() {
+        return build(NotificationType.TEAM_MEMBER_LEFT, Map.of());
+    }
+
+    /**
+     * 팀원이 강퇴됨. 강퇴당한 사람에게 발송한다.
+     */
+    public NotificationMessage teamMemberRemoved() {
+        return build(NotificationType.TEAM_MEMBER_REMOVED, Map.of());
+    }
+
+    /**
+     * 팀장 탈퇴로 권한이 자동 이양됨. 새 팀장에게 발송한다.
+     */
+    public NotificationMessage teamLeaderChanged() {
+        return build(NotificationType.TEAM_LEADER_CHANGED, Map.of());
+    }
+
+    /**
+     * 등록되지 않은 기기에서 로그인됨. 본인에게 발송한다.
+     */
+    public NotificationMessage newDeviceLogin() {
+        return build(NotificationType.NEW_DEVICE_LOGIN, Map.of());
+    }
+
+    /**
+     * 비밀번호가 변경됨(로그인 상태 변경 또는 이메일 재설정). 본인에게 발송한다.
+     */
+    public NotificationMessage passwordChanged() {
+        return build(NotificationType.PASSWORD_CHANGED, Map.of());
+    }
+
+    /**
+     * 회의시간 투표가 생성됨. 생성자를 제외한 팀원에게 발송한다.
+     */
+    public NotificationMessage availabilityPollCreated(String pollTitle) {
+        return build(NotificationType.AVAILABILITY_POLL_CREATED, Map.of("pollTitle", pollTitle));
+    }
+
     private NotificationMessage build(NotificationType type, Map<String, String> args) {
         return properties.getMessages().get(type).toMessage(type, args);
     }
