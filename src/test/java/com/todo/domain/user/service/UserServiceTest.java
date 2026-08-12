@@ -106,6 +106,10 @@ class UserServiceTest {
     private ApplicationEventPublisher eventPublisher;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private com.todo.domain.notification.service.NotificationService notificationService;
+    @Mock
+    private com.todo.domain.notification.message.NotificationMessageFactory notificationMessageFactory;
 
     @Test
     void 마이페이지_조회_성공_소속팀없음() {

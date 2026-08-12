@@ -2,6 +2,8 @@ package com.todo.domain.team.service;
 
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
+import com.todo.domain.notification.message.NotificationMessageFactory;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinByInviteLinkRequest;
@@ -66,6 +68,8 @@ public class TeamService {
     private final TeamChatMessageRepository teamChatMessageRepository;
     private final TeamChatReadStatusRepository teamChatReadStatusRepository;
     private final FileDeletionOutboxService fileDeletionOutboxService;
+    private final NotificationService notificationService;
+    private final NotificationMessageFactory notificationMessageFactory;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -155,6 +159,7 @@ public class TeamService {
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
             throw new BusinessException("이미 참여한 팀입니다", HttpStatus.CONFLICT);
         }
+        notifyMemberJoined(team, user);
         return JoinTeamResponse.from(team);
     }
 
@@ -201,7 +206,20 @@ public class TeamService {
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
             throw new BusinessException("이미 참여한 팀입니다", HttpStatus.CONFLICT);
         }
+        notifyMemberJoined(team, user);
         return JoinTeamResponse.from(team);
+    }
+
+    private void notifyMemberJoined(Team team, User newMember) {
+        List<User> receivers = teamMemberRepository.findByTeamIdExcludingUser(team.getId(), newMember.getId()).stream()
+                .map(TeamMember::getUser)
+                .toList();
+        notificationService.sendAll(
+                receivers,
+                newMember,
+                notificationMessageFactory.teamMemberJoined(),
+                team.getId()
+        );
     }
 
     @Transactional
@@ -245,6 +263,12 @@ public class TeamService {
                 .orElseThrow(() -> new BusinessException("팀 멤버를 찾을 수 없습니다", HttpStatus.NOT_FOUND));
 
         todoWorkItemLifecycleService.handleTeamDeparture(teamId, target.getUser());
+        notificationService.send(
+                target.getUser(),
+                requester,
+                notificationMessageFactory.teamMemberRemoved(),
+                teamId
+        );
         teamMemberRepository.delete(target);
     }
 
@@ -255,9 +279,9 @@ public class TeamService {
         TeamMember member = teamMemberRepository.findByTeamIdAndUserId(teamId, user.getId())
                 .orElseThrow(() -> new BusinessException("소속된 팀이 아닙니다", HttpStatus.NOT_FOUND));
 
-        if (member.getRole() == TeamMemberRole.LEADER) {
-            List<TeamMember> others = teamMemberRepository.findByTeamIdExcludingUser(teamId, user.getId());
+        List<TeamMember> others = teamMemberRepository.findByTeamIdExcludingUser(teamId, user.getId());
 
+        if (member.getRole() == TeamMemberRole.LEADER) {
             if (others.isEmpty()) {
                 deleteTeamWithAllData(teamId);
                 return;
@@ -268,9 +292,21 @@ public class TeamService {
             } catch (Exception e) {
                 throw new BusinessException("권한 이양 중 문제가 발생했습니다", HttpStatus.INTERNAL_SERVER_ERROR);
             }
+            notificationService.send(
+                    others.get(0).getUser(),
+                    null,
+                    notificationMessageFactory.teamLeaderChanged(),
+                    teamId
+            );
         }
 
         todoWorkItemLifecycleService.handleTeamDeparture(teamId, user);
+        notificationService.sendAll(
+                others.stream().map(TeamMember::getUser).toList(),
+                user,
+                notificationMessageFactory.teamMemberLeft(),
+                teamId
+        );
         teamMemberRepository.delete(member);
     }
 

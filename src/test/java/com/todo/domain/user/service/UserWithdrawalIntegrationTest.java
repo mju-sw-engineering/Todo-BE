@@ -145,12 +145,14 @@ class UserWithdrawalIntegrationTest {
 
         assertThat(notificationRepository.findLatestByReceiverId(withdrawing.getId(), PageRequest.of(0, 10))).isEmpty();
         assertThat(userConsentRepository.findAll()).isEmpty();
+        // TODO_CREATED(사전 저장분)에 더해, 탈퇴 처리 중 남은 팀원에게 TEAM_MEMBER_LEFT가 함께 저장된다.
         assertThat(notificationRepository.findLatestByReceiverId(staying.getId(), PageRequest.of(0, 10)))
-                .singleElement()
-                .satisfies(notification -> {
-                    assertThat(notification.getActor()).isNull();
-                    assertThat(NotificationResponse.from(notification).content()).isEqualTo("탈퇴한 사용자님이 만들었습니다.");
-                });
+                .hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.getActor()).isNull())
+                .anySatisfy(notification ->
+                        assertThat(NotificationResponse.from(notification).content()).isEqualTo("탈퇴한 사용자님이 만들었습니다."))
+                .anySatisfy(notification ->
+                        assertThat(notification.getType()).isEqualTo(NotificationType.TEAM_MEMBER_LEFT));
     }
 
     @Test

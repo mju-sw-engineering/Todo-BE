@@ -9,7 +9,9 @@ import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
+import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.repository.NotificationRepository;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.dto.response.TeamSummaryResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
@@ -72,6 +74,8 @@ public class UserService {
     private final FileDeletionOutboxService fileDeletionOutboxService;
     private final ApplicationEventPublisher eventPublisher;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationService notificationService;
+    private final NotificationMessageFactory notificationMessageFactory;
 
     public MyPageResponse getMyPage(String userId) {
         User user = userRepository.findById(Long.parseLong(userId))
@@ -123,6 +127,7 @@ public class UserService {
         }
 
         user.updatePassword(passwordEncoder.encode(request.newPassword()));
+        notificationService.send(user, null, notificationMessageFactory.passwordChanged(), null);
     }
 
     /**
@@ -189,8 +194,13 @@ public class UserService {
         }
 
         // 3. 남은 팀의 진행 중 WorkItem을 정리하고, 미배정 알림을 탈퇴 트랜잭션에 함께 저장한다.
-        teamMemberRepository.findTeamsByUserId(id)
-                .forEach(team -> todoWorkItemLifecycleService.handleTeamDeparture(team.getId(), user));
+        teamMemberRepository.findTeamsByUserId(id).forEach(team -> {
+            todoWorkItemLifecycleService.handleTeamDeparture(team.getId(), user);
+            List<User> remainingMembers = teamMemberRepository.findByTeamIdExcludingUser(team.getId(), id).stream()
+                    .map(TeamMember::getUser)
+                    .toList();
+            notificationService.sendAll(remainingMembers, user, notificationMessageFactory.teamMemberLeft(), team.getId());
+        });
         todoWorkItemLifecycleService.anonymizeFinishedForWithdrawal(id);
 
         // 4. 공동 기록 익명화 — 삭제하지 않고 작성자 관계만 끊는다.
@@ -227,6 +237,12 @@ public class UserService {
                 } catch (Exception e) {
                     throw new BusinessException("권한 이양 중 문제가 발생했습니다", HttpStatus.INTERNAL_SERVER_ERROR);
                 }
+                notificationService.send(
+                        others.get(0).getUser(),
+                        null,
+                        notificationMessageFactory.teamLeaderChanged(),
+                        teamId
+                );
             }
         }
     }
