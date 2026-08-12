@@ -1,13 +1,20 @@
 package com.todo.domain.todo.service;
 
+import com.todo.domain.notification.message.NotificationMessageFactory;
+import com.todo.domain.notification.service.NotificationService;
+import com.todo.domain.team.entity.TeamMember;
+import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoWorkItem;
 import com.todo.domain.todo.entity.WorkItemStatus;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
+import com.todo.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 /**
  * Todo 상태 전이를 한 곳에서 판정한다.
@@ -17,6 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>모든 메서드는 호출자가 부모 Todo를 비관적 락으로 잠근 뒤 같은 트랜잭션에서 부르는 것을 전제한다.
  * 잠그지 않고 부르면 동시 제출·제거 사이에서 상태와 팀 카운터가 어긋난다.
+ *
+ * <p>알림 발송도 상태 판정과 같은 곳에 둔다. 판정 결과(전이가 실제로 일어났는지)를 호출부가
+ * 다시 해석해서 알림을 따로 쏘게 하면, 상태를 "한 곳에서 판정"한다는 이 클래스의 목적과
+ * 어긋나게 판정 로직이 흩어진다.
  */
 @Service
 @RequiredArgsConstructor
@@ -25,6 +36,9 @@ public class TodoStatusTransitionService {
 
     private final TodoWorkItemRepository todoWorkItemRepository;
     private final TeamRepository teamRepository;
+    private final TeamMemberRepository teamMemberRepository;
+    private final NotificationService notificationService;
+    private final NotificationMessageFactory notificationMessageFactory;
 
     /**
      * 남은 WorkItem 구성으로 부모 Todo 상태를 재평가한다.
@@ -48,7 +62,20 @@ public class TodoStatusTransitionService {
         long successCount = todoWorkItemRepository.countByTodoIdAndStatus(todo.getId(), WorkItemStatus.SUCCESS);
         if (successCount == totalCount && todo.markAsSuccess()) {
             teamRepository.incrementSuccessCount(todo.getTeam().getId());
+            notifyAllCompleted(todo);
         }
+    }
+
+    private void notifyAllCompleted(Todo todo) {
+        List<User> receivers = teamMemberRepository.findByTeamIdWithUser(todo.getTeam().getId()).stream()
+                .map(TeamMember::getUser)
+                .toList();
+        notificationService.sendAll(
+                receivers,
+                null,
+                notificationMessageFactory.todoAllCompleted(todo.getTitle()),
+                todo.getId()
+        );
     }
 
     /**
@@ -61,5 +88,13 @@ public class TodoStatusTransitionService {
     public void failOnDeadlinePassed(Todo todo, TodoWorkItem workItem) {
         workItem.markAsFail();
         todo.markAsFail();
+        if (workItem.getAssignee() != null) {
+            notificationService.send(
+                    workItem.getAssignee(),
+                    null,
+                    notificationMessageFactory.todoWorkItemExpired(todo.getTitle()),
+                    todo.getId()
+            );
+        }
     }
 }

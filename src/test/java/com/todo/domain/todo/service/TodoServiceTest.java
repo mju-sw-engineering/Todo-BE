@@ -99,7 +99,9 @@ class TodoServiceTest {
         ReflectionTestUtils.setField(
                 todoService,
                 "todoStatusTransitionService",
-                new TodoStatusTransitionService(todoWorkItemRepository, teamRepository)
+                new TodoStatusTransitionService(
+                        todoWorkItemRepository, teamRepository, teamMemberRepository,
+                        notificationService, notificationMessageFactory)
         );
         lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<?> callback = invocation.getArgument(0);

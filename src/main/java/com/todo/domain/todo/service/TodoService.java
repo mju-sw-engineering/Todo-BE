@@ -65,6 +65,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -274,11 +275,29 @@ public class TodoService {
         }
 
         TodoReactionType reactionType = request.type();
-        TodoReaction reaction = todoReactionRepository.findByTodoWorkItemIdAndUserId(workItemId, user.getId())
+        Optional<TodoReaction> existingReaction = todoReactionRepository.findByTodoWorkItemIdAndUserId(workItemId, user.getId());
+        boolean isNewReaction = existingReaction.isEmpty();
+        TodoReaction reaction = existingReaction
                 .map(existing -> updateOrDeleteReaction(existing, reactionType))
                 .orElseGet(() -> todoReactionRepository.save(TodoReaction.create(workItem, user, reactionType)));
         long count = todoReactionRepository.countByTodoWorkItemIdAndReactionType(workItemId, reactionType);
+        if (isNewReaction) {
+            notifyReactionAdded(workItem, user);
+        }
         return TodoReactionResponse.from(reaction, count);
+    }
+
+    private void notifyReactionAdded(TodoWorkItem workItem, User reactor) {
+        User submitter = workItem.getAssignee();
+        if (submitter == null || submitter.getId().equals(reactor.getId())) {
+            return;
+        }
+        notificationService.send(
+                submitter,
+                reactor,
+                notificationMessageFactory.todoReactionAdded(workItem.getTodo().getTitle()),
+                workItem.getTodo().getId()
+        );
     }
 
     /**
@@ -510,7 +529,22 @@ public class TodoService {
 
         workItem.submit(proofImageKey, proofThumbnailKey);
         todoStatusTransitionService.reevaluate(todo);
+        notifyTodoSubmitted(todo, workItem);
         return OperationResult.success();
+    }
+
+    private void notifyTodoSubmitted(Todo todo, TodoWorkItem workItem) {
+        User submitter = workItem.getAssignee();
+        List<User> receivers = teamMemberRepository.findByTeamIdExcludingUser(todo.getTeam().getId(), submitter.getId())
+                .stream()
+                .map(TeamMember::getUser)
+                .toList();
+        notificationService.sendAll(
+                receivers,
+                submitter,
+                notificationMessageFactory.todoSubmitted(todo.getTitle()),
+                todo.getId()
+        );
     }
 
     private OperationResult validateSubmission(Todo todo, TodoWorkItem workItem, Long userId) {

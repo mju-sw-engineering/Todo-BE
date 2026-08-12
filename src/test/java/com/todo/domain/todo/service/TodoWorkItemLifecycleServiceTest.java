@@ -31,6 +31,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
@@ -65,7 +67,9 @@ class TodoWorkItemLifecycleServiceTest {
         ReflectionTestUtils.setField(
                 lifecycleService,
                 "todoStatusTransitionService",
-                new TodoStatusTransitionService(todoWorkItemRepository, teamRepository)
+                new TodoStatusTransitionService(
+                        todoWorkItemRepository, teamRepository, teamMemberRepository,
+                        notificationService, notificationMessageFactory)
         );
     }
 
@@ -120,7 +124,8 @@ class TodoWorkItemLifecycleServiceTest {
         then(todoReactionRepository).should().deleteByTodoWorkItemIdIn(List.of(30L));
         then(todoWorkItemRepository).should().delete(leavingItem);
         then(teamRepository).should().incrementSuccessCount(TEAM_ID);
-        then(notificationService).shouldHaveNoInteractions();
+        // Todo가 이 재평가로 SUCCESS 전이되므로 TODO_ALL_COMPLETED 알림이 나간다.
+        then(notificationService).should().sendAll(any(), eq(null), any(), eq(TODO_ID));
     }
 
     @Test
