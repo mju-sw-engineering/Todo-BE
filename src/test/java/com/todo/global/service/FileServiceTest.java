@@ -221,6 +221,54 @@ class FileServiceTest {
     }
 
     @Test
+    void 본인_경로의_프로필_키는_통과한다() {
+        fileService.validateProfileImageKey(1L, "profiles/1/a.png");
+        fileService.validateProfileImageKey(1L, "profiles/temp/a.png");
+    }
+
+    @Test
+    void 비로그인_프로필_키는_temp_경로만_통과한다() {
+        fileService.validateProfileImageKey(null, "profiles/temp/a.png");
+
+        assertThatThrownBy(() -> fileService.validateProfileImageKey(null, "profiles/1/a.png"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 업로드한 프로필 이미지만 사용할 수 있습니다.");
+    }
+
+    @Test
+    void 프로필_키가_없으면_검증을_건너뛴다() {
+        fileService.validateProfileImageKey(1L, null);
+        fileService.validateProfileImageKey(1L, " ");
+    }
+
+    @Test
+    void 다른_사용자_경로나_다른_용도의_키는_프로필로_거절한다() {
+        assertThatThrownBy(() -> fileService.validateProfileImageKey(1L, "profiles/2/a.png"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 업로드한 프로필 이미지만 사용할 수 있습니다.");
+        assertThatThrownBy(() -> fileService.validateProfileImageKey(1L, "proofs/2/a.jpg"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 업로드한 프로필 이미지만 사용할 수 있습니다.");
+        // "profiles/1/..."의 prefix 우회 시도 — userId 뒤 구분자가 없으면 다른 사용자(12)의 경로다
+        assertThatThrownBy(() -> fileService.validateProfileImageKey(1L, "profiles/12/a.png"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 업로드한 프로필 이미지만 사용할 수 있습니다.");
+    }
+
+    @Test
+    void 본인_temp_경로의_팀_키는_통과하고_그_외는_거절한다() {
+        fileService.validateTeamImageKey(1L, "teams/temp/1/a.png");
+        fileService.validateTeamImageKey(1L, null);
+
+        assertThatThrownBy(() -> fileService.validateTeamImageKey(1L, "teams/temp/2/a.png"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 업로드한 팀 이미지만 사용할 수 있습니다.");
+        assertThatThrownBy(() -> fileService.validateTeamImageKey(1L, "proofs/1/a.jpg"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 업로드한 팀 이미지만 사용할 수 있습니다.");
+    }
+
+    @Test
     void 썸네일_key는_인증_사진으로_거절한다() {
         assertThatThrownBy(() -> fileService.validateProofImage(1L, "proofs/1/thumbs/a.jpg"))
                 .isInstanceOf(BusinessException.class)

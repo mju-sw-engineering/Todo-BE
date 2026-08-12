@@ -111,6 +111,37 @@ public class FileService {
     }
 
     /**
+     * 프로필 이미지 object key의 소유권을 검증한다. 저장 직전마다 호출해야 한다.
+     *
+     * <p>키는 {@link #buildObjectKey}가 만든 경로만 유효하다 — 로그인 상태 발급은
+     * {@code profiles/{userId}/}, 회원가입용 비로그인 발급은 {@code profiles/temp/}.
+     * 검증 없이 저장하면 남의 object key(예: 다른 사용자의 인증 사진)를 프로필로 등록해
+     * presigned GET으로 열람하거나, 이전-이미지 삭제 예약 경로로 남의 파일을 지울 수 있다.
+     *
+     * @param userId 비로그인 요청(회원가입)이면 null — temp 경로만 허용된다
+     */
+    public void validateProfileImageKey(Long userId, String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return;
+        }
+        boolean owned = objectKey.startsWith("profiles/temp/")
+                || (userId != null && objectKey.startsWith("profiles/" + userId + "/"));
+        if (!owned) {
+            throw new BusinessException("본인이 업로드한 프로필 이미지만 사용할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    /** 팀 이미지 object key의 소유권 검증. {@link #validateProfileImageKey}와 같은 이유로 저장 직전에 호출한다. */
+    public void validateTeamImageKey(Long userId, String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return;
+        }
+        if (!objectKey.startsWith("teams/temp/" + userId + "/")) {
+            throw new BusinessException("본인이 업로드한 팀 이미지만 사용할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    /**
      * Presigned URL로 업로드된 인증 사진을 제출 직전에 다시 검증한다.
      * 업로드 요청의 fileSize는 선택값이므로 실제 객체의 크기와 MIME은 HEAD 결과가 기준이다.
      */
