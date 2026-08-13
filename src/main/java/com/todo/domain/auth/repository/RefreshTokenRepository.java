@@ -34,6 +34,14 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     boolean existsByUser_Id(Long userId);
 
     /**
+     * 미사용 상태일 때만 사용 처리한다. 갱신된 행 수가 0이면 조회와 이 UPDATE 사이에
+     * 다른 요청이 같은 토큰을 먼저 소비했다는 뜻이다 — 그 요청만 통과해야 한다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE RefreshToken t SET t.isUsed = true WHERE t.id = :id AND t.isUsed = false")
+    int markAsUsedIfActive(@Param("id") Long id);
+
+    /**
      * 본인 세션만 지울 수 있도록 소유자를 함께 확인한다. 갱신된 행 수가 0이면 대상이 없거나
      * 남의 세션이라는 뜻이다.
      */

@@ -5,6 +5,7 @@ import com.todo.domain.todo.dto.request.AssignTodoWorkItemRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
+import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
@@ -57,6 +58,20 @@ public class TodoController implements TodoControllerDocs {
             return ResponseEntity.ok(ApiResponse.success(null, message));
         }
         return ResponseEntity.ok(ApiResponse.success(result, "할 일 목록을 조회했습니다"));
+    }
+
+    @GetMapping("/teams/{teamId}/todos/active")
+    public ResponseEntity<ApiResponse<TodoActivePageResponse>> getActiveTodoList(
+            @PathVariable Long teamId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "5") int size,
+            Authentication authentication
+    ) {
+        String userId = authentication.getName();
+        TodoActivePageResponse result = todoService.getActiveTodoList(teamId, userId, status, cursor, size);
+        String message = result.todos().isEmpty() ? "조회된 할 일이 없습니다" : "할 일 목록을 조회했습니다";
+        return ResponseEntity.ok(ApiResponse.success(result, message));
     }
 
     @GetMapping("/teams/{teamId}/todos/report")

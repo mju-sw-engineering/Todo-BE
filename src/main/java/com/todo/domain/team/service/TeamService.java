@@ -94,6 +94,8 @@ public class TeamService {
         User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("사용자를 찾을 수 없습니다.", HttpStatus.UNAUTHORIZED));
 
+        fileService.validateTeamImageKey(user.getId(), request.teamImageKey());
+
         String inviteCode = generateUniqueInviteCode();
         Team team = teamRepository.save(
                 Team.create(request.teamName(), normalizeDescription(request.description()), request.teamImageKey(), inviteCode));

@@ -48,6 +48,7 @@ class AppleAuthServiceTest {
     @Mock private SessionService sessionService;
     @Mock private UserConsentRecorder userConsentRecorder;
     @Mock private JwtUtil jwtUtil;
+    @Mock private com.todo.global.service.FileService fileService;
     @Mock private TransactionTemplate transactionTemplate;
 
     @Captor private ArgumentCaptor<User> userCaptor;
@@ -152,6 +153,21 @@ class AppleAuthServiceTest {
         // 409로 막으면 그 사람은 Apple 로그인을 영영 못 쓰게 되므로 이메일만 비운다.
         then(userRepository).should().save(userCaptor.capture());
         assertThat(userCaptor.getValue().getEmail()).isNull();
+    }
+
+    @Test
+    void 가입_완료는_본인이_업로드하지_않은_프로필_키면_거부한다() {
+        givenSetupToken(EMAIL);
+        org.mockito.BDDMockito.willThrow(
+                        new BusinessException("본인이 업로드한 프로필 이미지만 사용할 수 있습니다.", org.springframework.http.HttpStatus.BAD_REQUEST))
+                .given(fileService).validateProfileImageKey(null, "proofs/2/stolen.jpg");
+
+        assertThatThrownBy(() -> appleAuthService.appleComplete(completeRequest("proofs/2/stolen.jpg", true)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("본인이 업로드한 프로필 이미지");
+
+        then(userRepository).should(org.mockito.Mockito.never()).save(any(User.class));
+        then(appleTokenClient).should(org.mockito.Mockito.never()).exchangeForAppleRefreshToken(any(), any());
     }
 
     @Test

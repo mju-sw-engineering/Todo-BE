@@ -10,6 +10,7 @@ import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.jwt.JwtUtil;
+import com.todo.global.service.FileService;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class AppleAuthService {
     private final SessionService sessionService;
     private final UserConsentRecorder userConsentRecorder;
     private final JwtUtil jwtUtil;
+    private final FileService fileService;
     private final TransactionTemplate transactionTemplate;
 
     public sealed interface AppleLoginResult permits AppleLoginResult.LoggedIn, AppleLoginResult.SetupRequired {
@@ -85,6 +87,9 @@ public class AppleAuthService {
         String authorizationCode = claims.get("authCode", String.class);
         String clientId = claims.get("clientId", String.class);
         String email = claims.get("email", String.class);
+
+        // 가입 완료도 비로그인 요청이므로 비로그인 발급 경로(profiles/temp/)의 키만 허용된다.
+        fileService.validateProfileImageKey(null, request.profileImageKey());
 
         boolean alreadyRegistered = Boolean.TRUE.equals(
                 transactionTemplate.execute(status -> userRepository.findBySocialId(socialId).isPresent()));
