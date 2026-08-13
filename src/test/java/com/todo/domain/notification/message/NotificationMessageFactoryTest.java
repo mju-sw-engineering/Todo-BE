@@ -87,4 +87,104 @@ class NotificationMessageFactoryTest {
                 .describedAs("치환은 넘긴 키만 대상으로 한다. 값에 든 문자열을 다시 해석하지 않는다")
                 .isEqualTo("{actor}님이 '{senderNickname} 정리'을(를) 만들었습니다.");
     }
+
+    @Test
+    void 인증사진_제출_문구는_투두_제목을_채운다() {
+        NotificationMessage message = factory.todoSubmitted("기말 발표");
+
+        assertThat(message.type()).isEqualTo(NotificationType.TODO_SUBMITTED);
+        assertThat(message.content()).contains("기말 발표");
+    }
+
+    @Test
+    void 마감_임박_문구는_투두_제목을_채운다() {
+        NotificationMessage message = factory.todoDeadlineApproaching("기말 발표");
+
+        assertThat(message.type()).isEqualTo(NotificationType.TODO_DEADLINE_APPROACHING);
+        assertThat(message.content()).contains("기말 발표");
+    }
+
+    @Test
+    void 마감_초과_실패_문구는_투두_제목을_채운다() {
+        NotificationMessage message = factory.todoWorkItemExpired("기말 발표");
+
+        assertThat(message.type()).isEqualTo(NotificationType.TODO_WORK_ITEM_EXPIRED);
+        assertThat(message.content()).contains("기말 발표");
+    }
+
+    @Test
+    void 반응_추가_문구는_투두_제목을_채우고_행위자는_자리표시자로_남긴다() {
+        NotificationMessage message = factory.todoReactionAdded("기말 발표");
+
+        assertThat(message.type()).isEqualTo(NotificationType.TODO_REACTION_ADDED);
+        assertThat(message.content()).contains("기말 발표");
+        assertThat(message.content()).contains(NotificationActorText.PLACEHOLDER);
+    }
+
+    @Test
+    void 전원_완료_문구는_투두_제목을_채운다() {
+        NotificationMessage message = factory.todoAllCompleted("기말 발표");
+
+        assertThat(message.type()).isEqualTo(NotificationType.TODO_ALL_COMPLETED);
+        assertThat(message.content()).contains("기말 발표");
+    }
+
+    @Test
+    void 팀원_합류_문구는_행위자를_자리표시자로_남긴다() {
+        NotificationMessage message = factory.teamMemberJoined();
+
+        assertThat(message.type()).isEqualTo(NotificationType.TEAM_MEMBER_JOINED);
+        assertThat(message.content()).contains(NotificationActorText.PLACEHOLDER);
+    }
+
+    @Test
+    void 팀원_탈퇴_문구는_행위자를_자리표시자로_남긴다() {
+        NotificationMessage message = factory.teamMemberLeft();
+
+        assertThat(message.type()).isEqualTo(NotificationType.TEAM_MEMBER_LEFT);
+        assertThat(message.content()).contains(NotificationActorText.PLACEHOLDER);
+    }
+
+    @Test
+    void 강퇴_문구는_행위자를_자리표시자로_남긴다() {
+        NotificationMessage message = factory.teamMemberRemoved();
+
+        assertThat(message.type()).isEqualTo(NotificationType.TEAM_MEMBER_REMOVED);
+        assertThat(message.content()).contains(NotificationActorText.PLACEHOLDER);
+    }
+
+    @Test
+    void 팀장_이양_문구는_행위자_자리표시자가_없다() {
+        NotificationMessage message = factory.teamLeaderChanged();
+
+        assertThat(message.type()).isEqualTo(NotificationType.TEAM_LEADER_CHANGED);
+        assertThat(message.content())
+                .describedAs("시스템 알림이라 행위자가 없다")
+                .doesNotContain(NotificationActorText.PLACEHOLDER);
+    }
+
+    @Test
+    void 새기기_로그인_문구는_행위자_자리표시자가_없다() {
+        NotificationMessage message = factory.newDeviceLogin();
+
+        assertThat(message.type()).isEqualTo(NotificationType.NEW_DEVICE_LOGIN);
+        assertThat(message.content()).doesNotContain(NotificationActorText.PLACEHOLDER);
+    }
+
+    @Test
+    void 비밀번호_변경_문구는_행위자_자리표시자가_없다() {
+        NotificationMessage message = factory.passwordChanged();
+
+        assertThat(message.type()).isEqualTo(NotificationType.PASSWORD_CHANGED);
+        assertThat(message.content()).doesNotContain(NotificationActorText.PLACEHOLDER);
+    }
+
+    @Test
+    void 투표_생성_문구는_투표_제목을_채우고_행위자는_자리표시자로_남긴다() {
+        NotificationMessage message = factory.availabilityPollCreated("주간 회의 시간 조율");
+
+        assertThat(message.type()).isEqualTo(NotificationType.AVAILABILITY_POLL_CREATED);
+        assertThat(message.content()).contains("주간 회의 시간 조율");
+        assertThat(message.content()).contains(NotificationActorText.PLACEHOLDER);
+    }
 }

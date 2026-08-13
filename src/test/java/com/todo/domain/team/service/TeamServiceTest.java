@@ -656,6 +656,33 @@ class TeamServiceTest {
     }
 
     @Test
+    void 리더가_팀을_나가면_다음_멤버에게_권한을_넘기고_리더_변경_알림을_보낸다() {
+        User leader = User.create("1", "encodedPwd", "팀장", null);
+        ReflectionTestUtils.setField(leader, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        TeamMember leaderMember = TeamMember.create(team, leader, TeamMemberRole.LEADER);
+        User nextUser = User.create("2", "pw", "다음팀장", null);
+        ReflectionTestUtils.setField(nextUser, "id", 2L);
+        TeamMember next = TeamMember.create(team, nextUser, TeamMemberRole.MEMBER);
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(leader));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(leaderMember));
+        given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of(next));
+        NotificationMessage leftMessage = new NotificationMessage(NotificationType.TEAM_MEMBER_LEFT, "title", "content");
+        NotificationMessage leaderChangedMessage = new NotificationMessage(NotificationType.TEAM_LEADER_CHANGED, "title", "content");
+        given(notificationMessageFactory.teamMemberLeft()).willReturn(leftMessage);
+        given(notificationMessageFactory.teamLeaderChanged()).willReturn(leaderChangedMessage);
+
+        teamService.leaveTeam("1", 10L);
+
+        assertThat(next.getRole()).isEqualTo(TeamMemberRole.LEADER);
+        then(notificationService).should().send(nextUser, null, leaderChangedMessage, 10L);
+        then(notificationService).should().sendAll(List.of(nextUser), leader, leftMessage, 10L);
+        then(teamMemberRepository).should().delete(leaderMember);
+    }
+
+    @Test
     void 팀장_강퇴_시_대상_멤버의_진행중_WorkItem을_정리한_후_멤버를_삭제한다() {
         User leader = User.create("1", "encodedPwd", "팀장", null);
         ReflectionTestUtils.setField(leader, "id", 1L);
