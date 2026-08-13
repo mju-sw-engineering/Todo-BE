@@ -7,6 +7,7 @@ import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.MyWorkSummaryResponse;
+import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
@@ -109,28 +110,32 @@ class TodoControllerTest {
     }
 
     @Test
-    void 마감_미경과_목록이_비어있으면_조회된_할일_없음_메시지를_반환한다() {
+    void 마감_미경과_목록이_비어있으면_빈_페이지_객체와_조회된_할일_없음_메시지를_반환한다() {
         TodoController controller = new TodoController(todoService);
-        given(todoService.getActiveTodoList(10L, "user1", null)).willReturn(List.of());
+        TodoActivePageResponse emptyPage = new TodoActivePageResponse(List.of(), false, null);
+        given(todoService.getActiveTodoList(10L, "user1", null, null, 20)).willReturn(emptyPage);
 
-        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
-                controller.getActiveTodoList(10L, null, auth());
+        ResponseEntity<ApiResponse<TodoActivePageResponse>> response =
+                controller.getActiveTodoList(10L, null, null, 20, auth());
 
-        assertThat(response.getBody().getData()).isNull();
+        assertThat(response.getBody().getData()).isEqualTo(emptyPage);
+        assertThat(response.getBody().getData().todos()).isEmpty();
         assertThat(response.getBody().getMessage()).isEqualTo("조회된 할 일이 없습니다");
     }
 
     @Test
-    void 마감_미경과_목록은_status_파라미터를_그대로_서비스에_전달한다() {
+    void 마감_미경과_목록은_status_cursor_size_파라미터를_그대로_서비스에_전달한다() {
         TodoController controller = new TodoController(todoService);
         TodoSummaryResponse summary = summary();
-        given(todoService.getActiveTodoList(10L, "user1", "PENDING")).willReturn(List.of(summary));
+        TodoActivePageResponse page = new TodoActivePageResponse(List.of(summary), true, "next-cursor");
+        given(todoService.getActiveTodoList(10L, "user1", "PENDING", "cursor-value", 5)).willReturn(page);
 
-        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
-                controller.getActiveTodoList(10L, "PENDING", auth());
+        ResponseEntity<ApiResponse<TodoActivePageResponse>> response =
+                controller.getActiveTodoList(10L, "PENDING", "cursor-value", 5, auth());
 
-        assertThat(response.getBody().getData()).containsExactly(summary);
-        then(todoService).should().getActiveTodoList(10L, "user1", "PENDING");
+        assertThat(response.getBody().getData()).isEqualTo(page);
+        assertThat(response.getBody().getMessage()).isEqualTo("할 일 목록을 조회했습니다");
+        then(todoService).should().getActiveTodoList(10L, "user1", "PENDING", "cursor-value", 5);
     }
 
     @Test

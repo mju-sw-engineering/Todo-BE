@@ -5,6 +5,7 @@ import com.todo.domain.todo.dto.request.AssignTodoWorkItemRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
+import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
@@ -72,24 +73,27 @@ public interface TodoControllerDocs {
 
     @Operation(
             summary = "마감 미경과(active) 투두 목록 조회",
-            description = "날짜 지정 없이, 아직 마감이 지나지 않은 투두만 조회합니다. " +
+            description = "날짜 지정 없이, 아직 마감이 지나지 않은 투두만 커서 기반으로 조회합니다. " +
                     "status=PENDING이면 진행 중(IN_PROGRESS)만, status=DONE이면 종료된 것(SUCCESS 또는 FAIL)만, " +
-                    "생략하면 마감 안 지난 전체를 마감 임박 순으로 반환합니다."
+                    "생략하면 마감 안 지난 전체를 마감 임박 순으로 반환합니다. " +
+                    "cursor 없으면 첫 페이지, 있으면 응답으로 받은 nextCursor를 그대로 다음 요청에 넣습니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",
-                    content = @Content(schema = @Schema(implementation = TodoSummaryResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "알 수 없는 status 값",
+                    content = @Content(schema = @Schema(implementation = TodoActivePageResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "알 수 없는 status 값 또는 잘못된 cursor 형식",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "팀 멤버가 아님",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "팀을 찾을 수 없음",
                     content = @Content(schema = @Schema(hidden = true)))
     })
-    ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getActiveTodoList(
+    ResponseEntity<ApiResponse<TodoActivePageResponse>> getActiveTodoList(
             @Parameter(description = "팀 ID", example = "1") Long teamId,
             @Parameter(description = "조회 상태: PENDING 또는 DONE (생략하면 전체)", example = "PENDING") String status,
+            @Parameter(description = "다음 페이지 조회용 커서 (생략하면 첫 페이지)") String cursor,
+            @Parameter(description = "조회 개수 (기본값: 20)") int size,
             Authentication authentication
     );
 
