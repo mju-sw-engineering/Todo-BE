@@ -117,6 +117,19 @@ class AuthServiceTest {
     }
 
     @Test
+    void 회원가입은_본인이_업로드하지_않은_프로필_키면_예외를_던진다() {
+        SignupRequest request = signupRequest("user1", "password123!", "password123!", "닉네임", "proofs/2/stolen.jpg", false);
+        given(userRepository.existsByLoginId("user1")).willReturn(false);
+        org.mockito.BDDMockito.willThrow(new BusinessException("본인이 업로드한 프로필 이미지만 사용할 수 있습니다.", HttpStatus.BAD_REQUEST))
+                .given(fileService).validateProfileImageKey(null, "proofs/2/stolen.jpg");
+
+        assertThatThrownBy(() -> authService.signup(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("본인이 업로드한 프로필 이미지");
+        then(userRepository).should(never()).save(any());
+    }
+
+    @Test
     void 회원가입은_비밀번호_확인이_다르면_예외를_던진다() {
         SignupRequest request = signupRequest("user1", "password123!", "different", "닉네임", null, false);
 
@@ -185,7 +198,9 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
 
         RefreshToken token = RefreshToken.create(user, "old-uuid", "device-1", LocalDateTime.now().plusDays(14));
+        ReflectionTestUtils.setField(token, "id", 10L);
         given(refreshTokenRepository.findByToken("old-uuid")).willReturn(Optional.of(token));
+        given(refreshTokenRepository.markAsUsedIfActive(10L)).willReturn(1);
         given(jwtUtil.generateToken(1L)).willReturn("new-access-token");
         given(jwtUtil.generateRefreshToken()).willReturn("new-uuid");
         LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
@@ -195,8 +210,26 @@ class AuthServiceTest {
 
         assertThat(result.accessToken()).isEqualTo("new-access-token");
         assertThat(result.refreshToken()).isEqualTo("new-uuid");
-        assertThat(token.isUsed()).isTrue();
+        then(refreshTokenRepository).should().markAsUsedIfActive(10L);
         then(sessionService).should().issueRefreshToken(user, "new-uuid", "device-1", expiresAt);
+    }
+
+    @Test
+    void 리프레시는_동시_요청과의_소비_경합에서_지면_전체_세션을_삭제하고_예외를_던진다() {
+        User user = User.create("user1", "encoded", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+
+        RefreshToken token = RefreshToken.create(user, "old-uuid", "device-1", LocalDateTime.now().plusDays(14));
+        ReflectionTestUtils.setField(token, "id", 10L);
+        given(refreshTokenRepository.findByToken("old-uuid")).willReturn(Optional.of(token));
+        // 조회 시점에는 미사용이었지만, UPDATE 시점에 이미 다른 요청이 소비한 상황
+        given(refreshTokenRepository.markAsUsedIfActive(10L)).willReturn(0);
+
+        assertThatThrownBy(() -> authService.refresh("old-uuid"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("유효하지 않은");
+        then(refreshTokenRepository).should().deleteByUserId(1L);
+        then(sessionService).should(never()).issueRefreshToken(any(), any(), any(), any());
     }
 
     @Test

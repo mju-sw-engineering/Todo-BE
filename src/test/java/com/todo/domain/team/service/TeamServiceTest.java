@@ -113,6 +113,21 @@ class TeamServiceTest {
     }
 
     @Test
+    void 팀_생성은_본인이_업로드하지_않은_이미지_키면_거부하고_저장하지_않는다() {
+        User user = User.create("1", "encodedPwd", "닉네임", null);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        org.mockito.BDDMockito.willThrow(
+                        new BusinessException("본인이 업로드한 팀 이미지만 사용할 수 있습니다.", HttpStatus.BAD_REQUEST))
+                .given(fileService).validateTeamImageKey(user.getId(), "proofs/2/stolen.jpg");
+
+        assertThatThrownBy(() -> teamService.createTeam("1", new CreateTeamRequest("우리팀", null, "proofs/2/stolen.jpg")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 업로드한 팀 이미지만 사용할 수 있습니다.");
+
+        then(teamRepository).should(never()).save(any(Team.class));
+    }
+
+    @Test
     void 팀_생성_시_설명이_저장된다() {
         User user = User.create("1", "encodedPwd", "닉네임", null);
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
