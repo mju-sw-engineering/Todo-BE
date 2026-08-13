@@ -97,6 +97,20 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
             @Param("end") LocalDateTime end
     );
 
+    @Query("""
+            SELECT t FROM Todo t
+            LEFT JOIN FETCH t.creator
+            WHERE t.team.id = :teamId
+              AND t.status IN :statuses
+              AND t.deadline > :now
+            ORDER BY t.deadline ASC
+            """)
+    List<Todo> findByTeamIdAndStatusInAndDeadlineAfterWithCreator(
+            @Param("teamId") Long teamId,
+            @Param("statuses") List<TodoStatus> statuses,
+            @Param("now") LocalDateTime now
+    );
+
     @Query("SELECT t FROM Todo t LEFT JOIN FETCH t.creator JOIN FETCH t.team WHERE t.id = :todoId")
     Optional<Todo> findByIdWithCreatorAndTeam(@Param("todoId") Long todoId);
 

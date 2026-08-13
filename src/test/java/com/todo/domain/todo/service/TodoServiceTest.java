@@ -489,6 +489,75 @@ class TodoServiceTest {
     }
 
     @Test
+    void 마감_미경과_목록은_status_없으면_전체_상태를_대상으로_조회한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        todoService.getActiveTodoList(TEAM_ID, "1", null);
+
+        then(todoRepository).should().findByTeamIdAndStatusInAndDeadlineAfterWithCreator(
+                eq(TEAM_ID),
+                eq(List.of(TodoStatus.IN_PROGRESS, TodoStatus.SUCCESS, TodoStatus.FAIL)),
+                any(LocalDateTime.class)
+        );
+    }
+
+    @Test
+    void 마감_미경과_목록은_status_PENDING이면_진행중만_대상으로_조회한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        todoService.getActiveTodoList(TEAM_ID, "1", "PENDING");
+
+        then(todoRepository).should().findByTeamIdAndStatusInAndDeadlineAfterWithCreator(
+                eq(TEAM_ID),
+                eq(List.of(TodoStatus.IN_PROGRESS)),
+                any(LocalDateTime.class)
+        );
+    }
+
+    @Test
+    void 마감_미경과_목록은_status_DONE이면_성공과_실패를_대상으로_조회한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        todoService.getActiveTodoList(TEAM_ID, "1", "DONE");
+
+        then(todoRepository).should().findByTeamIdAndStatusInAndDeadlineAfterWithCreator(
+                eq(TEAM_ID),
+                eq(List.of(TodoStatus.SUCCESS, TodoStatus.FAIL)),
+                any(LocalDateTime.class)
+        );
+    }
+
+    @Test
+    void 마감_미경과_목록은_알_수_없는_status면_거절한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        assertThatThrownBy(() -> todoService.getActiveTodoList(TEAM_ID, "1", "UNKNOWN"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("알 수 없는 status 값입니다.");
+    }
+
+    @Test
+    void 마감_미경과_목록도_내_작업_요약을_포함한_기존_변환_로직을_그대로_탄다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        givenListAccess(viewer);
+        given(todoRepository.findByTeamIdAndStatusInAndDeadlineAfterWithCreator(eq(TEAM_ID), any(), any(LocalDateTime.class)))
+                .willReturn(List.of(todo));
+        given(todoWorkItemRepository.findSummaryByTodoIdIn(List.of(TODO_ID))).willReturn(List.of(
+                summary(TODO_ID, 1L, WorkItemStatus.IN_PROGRESS, WorkItemType.TASK, 0)
+        ));
+
+        TodoSummaryResponse response = todoService.getActiveTodoList(TEAM_ID, "1", null).get(0);
+
+        assertThat(response.myWorkSummary().totalCount()).isEqualTo(1);
+        assertThat(response.myWorkSummary().inProgressCount()).isEqualTo(1);
+    }
+
+    @Test
     void 기간_리포트는_입력날짜를_검증하고_WorkItem_마감일_기준으로_집계한다() {
         User viewer = user(1L);
         givenListAccess(viewer);

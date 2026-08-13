@@ -59,6 +59,20 @@ public class TodoController implements TodoControllerDocs {
         return ResponseEntity.ok(ApiResponse.success(result, "할 일 목록을 조회했습니다"));
     }
 
+    @GetMapping("/teams/{teamId}/todos/active")
+    public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getActiveTodoList(
+            @PathVariable Long teamId,
+            @RequestParam(required = false) String status,
+            Authentication authentication
+    ) {
+        String userId = authentication.getName();
+        List<TodoSummaryResponse> result = todoService.getActiveTodoList(teamId, userId, status);
+        if (result.isEmpty()) {
+            return ResponseEntity.ok(ApiResponse.success(null, "조회된 할 일이 없습니다"));
+        }
+        return ResponseEntity.ok(ApiResponse.success(result, "할 일 목록을 조회했습니다"));
+    }
+
     @GetMapping("/teams/{teamId}/todos/report")
     public ResponseEntity<ApiResponse<TodoPeriodReportResponse>> getTodoPeriodReport(
             @PathVariable Long teamId,

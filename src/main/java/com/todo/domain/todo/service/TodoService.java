@@ -151,6 +151,28 @@ public class TodoService {
         return toSummaryResponses(todos, user.getId());
     }
 
+    public List<TodoSummaryResponse> getActiveTodoList(Long teamId, String userId, String status) {
+        User user = validateTeamMember(teamId, userId);
+        List<TodoStatus> statuses = resolveActiveStatuses(status);
+        List<Todo> todos = todoRepository.findByTeamIdAndStatusInAndDeadlineAfterWithCreator(
+                teamId,
+                statuses,
+                LocalDateTime.now(KST)
+        );
+        return toSummaryResponses(todos, user.getId());
+    }
+
+    private List<TodoStatus> resolveActiveStatuses(String status) {
+        if (status == null || status.isBlank()) {
+            return List.of(TodoStatus.IN_PROGRESS, TodoStatus.SUCCESS, TodoStatus.FAIL);
+        }
+        return switch (status) {
+            case "PENDING" -> List.of(TodoStatus.IN_PROGRESS);
+            case "DONE" -> List.of(TodoStatus.SUCCESS, TodoStatus.FAIL);
+            default -> throw new BusinessException("알 수 없는 status 값입니다.", HttpStatus.BAD_REQUEST);
+        };
+    }
+
     public TodoPeriodReportResponse getTodoPeriodReport(
             Long teamId,
             String userId,

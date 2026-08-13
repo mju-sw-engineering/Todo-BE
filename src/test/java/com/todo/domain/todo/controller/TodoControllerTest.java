@@ -109,6 +109,31 @@ class TodoControllerTest {
     }
 
     @Test
+    void 마감_미경과_목록이_비어있으면_조회된_할일_없음_메시지를_반환한다() {
+        TodoController controller = new TodoController(todoService);
+        given(todoService.getActiveTodoList(10L, "user1", null)).willReturn(List.of());
+
+        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
+                controller.getActiveTodoList(10L, null, auth());
+
+        assertThat(response.getBody().getData()).isNull();
+        assertThat(response.getBody().getMessage()).isEqualTo("조회된 할 일이 없습니다");
+    }
+
+    @Test
+    void 마감_미경과_목록은_status_파라미터를_그대로_서비스에_전달한다() {
+        TodoController controller = new TodoController(todoService);
+        TodoSummaryResponse summary = summary();
+        given(todoService.getActiveTodoList(10L, "user1", "PENDING")).willReturn(List.of(summary));
+
+        ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> response =
+                controller.getActiveTodoList(10L, "PENDING", auth());
+
+        assertThat(response.getBody().getData()).containsExactly(summary);
+        then(todoService).should().getActiveTodoList(10L, "user1", "PENDING");
+    }
+
+    @Test
     void 기간_리포트_응답을_반환한다() {
         TodoController controller = new TodoController(todoService);
         TodoPeriodReportResponse serviceResponse = new TodoPeriodReportResponse(null, null, null, List.of(), List.of());
