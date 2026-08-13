@@ -11,6 +11,7 @@ import com.todo.domain.todo.dto.request.CreateTodoTaskRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
+import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
@@ -41,16 +42,19 @@ import org.mockito.InjectMocks;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 
@@ -486,6 +490,146 @@ class TodoServiceTest {
         assertThatThrownBy(() -> todoService.getTodoList(TEAM_ID, "1", "ENDED", "2026-08-02"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("filter와 date는 함께 사용할 수 없습니다.");
+    }
+
+    @Test
+    void 마감_미경과_목록은_cursor가_없으면_status_없을_때_전체_상태로_첫_페이지를_조회한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        todoService.getActiveTodoList(TEAM_ID, "1", null, null, 20);
+
+        then(todoRepository).should().findFirstActivePageByTeamId(
+                eq(TEAM_ID),
+                eq(List.of(TodoStatus.IN_PROGRESS, TodoStatus.SUCCESS, TodoStatus.FAIL)),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, 21))
+        );
+    }
+
+    @Test
+    void 마감_미경과_목록은_status_PENDING이면_진행중만_대상으로_조회한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        todoService.getActiveTodoList(TEAM_ID, "1", "PENDING", null, 20);
+
+        then(todoRepository).should().findFirstActivePageByTeamId(
+                eq(TEAM_ID),
+                eq(List.of(TodoStatus.IN_PROGRESS)),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, 21))
+        );
+    }
+
+    @Test
+    void 마감_미경과_목록은_status_DONE이면_성공과_실패를_대상으로_조회한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        todoService.getActiveTodoList(TEAM_ID, "1", "DONE", null, 20);
+
+        then(todoRepository).should().findFirstActivePageByTeamId(
+                eq(TEAM_ID),
+                eq(List.of(TodoStatus.SUCCESS, TodoStatus.FAIL)),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, 21))
+        );
+    }
+
+    @Test
+    void 마감_미경과_목록은_알_수_없는_status면_거절한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        assertThatThrownBy(() -> todoService.getActiveTodoList(TEAM_ID, "1", "UNKNOWN", null, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("알 수 없는 status 값입니다.");
+    }
+
+    @Test
+    void 마감_미경과_목록은_cursor가_있으면_deadline과_id로_분해해서_다음_페이지를_조회한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+        LocalDateTime cursorDeadline = LocalDateTime.of(2026, 8, 15, 10, 0, 0);
+        Long cursorId = 22L;
+
+        todoService.getActiveTodoList(TEAM_ID, "1", null, encodeCursor(cursorDeadline, cursorId), 20);
+
+        then(todoRepository).should().findNextActivePageByTeamId(
+                eq(TEAM_ID),
+                eq(List.of(TodoStatus.IN_PROGRESS, TodoStatus.SUCCESS, TodoStatus.FAIL)),
+                any(LocalDateTime.class),
+                eq(cursorDeadline),
+                eq(cursorId),
+                eq(PageRequest.of(0, 21))
+        );
+    }
+
+    @Test
+    void 마감_미경과_목록은_잘못된_형식의_cursor면_거절한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+
+        assertThatThrownBy(() -> todoService.getActiveTodoList(TEAM_ID, "1", null, "잘못된-커서", 20))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void 마감_미경과_목록은_size보다_많이_조회되면_hasNext가_true이고_마지막으로_반환된_항목_기준으로_커서를_인코딩한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+        Team team = team();
+        Todo first = todo(team, TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        Todo second = todo(team, TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        setId(second, 11L);
+        given(todoRepository.findFirstActivePageByTeamId(eq(TEAM_ID), any(), any(LocalDateTime.class), eq(PageRequest.of(0, 2))))
+                .willReturn(List.of(first, second));
+        given(todoWorkItemRepository.findSummaryByTodoIdIn(any())).willReturn(List.of());
+
+        TodoActivePageResponse response = todoService.getActiveTodoList(TEAM_ID, "1", null, null, 1);
+
+        assertThat(response.todos()).hasSize(1);
+        assertThat(response.hasNext()).isTrue();
+        assertThat(response.nextCursor()).isEqualTo(encodeCursor(first.getDeadline(), first.getId()));
+    }
+
+    @Test
+    void 마감_미경과_목록은_size_이하로_조회되면_hasNext가_false이고_nextCursor가_없다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+        Todo only = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(1));
+        given(todoRepository.findFirstActivePageByTeamId(eq(TEAM_ID), any(), any(LocalDateTime.class), eq(PageRequest.of(0, 21))))
+                .willReturn(List.of(only));
+        given(todoWorkItemRepository.findSummaryByTodoIdIn(any())).willReturn(List.of());
+
+        TodoActivePageResponse response = todoService.getActiveTodoList(TEAM_ID, "1", null, null, 20);
+
+        assertThat(response.hasNext()).isFalse();
+        assertThat(response.nextCursor()).isNull();
+    }
+
+    @Test
+    void 마감_미경과_목록도_내_작업_요약을_포함한_기존_변환_로직을_그대로_탄다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        givenListAccess(viewer);
+        given(todoRepository.findFirstActivePageByTeamId(eq(TEAM_ID), any(), any(LocalDateTime.class), any()))
+                .willReturn(List.of(todo));
+        given(todoWorkItemRepository.findSummaryByTodoIdIn(List.of(TODO_ID))).willReturn(List.of(
+                summary(TODO_ID, 1L, WorkItemStatus.IN_PROGRESS, WorkItemType.TASK, 0)
+        ));
+
+        TodoSummaryResponse response = todoService.getActiveTodoList(TEAM_ID, "1", null, null, 20).todos().get(0);
+
+        assertThat(response.myWorkSummary().totalCount()).isEqualTo(1);
+        assertThat(response.myWorkSummary().inProgressCount()).isEqualTo(1);
+    }
+
+    private String encodeCursor(LocalDateTime deadline, Long id) {
+        String raw = deadline + "_" + id;
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
     }
 
     @Test

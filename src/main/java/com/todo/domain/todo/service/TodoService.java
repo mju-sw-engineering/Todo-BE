@@ -13,6 +13,7 @@ import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.MyWorkSummaryResponse;
+import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoDirectAssigneeResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
@@ -45,12 +46,14 @@ import com.todo.global.exception.BusinessException;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -58,6 +61,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -77,6 +81,7 @@ public class TodoService {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final ZoneOffset KST_OFFSET = ZoneOffset.ofHours(9);
     private static final int ACTION_CANDIDATE_LIMIT = 5;
+    private static final String ACTIVE_CURSOR_DELIMITER = "_";
 
     private final TodoRepository todoRepository;
     private final TodoWorkItemRepository todoWorkItemRepository;
@@ -149,6 +154,64 @@ public class TodoService {
             todos = findTodosByFilter(teamId, filter);
         }
         return toSummaryResponses(todos, user.getId());
+    }
+
+    public TodoActivePageResponse getActiveTodoList(Long teamId, String userId, String status, String cursor, int size) {
+        User user = validateTeamMember(teamId, userId);
+        List<TodoStatus> statuses = resolveActiveStatuses(status);
+        LocalDateTime now = LocalDateTime.now(KST);
+        PageRequest pageRequest = PageRequest.of(0, size + 1);
+
+        List<Todo> todos;
+        if (cursor == null || cursor.isBlank()) {
+            todos = todoRepository.findFirstActivePageByTeamId(teamId, statuses, now, pageRequest);
+        } else {
+            ActiveCursor decoded = decodeActiveCursor(cursor);
+            todos = todoRepository.findNextActivePageByTeamId(
+                    teamId,
+                    statuses,
+                    now,
+                    decoded.deadline(),
+                    decoded.id(),
+                    pageRequest
+            );
+        }
+
+        boolean hasNext = todos.size() > size;
+        List<Todo> page = hasNext ? todos.subList(0, size) : todos;
+        String nextCursor = hasNext ? encodeActiveCursor(page.get(page.size() - 1)) : null;
+
+        return new TodoActivePageResponse(toSummaryResponses(page, user.getId()), hasNext, nextCursor);
+    }
+
+    private record ActiveCursor(LocalDateTime deadline, Long id) {}
+
+    private String encodeActiveCursor(Todo todo) {
+        String raw = todo.getDeadline() + ACTIVE_CURSOR_DELIMITER + todo.getId();
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private ActiveCursor decodeActiveCursor(String cursor) {
+        try {
+            String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            int delimiterIndex = raw.lastIndexOf(ACTIVE_CURSOR_DELIMITER);
+            LocalDateTime deadline = LocalDateTime.parse(raw.substring(0, delimiterIndex));
+            Long id = Long.parseLong(raw.substring(delimiterIndex + 1));
+            return new ActiveCursor(deadline, id);
+        } catch (RuntimeException e) {
+            throw new BusinessException("잘못된 cursor 값입니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private List<TodoStatus> resolveActiveStatuses(String status) {
+        if (status == null || status.isBlank()) {
+            return List.of(TodoStatus.IN_PROGRESS, TodoStatus.SUCCESS, TodoStatus.FAIL);
+        }
+        return switch (status) {
+            case "PENDING" -> List.of(TodoStatus.IN_PROGRESS);
+            case "DONE" -> List.of(TodoStatus.SUCCESS, TodoStatus.FAIL);
+            default -> throw new BusinessException("알 수 없는 status 값입니다.", HttpStatus.BAD_REQUEST);
+        };
     }
 
     public TodoPeriodReportResponse getTodoPeriodReport(

@@ -3,6 +3,7 @@ package com.todo.domain.todo.repository;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoStatus;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -95,6 +96,46 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
             @Param("teamId") Long teamId,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end
+    );
+
+    /**
+     * 마감 미경과 목록의 첫 페이지. 커서 조건 없이 마감 임박 순으로 size+1건을 가져온다.
+     */
+    @Query("""
+            SELECT t FROM Todo t
+            LEFT JOIN FETCH t.creator
+            WHERE t.team.id = :teamId
+              AND t.status IN :statuses
+              AND t.deadline > :now
+            ORDER BY t.deadline ASC, t.id ASC
+            """)
+    List<Todo> findFirstActivePageByTeamId(
+            @Param("teamId") Long teamId,
+            @Param("statuses") List<TodoStatus> statuses,
+            @Param("now") LocalDateTime now,
+            Pageable pageable
+    );
+
+    /**
+     * 마감 미경과 목록의 다음 페이지. 같은 마감시간을 가진 투두가 여러 개일 수 있어
+     * deadline만으로는 커서 위치가 유일하게 정해지지 않는다. id를 타이브레이커로 더한다.
+     */
+    @Query("""
+            SELECT t FROM Todo t
+            LEFT JOIN FETCH t.creator
+            WHERE t.team.id = :teamId
+              AND t.status IN :statuses
+              AND t.deadline > :now
+              AND (t.deadline > :cursorDeadline OR (t.deadline = :cursorDeadline AND t.id > :cursorId))
+            ORDER BY t.deadline ASC, t.id ASC
+            """)
+    List<Todo> findNextActivePageByTeamId(
+            @Param("teamId") Long teamId,
+            @Param("statuses") List<TodoStatus> statuses,
+            @Param("now") LocalDateTime now,
+            @Param("cursorDeadline") LocalDateTime cursorDeadline,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable
     );
 
     @Query("SELECT t FROM Todo t LEFT JOIN FETCH t.creator JOIN FETCH t.team WHERE t.id = :todoId")
