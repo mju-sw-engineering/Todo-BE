@@ -1,6 +1,13 @@
 package com.todo.domain.todo.service;
 
+import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessage;
+import com.todo.domain.notification.message.NotificationMessageFactory;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
+import com.todo.domain.team.entity.TeamMember;
+import com.todo.domain.team.entity.TeamMemberRole;
+import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoMode;
@@ -17,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
@@ -35,6 +43,12 @@ class TodoStatusTransitionServiceTest {
     private TodoWorkItemRepository todoWorkItemRepository;
     @Mock
     private TeamRepository teamRepository;
+    @Mock
+    private TeamMemberRepository teamMemberRepository;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private NotificationMessageFactory notificationMessageFactory;
 
     @Test
     void 실행_항목이_하나도_없으면_Todo를_실패로_확정한다() {
@@ -65,11 +79,17 @@ class TodoStatusTransitionServiceTest {
         given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(2L);
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(2L);
+        User member = user();
+        TeamMember teamMember = TeamMember.create(todo.getTeam(), member, TeamMemberRole.MEMBER);
+        given(teamMemberRepository.findByTeamIdWithUser(TEAM_ID)).willReturn(List.of(teamMember));
+        NotificationMessage message = new NotificationMessage(NotificationType.TODO_ALL_COMPLETED, "title", "content");
+        given(notificationMessageFactory.todoAllCompleted(todo.getTitle())).willReturn(message);
 
         transitionService.reevaluate(todo);
 
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
         then(teamRepository).should().incrementSuccessCount(TEAM_ID);
+        then(notificationService).should().sendAll(List.of(member), null, message, TODO_ID);
     }
 
     @Test
@@ -102,17 +122,22 @@ class TodoStatusTransitionServiceTest {
     void 마감_초과는_WorkItem과_부모_Todo를_함께_실패로_확정한다() {
         Todo todo = todo(TodoStatus.IN_PROGRESS);
         TodoWorkItem workItem = direct(todo);
+        NotificationMessage message = new NotificationMessage(NotificationType.TODO_WORK_ITEM_EXPIRED, "title", "content");
+        given(notificationMessageFactory.todoWorkItemExpired(todo.getTitle())).willReturn(message);
 
         transitionService.failOnDeadlinePassed(todo, workItem);
 
         assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.FAIL);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.FAIL);
+        then(notificationService).should().send(workItem.getAssignee(), null, message, TODO_ID);
     }
 
     @Test
     void 마감_초과_처리는_이미_확정된_Todo의_상태를_되돌리지_않는다() {
         Todo todo = todo(TodoStatus.SUCCESS);
         TodoWorkItem workItem = direct(todo);
+        NotificationMessage message = new NotificationMessage(NotificationType.TODO_WORK_ITEM_EXPIRED, "title", "content");
+        given(notificationMessageFactory.todoWorkItemExpired(todo.getTitle())).willReturn(message);
 
         transitionService.failOnDeadlinePassed(todo, workItem);
 

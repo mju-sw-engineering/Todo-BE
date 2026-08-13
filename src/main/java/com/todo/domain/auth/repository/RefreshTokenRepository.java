@@ -23,6 +23,17 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     List<RefreshToken> findActiveByUserId(@Param("userId") Long userId, @Param("now") LocalDateTime now);
 
     /**
+     * NEW_DEVICE_LOGIN 판정용. 만료·사용 여부와 무관하게 이 deviceId로 세션을 발급받은 적이
+     * 있는지만 본다 — 만료된 세션이라도 "이미 알아본 기기"라는 사실은 남아있어야 한다.
+     */
+    boolean existsByUser_IdAndDeviceId(Long userId, String deviceId);
+
+    /**
+     * 이 계정의 첫 로그인인지 판정용. 첫 로그인은 "새 기기"로 알리지 않는다.
+     */
+    boolean existsByUser_Id(Long userId);
+
+    /**
      * 미사용 상태일 때만 사용 처리한다. 갱신된 행 수가 0이면 조회와 이 UPDATE 사이에
      * 다른 요청이 같은 토큰을 먼저 소비했다는 뜻이다 — 그 요청만 통과해야 한다.
      */

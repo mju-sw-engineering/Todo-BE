@@ -10,7 +10,12 @@ import com.todo.domain.availability.entity.AvailabilityPollDate;
 import com.todo.domain.availability.entity.AvailabilitySlot;
 import com.todo.domain.availability.repository.AvailabilityPollRepository;
 import com.todo.domain.availability.repository.AvailabilitySlotRepository;
+import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessage;
+import com.todo.domain.notification.message.NotificationMessageFactory;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
+import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.user.entity.User;
@@ -54,6 +59,10 @@ class AvailabilityServiceTest {
     private TeamMemberRepository teamMemberRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private NotificationMessageFactory notificationMessageFactory;
 
     private User user;
     private Team team;
@@ -118,10 +127,17 @@ class AvailabilityServiceTest {
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(true);
         given(teamRepository.getReferenceById(10L)).willReturn(team);
+        User other = User.create("2", "pw", "다른팀원", null);
+        ReflectionTestUtils.setField(other, "id", 2L);
+        TeamMember otherMember = TeamMember.create(team, other, com.todo.domain.team.entity.TeamMemberRole.MEMBER);
+        given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of(otherMember));
+        NotificationMessage message = new NotificationMessage(NotificationType.AVAILABILITY_POLL_CREATED, "title", "content");
+        given(notificationMessageFactory.availabilityPollCreated("새 투표")).willReturn(message);
 
         availabilityService.createPoll(10L, "1", request);
 
         then(pollRepository).should().save(any(AvailabilityPoll.class));
+        then(notificationService).should().sendAll(List.of(other), user, message, null);
     }
 
     @Test

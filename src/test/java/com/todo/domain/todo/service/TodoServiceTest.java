@@ -65,6 +65,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class TodoServiceTest {
@@ -103,7 +104,9 @@ class TodoServiceTest {
         ReflectionTestUtils.setField(
                 todoService,
                 "todoStatusTransitionService",
-                new TodoStatusTransitionService(todoWorkItemRepository, teamRepository)
+                new TodoStatusTransitionService(
+                        todoWorkItemRepository, teamRepository, teamMemberRepository,
+                        notificationService, notificationMessageFactory)
         );
         lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<?> callback = invocation.getArgument(0);
@@ -412,6 +415,25 @@ class TodoServiceTest {
         assertThat(response.type()).isEqualTo(TodoReactionType.LIKE);
         assertThat(response.count()).isEqualTo(1L);
         then(todoReactionRepository).should().save(any(TodoReaction.class));
+        then(notificationService).should().send(eq(assignee), eq(reactor), any(), eq(todo.getId()));
+    }
+
+    @Test
+    void 본인_제출물에_본인이_반응해도_알림을_보내지_않는다() {
+        User self = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = task(todo, self, 20L, "반응 대상", LocalDateTime.now().plusDays(1), 0);
+        setField(workItem, "proofImageKey", "proof.jpg");
+        given(userRepository.findById(1L)).willReturn(Optional.of(self));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
+        given(todoReactionRepository.findByTodoWorkItemIdAndUserId(20L, 1L)).willReturn(Optional.empty());
+        given(todoReactionRepository.save(any(TodoReaction.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(todoReactionRepository.countByTodoWorkItemIdAndReactionType(20L, TodoReactionType.LIKE)).willReturn(1L);
+
+        todoService.reactTodoWorkItem(20L, "1", new ReactTodoRequest(TodoReactionType.LIKE));
+
+        then(notificationService).should(never()).send(any(), any(), any(), any());
     }
 
     @Test

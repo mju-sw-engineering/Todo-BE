@@ -2,6 +2,10 @@ package com.todo.domain.team.service;
 
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
+import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.message.NotificationMessage;
+import com.todo.domain.notification.message.NotificationMessageFactory;
+import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.dto.request.CreateTeamRequest;
 import com.todo.domain.team.dto.request.InviteTeamRequest;
 import com.todo.domain.team.dto.request.JoinByInviteLinkRequest;
@@ -81,6 +85,10 @@ class TeamServiceTest {
     private TeamChatReadStatusRepository teamChatReadStatusRepository;
     @Mock
     private FileDeletionOutboxService fileDeletionOutboxService;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private NotificationMessageFactory notificationMessageFactory;
 
     @Test
     void 팀_생성_성공_이미지없음() {
@@ -320,16 +328,23 @@ class TeamServiceTest {
         ReflectionTestUtils.setField(user, "id", 1L);
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
+        User existingMember = User.create("2", "pw", "기존팀원", null);
+        ReflectionTestUtils.setField(existingMember, "id", 2L);
+        TeamMember existing = TeamMember.create(team, existingMember, TeamMemberRole.LEADER);
 
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamRepository.findByInviteCode("ABCD1234")).willReturn(Optional.of(team));
         given(teamMemberRepository.existsByTeamIdAndUserId(10L, 1L)).willReturn(false);
         given(teamMemberRepository.save(any(TeamMember.class))).willAnswer(inv -> inv.getArgument(0));
+        given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of(existing));
+        NotificationMessage message = new NotificationMessage(NotificationType.TEAM_MEMBER_JOINED, "title", "content");
+        given(notificationMessageFactory.teamMemberJoined()).willReturn(message);
 
         JoinTeamResponse response = teamService.joinTeam("1", new JoinTeamRequest("ABCD1234"));
 
         assertThat(response.teamId()).isEqualTo(10L);
         then(teamMemberRepository).should().save(argThat(m -> m.getRole() == TeamMemberRole.MEMBER));
+        then(notificationService).should().sendAll(List.of(existingMember), user, message, 10L);
     }
 
     @Test
@@ -638,14 +653,48 @@ class TeamServiceTest {
         Team team = Team.create("스터디 팀", null, "ABCD1234");
         ReflectionTestUtils.setField(team, "id", 10L);
         TeamMember member = TeamMember.create(team, user, TeamMemberRole.MEMBER);
+        User remainingUser = User.create("2", "pw", "남은팀원", null);
+        ReflectionTestUtils.setField(remainingUser, "id", 2L);
+        TeamMember remaining = TeamMember.create(team, remainingUser, TeamMemberRole.LEADER);
 
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(member));
+        given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of(remaining));
+        NotificationMessage message = new NotificationMessage(NotificationType.TEAM_MEMBER_LEFT, "title", "content");
+        given(notificationMessageFactory.teamMemberLeft()).willReturn(message);
 
         teamService.leaveTeam("1", 10L);
 
         then(todoWorkItemLifecycleService).should().handleTeamDeparture(10L, user);
         then(teamMemberRepository).should().delete(member);
+        then(notificationService).should().sendAll(List.of(remainingUser), user, message, 10L);
+    }
+
+    @Test
+    void 리더가_팀을_나가면_다음_멤버에게_권한을_넘기고_리더_변경_알림을_보낸다() {
+        User leader = User.create("1", "encodedPwd", "팀장", null);
+        ReflectionTestUtils.setField(leader, "id", 1L);
+        Team team = Team.create("스터디 팀", null, "ABCD1234");
+        ReflectionTestUtils.setField(team, "id", 10L);
+        TeamMember leaderMember = TeamMember.create(team, leader, TeamMemberRole.LEADER);
+        User nextUser = User.create("2", "pw", "다음팀장", null);
+        ReflectionTestUtils.setField(nextUser, "id", 2L);
+        TeamMember next = TeamMember.create(team, nextUser, TeamMemberRole.MEMBER);
+
+        given(userRepository.findById(1L)).willReturn(Optional.of(leader));
+        given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(leaderMember));
+        given(teamMemberRepository.findByTeamIdExcludingUser(10L, 1L)).willReturn(List.of(next));
+        NotificationMessage leftMessage = new NotificationMessage(NotificationType.TEAM_MEMBER_LEFT, "title", "content");
+        NotificationMessage leaderChangedMessage = new NotificationMessage(NotificationType.TEAM_LEADER_CHANGED, "title", "content");
+        given(notificationMessageFactory.teamMemberLeft()).willReturn(leftMessage);
+        given(notificationMessageFactory.teamLeaderChanged()).willReturn(leaderChangedMessage);
+
+        teamService.leaveTeam("1", 10L);
+
+        assertThat(next.getRole()).isEqualTo(TeamMemberRole.LEADER);
+        then(notificationService).should().send(nextUser, null, leaderChangedMessage, 10L);
+        then(notificationService).should().sendAll(List.of(nextUser), leader, leftMessage, 10L);
+        then(teamMemberRepository).should().delete(leaderMember);
     }
 
     @Test
@@ -662,12 +711,15 @@ class TeamServiceTest {
         given(userRepository.findById(1L)).willReturn(Optional.of(leader));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 1L)).willReturn(Optional.of(leaderMember));
         given(teamMemberRepository.findByTeamIdAndUserId(10L, 2L)).willReturn(Optional.of(targetMember));
+        NotificationMessage message = new NotificationMessage(NotificationType.TEAM_MEMBER_REMOVED, "title", "content");
+        given(notificationMessageFactory.teamMemberRemoved()).willReturn(message);
 
         teamService.removeMember("1", 10L, 2L);
 
         var inOrder = inOrder(todoWorkItemLifecycleService, teamMemberRepository);
         inOrder.verify(todoWorkItemLifecycleService).handleTeamDeparture(10L, targetUser);
         inOrder.verify(teamMemberRepository).delete(targetMember);
+        then(notificationService).should().send(targetUser, leader, message, 10L);
     }
 
     @Test

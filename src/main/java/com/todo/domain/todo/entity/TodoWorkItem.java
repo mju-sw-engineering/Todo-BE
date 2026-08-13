@@ -69,6 +69,12 @@ public class TodoWorkItem extends BaseTimeEntity {
 
     private LocalDateTime submittedAt;
 
+    /**
+     * TODO_DEADLINE_APPROACHING 발송 여부. 스케줄러가 60초마다 도는데 이 값이 없으면
+     * 마감 30분 전 구간 내내 매 tick마다 중복 발송된다. 벌크 UPDATE로만 채워진다.
+     */
+    private LocalDateTime deadlineReminderSentAt;
+
     public static TodoWorkItem createDirect(Todo todo, User assignee) {
         TodoWorkItem workItem = new TodoWorkItem();
         workItem.todo = todo;

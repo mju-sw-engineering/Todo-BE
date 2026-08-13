@@ -2,6 +2,7 @@ package com.todo.domain.auth.service;
 
 import com.todo.domain.auth.dto.response.SessionResponse;
 import com.todo.domain.auth.entity.RefreshToken;
+import com.todo.domain.auth.event.NewDeviceLoginDetectedEvent;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -25,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -39,6 +42,8 @@ class SessionServiceTest {
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private SessionService sessionService;
     private User user;
@@ -46,7 +51,7 @@ class SessionServiceTest {
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW, KST);
-        sessionService = new SessionService(refreshTokenRepository, userRepository, clock);
+        sessionService = new SessionService(refreshTokenRepository, userRepository, clock, eventPublisher);
         user = User.create("1", "encodedPwd", "닉네임", null);
         ReflectionTestUtils.setField(user, "id", 1L);
     }
@@ -142,5 +147,51 @@ class SessionServiceTest {
         sessionService.revokeAllSessions("1");
 
         verify(refreshTokenRepository).deleteByUserId(1L);
+    }
+
+    @Test
+    void 기존_세션이_있고_새_기기이면_새기기_로그인_이벤트를_발행한다() {
+        given(refreshTokenRepository.findActiveByUserId(anyLong(), any())).willReturn(List.of());
+        given(refreshTokenRepository.existsByUser_Id(1L)).willReturn(true);
+        given(refreshTokenRepository.existsByUser_IdAndDeviceId(1L, "new-device")).willReturn(false);
+
+        LocalDateTime now = LocalDateTime.now(Clock.fixed(NOW, KST));
+        sessionService.issueRefreshToken(user, "new-token", "new-device", now.plusDays(14));
+
+        verify(eventPublisher).publishEvent(new NewDeviceLoginDetectedEvent(1L));
+    }
+
+    @Test
+    void 이미_알고_있는_기기이면_이벤트를_발행하지_않는다() {
+        given(refreshTokenRepository.findActiveByUserId(anyLong(), any())).willReturn(List.of());
+        given(refreshTokenRepository.existsByUser_Id(1L)).willReturn(true);
+        given(refreshTokenRepository.existsByUser_IdAndDeviceId(1L, "known-device")).willReturn(true);
+
+        LocalDateTime now = LocalDateTime.now(Clock.fixed(NOW, KST));
+        sessionService.issueRefreshToken(user, "new-token", "known-device", now.plusDays(14));
+
+        verify(eventPublisher, never()).publishEvent(any(NewDeviceLoginDetectedEvent.class));
+    }
+
+    @Test
+    void 이_계정의_첫_세션이면_이벤트를_발행하지_않는다() {
+        given(refreshTokenRepository.findActiveByUserId(anyLong(), any())).willReturn(List.of());
+        given(refreshTokenRepository.existsByUser_Id(1L)).willReturn(false);
+
+        LocalDateTime now = LocalDateTime.now(Clock.fixed(NOW, KST));
+        sessionService.issueRefreshToken(user, "new-token", "first-device", now.plusDays(14));
+
+        verify(eventPublisher, never()).publishEvent(any(NewDeviceLoginDetectedEvent.class));
+    }
+
+    @Test
+    void deviceId가_없으면_새_기기_여부를_판단하지_않고_이벤트를_발행하지_않는다() {
+        given(refreshTokenRepository.findActiveByUserId(anyLong(), any())).willReturn(List.of());
+
+        LocalDateTime now = LocalDateTime.now(Clock.fixed(NOW, KST));
+        sessionService.issueRefreshToken(user, "new-token", null, now.plusDays(14));
+
+        verify(refreshTokenRepository, never()).existsByUser_IdAndDeviceId(anyLong(), anyString());
+        verify(eventPublisher, never()).publishEvent(any(NewDeviceLoginDetectedEvent.class));
     }
 }

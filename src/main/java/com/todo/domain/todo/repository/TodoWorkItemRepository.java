@@ -24,6 +24,21 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
     List<Long> findOverdueTodoIds(@Param("now") LocalDateTime now);
 
     /**
+     * 마감이 지나 곧 FAIL 처리될 작업의 담당자 정보를 벌크 업데이트 전에 미리 읽어둔다.
+     * {@link #markOverdueAsFail}이 {@code clearAutomatically}로 영속성 컨텍스트를 비우므로,
+     * 업데이트 뒤에는 이 조회 결과로 받은 값만 쓰고 엔티티 참조는 다시 조회해서 써야 한다.
+     */
+    @Query("""
+            SELECT wi.id AS workItemId, wi.todo.id AS todoId, wi.todo.title AS todoTitle,
+                   wi.assignee.id AS assigneeId
+            FROM TodoWorkItem wi
+            WHERE wi.status = com.todo.domain.todo.entity.WorkItemStatus.IN_PROGRESS
+              AND wi.assignee IS NOT NULL
+              AND COALESCE(wi.deadline, wi.todo.deadline) < :now
+            """)
+    List<TodoWorkItemNotificationInfo> findOverdueForNotification(@Param("now") LocalDateTime now);
+
+    /**
      * 마감이 지난 진행 중 작업을 실패로 바꾼다.
      *
      * WHERE에서 {@code wi.todo.deadline}처럼 암시적 조인을 쓰면 Hibernate가
@@ -40,6 +55,29 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
                     (SELECT t.deadline FROM Todo t WHERE t.id = wi.todo.id)) < :now
             """)
     int markOverdueAsFail(@Param("now") LocalDateTime now);
+
+    /**
+     * 마감이 {@code windowEnd} 이내로 다가왔고 아직 리마인더를 보내지 않은 작업.
+     * 아직 리마인더를 안 보냈다는 조건이 없으면 스케줄러가 tick마다 같은 작업을 중복 발송한다.
+     */
+    @Query("""
+            SELECT wi.id AS workItemId, wi.todo.id AS todoId, wi.todo.title AS todoTitle,
+                   wi.assignee.id AS assigneeId
+            FROM TodoWorkItem wi
+            WHERE wi.status = com.todo.domain.todo.entity.WorkItemStatus.IN_PROGRESS
+              AND wi.assignee IS NOT NULL
+              AND wi.deadlineReminderSentAt IS NULL
+              AND COALESCE(wi.deadline, wi.todo.deadline) >= :now
+              AND COALESCE(wi.deadline, wi.todo.deadline) < :windowEnd
+            """)
+    List<TodoWorkItemNotificationInfo> findApproachingDeadlineWorkItems(
+            @Param("now") LocalDateTime now,
+            @Param("windowEnd") LocalDateTime windowEnd
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TodoWorkItem wi SET wi.deadlineReminderSentAt = :sentAt WHERE wi.id IN :workItemIds")
+    int markDeadlineReminderSent(@Param("workItemIds") List<Long> workItemIds, @Param("sentAt") LocalDateTime sentAt);
 
     @Query("""
             SELECT wi.todo.id AS todoId, a.id AS assigneeId,
