@@ -46,6 +46,9 @@ public class AuthService implements UserDetailsService {
 
         emailVerificationService.validateAndConsume(request.emailVerificationToken(), request.email());
 
+        // 회원가입은 비로그인 요청이므로 비로그인 발급 경로(profiles/temp/)의 키만 허용된다.
+        fileService.validateProfileImageKey(null, request.profileImageKey());
+
         User created = User.create(
                 request.loginId(),
                 passwordEncoder.encode(request.password()),
@@ -95,11 +98,20 @@ public class AuthService implements UserDetailsService {
             throw new BusinessException("만료된 리프레시 토큰입니다.", HttpStatus.UNAUTHORIZED);
         }
 
-        token.markAsUsed();
-
+        // markAsUsedIfActive가 영속성 컨텍스트를 비우므로 필요한 값은 먼저 읽어 둔다.
         User user = token.getUser();
+        String deviceId = token.getDeviceId();
+
+        // 위 isUsed 확인은 스냅샷일 뿐이다. 같은 토큰의 동시 요청이 둘 다 통과하면 재사용
+        // 감지가 무력화되므로, UPDATE의 갱신 행 수로 단 한 요청만 통과시키고 경합에서 진
+        // 쪽은 재사용과 동일하게 취급한다.
+        if (refreshTokenRepository.markAsUsedIfActive(token.getId()) != 1) {
+            refreshTokenRepository.deleteByUserId(user.getId());
+            throw new BusinessException("유효하지 않은 리프레시 토큰입니다.", HttpStatus.UNAUTHORIZED);
+        }
+
         String newRawToken = jwtUtil.generateRefreshToken();
-        sessionService.issueRefreshToken(user, newRawToken, token.getDeviceId(), jwtUtil.refreshTokenExpiresAt());
+        sessionService.issueRefreshToken(user, newRawToken, deviceId, jwtUtil.refreshTokenExpiresAt());
 
         return new LoginResult(jwtUtil.generateToken(user.getId()), newRawToken);
     }

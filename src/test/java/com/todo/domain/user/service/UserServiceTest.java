@@ -190,6 +190,21 @@ class UserServiceTest {
     }
 
     @Test
+    void 프로필_사진_변경은_본인이_업로드하지_않은_키면_거부하고_아무것도_바꾸지_않는다() {
+        User user = user(1L, "1", "닉네임", "profiles/1/old.png");
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        org.mockito.BDDMockito.willThrow(new BusinessException("본인이 업로드한 프로필 이미지만 사용할 수 있습니다.", HttpStatus.BAD_REQUEST))
+                .given(fileService).validateProfileImageKey(1L, "proofs/2/stolen.jpg");
+
+        assertThatThrownBy(() -> userService.updateProfileImage("1", new UpdateProfileImageRequest("proofs/2/stolen.jpg")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 업로드한 프로필 이미지만 사용할 수 있습니다.");
+
+        assertThat(user.getProfileImageUrl()).isEqualTo("profiles/1/old.png");
+        verify(fileDeletionOutboxService, never()).enqueueAll(anyList());
+    }
+
+    @Test
     void 프로필_사진_변경_실패_존재하지_않는_사용자() {
         given(userRepository.findById(999L)).willReturn(Optional.empty());
 

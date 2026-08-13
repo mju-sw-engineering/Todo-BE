@@ -134,6 +134,8 @@ public class UserService {
         User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new BusinessException("로그인이 필요합니다", HttpStatus.UNAUTHORIZED));
 
+        fileService.validateProfileImageKey(user.getId(), request.profileImageKey());
+
         String oldImageKey = user.getProfileImageUrl();
         user.updateProfileImage(request.profileImageKey());
 
