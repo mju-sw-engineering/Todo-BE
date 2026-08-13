@@ -93,7 +93,7 @@ public interface TodoControllerDocs {
             @Parameter(description = "팀 ID", example = "1") Long teamId,
             @Parameter(description = "조회 상태: PENDING 또는 DONE (생략하면 전체)", example = "PENDING") String status,
             @Parameter(description = "다음 페이지 조회용 커서 (생략하면 첫 페이지)") String cursor,
-            @Parameter(description = "조회 개수 (기본값: 20)") int size,
+            @Parameter(description = "조회 개수 (기본값: 5)") int size,
             Authentication authentication
     );
 

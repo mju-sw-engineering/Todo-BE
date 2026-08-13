@@ -65,7 +65,7 @@ public class TodoController implements TodoControllerDocs {
             @PathVariable Long teamId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "5") int size,
             Authentication authentication
     ) {
         String userId = authentication.getName();
