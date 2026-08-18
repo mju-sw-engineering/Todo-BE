@@ -56,19 +56,24 @@ public class FileService {
         String ext = extractExtension(request.fileName());
         String key = buildObjectKey(userId, request.type(), ext);
 
-        PutObjectRequest.Builder putObjectRequest = PutObjectRequest.builder()
+        // 크기 없이 서명하면 URL 하나로 무제한 크기를 업로드할 수 있다. DTO 검증(@NotNull)이
+        // 막지만, 다른 호출 경로가 생겨도 무제한 서명이 조용히 발급되지 않도록 여기서도 막는다.
+        if (request.fileSize() == null) {
+            throw new BusinessException("파일 크기는 필수입니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        // 크기를 함께 서명하면 해당 크기로만 업로드할 수 있어 대용량 업로드 남용을 막는다.
+        PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                 .bucket(props.getBucket())
                 .key(key)
-                .contentType(request.contentType());
-        // 크기를 함께 서명하면 해당 크기로만 업로드할 수 있어 대용량 업로드 남용을 막는다.
-        if (request.fileSize() != null) {
-            putObjectRequest.contentLength(request.fileSize());
-        }
+                .contentType(request.contentType())
+                .contentLength(request.fileSize())
+                .build();
 
         String uploadUrl = s3Presigner.presignPutObject(
                 PutObjectPresignRequest.builder()
                         .signatureDuration(Duration.ofSeconds(props.getPutPresignedUrlExpiration()))
-                        .putObjectRequest(putObjectRequest.build())
+                        .putObjectRequest(putObjectRequest)
                         .build()
         ).url().toExternalForm();
 
@@ -143,7 +148,8 @@ public class FileService {
 
     /**
      * Presigned URL로 업로드된 인증 사진을 제출 직전에 다시 검증한다.
-     * 업로드 요청의 fileSize는 선택값이므로 실제 객체의 크기와 MIME은 HEAD 결과가 기준이다.
+     * 서명 시 크기를 강제하지만, 실제 저장된 객체의 크기와 MIME은 HEAD 결과를 기준으로
+     * 한 번 더 확인한다 (서명 정책 변경·수동 업로드 등에 대한 방어).
      */
     public void validateProofImage(Long userId, String objectKey) {
         String expectedPrefix = "proofs/" + userId + "/";

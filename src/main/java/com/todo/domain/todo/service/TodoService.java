@@ -60,6 +60,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
@@ -82,6 +83,8 @@ public class TodoService {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final ZoneOffset KST_OFFSET = ZoneOffset.ofHours(9);
     private static final int ACTION_CANDIDATE_LIMIT = 5;
+    /** 리포트는 하루당 응답 객체를 하나씩 만든다. 상한이 없으면 한 번의 요청으로 수백만 건이 생성된다. */
+    private static final long MAX_REPORT_PERIOD_DAYS = 366;
     private static final String ACTIVE_CURSOR_DELIMITER = "_";
 
     private final TodoRepository todoRepository;
@@ -226,6 +229,11 @@ public class TodoService {
         LocalDate end = parseRequiredDate("endDate", endDate);
         if (start.isAfter(end)) {
             throw new BusinessException("startDate는 endDate보다 늦을 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+        // 비싼 조회에 도달하기 전에 막는다. 양끝을 포함한 일수라 dailyStats 크기와 같다.
+        if (ChronoUnit.DAYS.between(start, end) + 1 > MAX_REPORT_PERIOD_DAYS) {
+            throw new BusinessException(
+                    "조회 기간은 최대 " + MAX_REPORT_PERIOD_DAYS + "일까지 가능합니다.", HttpStatus.BAD_REQUEST);
         }
 
         List<TodoWorkItem> workItems = todoWorkItemRepository.findByTeamIdAndEffectiveDeadlineBetween(

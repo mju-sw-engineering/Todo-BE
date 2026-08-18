@@ -16,6 +16,7 @@ import com.todo.domain.team.dto.response.TeamSummaryResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
+import com.todo.domain.team.event.TeamMembershipRevokedEvent;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.service.TeamService;
 import com.todo.domain.todo.repository.TodoReactionRepository;
@@ -127,6 +128,8 @@ public class UserService {
         }
 
         user.updatePassword(passwordEncoder.encode(request.newPassword()));
+        // 탈취 의심으로 비밀번호를 바꾸는 경우를 위해 본인 세션 포함 전 기기를 로그아웃시킨다.
+        refreshTokenRepository.deleteByUserId(user.getId());
         notificationService.send(user, null, notificationMessageFactory.passwordChanged(), null);
     }
 
@@ -212,6 +215,8 @@ public class UserService {
         notificationRepository.clearActorByUserId(id);
 
         teamMemberRepository.deleteByUserId(id);
+        // 남아 있는 WebSocket 세션이 팀 토픽을 계속 수신하지 않도록 커밋 후 강제 종료한다
+        eventPublisher.publishEvent(new TeamMembershipRevokedEvent(id));
 
         // 5. 사용자 삭제 후 flush — 정리 누락은 여기서 FK 위반으로 검출된다.
         userRepository.delete(user);

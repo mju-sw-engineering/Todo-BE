@@ -8,6 +8,7 @@ import com.todo.domain.auth.dto.response.FindPasswordResponse;
 import com.todo.domain.auth.entity.AuthProvider;
 import com.todo.domain.auth.entity.PasswordResetToken;
 import com.todo.domain.auth.repository.PasswordResetTokenRepository;
+import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.user.entity.User;
@@ -46,6 +47,7 @@ public class AccountRecoveryService {
 
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final EmailVerificationService emailVerificationService;
     private final PasswordEncoder passwordEncoder;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -108,6 +110,9 @@ public class AccountRecoveryService {
         // user는 위 markAsUsed로 detach된 상태라, 변경 후 명시적으로 저장해야 반영된다.
         user.updatePassword(passwordEncoder.encode(request.newPassword()));
         userRepository.save(user);
+        // 재설정은 계정 탈취 복구 수단이다. 기존 세션을 남기면 토큰을 쥔 공격자가
+        // 재설정 후에도 refresh로 접근을 이어갈 수 있으므로 전 기기를 로그아웃시킨다.
+        refreshTokenRepository.deleteByUserId(user.getId());
         notificationService.send(user, null, notificationMessageFactory.passwordChanged(), null);
     }
 

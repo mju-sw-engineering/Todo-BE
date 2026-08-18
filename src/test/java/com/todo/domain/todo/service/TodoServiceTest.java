@@ -713,6 +713,41 @@ class TodoServiceTest {
     }
 
     @Test
+    void 기간_리포트는_최대_기간까지는_조회한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+        LocalDate start = LocalDate.of(2026, 1, 1);
+        LocalDate end = start.plusDays(365); // 양끝 포함 366일
+        given(todoWorkItemRepository.findByTeamIdAndEffectiveDeadlineBetween(
+                TEAM_ID,
+                start.atStartOfDay(),
+                end.plusDays(1).atStartOfDay()
+        )).willReturn(List.of());
+
+        TodoPeriodReportResponse response = todoService.getTodoPeriodReport(
+                TEAM_ID, "1", start.toString(), end.toString());
+
+        assertThat(response.dailyStats()).hasSize(366);
+    }
+
+    @Test
+    void 기간_리포트는_최대_기간을_넘으면_조회하지_않고_거부한다() {
+        User viewer = user(1L);
+        givenListAccess(viewer);
+        LocalDate start = LocalDate.of(2026, 1, 1);
+        LocalDate end = start.plusDays(366); // 양끝 포함 367일
+
+        assertThatThrownBy(() -> todoService.getTodoPeriodReport(
+                TEAM_ID, "1", start.toString(), end.toString()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("조회 기간은 최대 366일까지 가능합니다.");
+
+        // 상한 검사는 비싼 조회 앞에 있어야 한다
+        then(todoWorkItemRepository).should(never())
+                .findByTeamIdAndEffectiveDeadlineBetween(any(), any(), any());
+    }
+
+    @Test
     void 제출사진_조회는_썸네일이_없으면_원본을_쓰고_미제출은_404다() {
         User viewer = user(1L);
         Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
