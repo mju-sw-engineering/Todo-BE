@@ -1,8 +1,10 @@
 package com.todo.global.controller;
 
+import com.todo.domain.auth.service.EmailVerificationService;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.dto.UploadType;
+import com.todo.global.jwt.JwtUtil;
 import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
@@ -13,7 +15,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -27,16 +29,41 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/files")
-@RequiredArgsConstructor
 @Tag(name = "File", description = "파일 업로드 API")
 public class FileController {
 
+    /** 가입 토큰으로 신원이 확인된 요청. 한 명이 사진을 몇 번 고쳐 올려도 넉넉한 수준. */
+    private static final int SIGNUP_TOKEN_ISSUE_LIMIT = 5;
+    /** 토큰조차 없는 요청. 공용 IP 뒤에 여러 명이 있을 수 있어 조금 더 여유를 둔다. */
     private static final int ANONYMOUS_ISSUE_LIMIT = 10;
     private static final Duration ANONYMOUS_ISSUE_WINDOW = Duration.ofMinutes(1);
 
     private final FileService fileService;
     private final UserRepository userRepository;
     private final SimpleRateLimiter rateLimiter;
+    private final EmailVerificationService emailVerificationService;
+    private final JwtUtil jwtUtil;
+
+    /**
+     * 앱 앞단에 있는, 우리가 신뢰하는 프록시 단 수. 운영은 Coolify(Traefik) 한 단이라 1이다.
+     * CDN 등을 앞에 추가하면 이 값을 함께 올려야 한다. 값이 실제 구성보다 작으면
+     * 모든 사용자가 프록시 IP 하나로 묶여 비인증 발급 한도를 공유하게 된다.
+     */
+    private final int trustedProxyHops;
+
+    public FileController(FileService fileService,
+                          UserRepository userRepository,
+                          SimpleRateLimiter rateLimiter,
+                          EmailVerificationService emailVerificationService,
+                          JwtUtil jwtUtil,
+                          @Value("${app.trusted-proxy-hops:1}") int trustedProxyHops) {
+        this.fileService = fileService;
+        this.userRepository = userRepository;
+        this.rateLimiter = rateLimiter;
+        this.emailVerificationService = emailVerificationService;
+        this.jwtUtil = jwtUtil;
+        this.trustedProxyHops = trustedProxyHops;
+    }
 
     @PostMapping("/presigned-upload")
     @Operation(
@@ -59,7 +86,7 @@ public class FileController {
 
         Long userId = resolveAuthenticatedUser(authentication).map(User::getId).orElse(null);
         if (userId == null) {
-            requireAnonymousIssueQuota(httpRequest);
+            requireAnonymousIssueQuota(request.signupToken(), httpRequest);
         }
         return ResponseEntity.ok(ApiResponse.success(fileService.generatePresignedPutUrl(userId, request)));
     }
@@ -77,22 +104,69 @@ public class FileController {
     }
 
     /**
-     * 비인증 PROFILE 발급은 누구나 호출할 수 있으므로 IP 단위로 발급 횟수를 제한한다.
+     * 비인증 PROFILE 발급은 누구나 호출할 수 있으므로 발급 횟수를 제한한다.
+     *
+     * 가입 토큰이 오면 그 토큰이 가리키는 이메일 단위로 센다. IP만으로 세면 학교처럼 NAT 뒤에
+     * 수백 명이 같은 공인 IP를 쓰는 환경에서 한 버킷을 나눠 쓰게 되어, 한 강의실에서 동시에
+     * 가입할 때 뒷사람부터 429를 맞는다.
      */
-    private void requireAnonymousIssueQuota(HttpServletRequest httpRequest) {
-        String clientIp = resolveClientIp(httpRequest);
-        if (!rateLimiter.tryAcquire("presigned-upload:" + clientIp, ANONYMOUS_ISSUE_LIMIT, ANONYMOUS_ISSUE_WINDOW)) {
+    private void requireAnonymousIssueQuota(String signupToken, HttpServletRequest httpRequest) {
+        String signupEmail = resolveSignupEmail(signupToken);
+        if (signupEmail != null) {
+            requireQuota("presigned-upload:signup:" + signupEmail, SIGNUP_TOKEN_ISSUE_LIMIT);
+            return;
+        }
+        requireQuota("presigned-upload:ip:" + resolveClientIp(httpRequest), ANONYMOUS_ISSUE_LIMIT);
+    }
+
+    private void requireQuota(String key, int limit) {
+        if (!rateLimiter.tryAcquire(key, limit, ANONYMOUS_ISSUE_WINDOW)) {
             throw new BusinessException("요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.", HttpStatus.TOO_MANY_REQUESTS);
         }
     }
 
+    /**
+     * 가입 절차에서 발급된 토큰의 이메일을 꺼낸다. 이메일 가입은 이메일 인증 토큰,
+     * 애플 가입은 setup token을 쓴다. 어느 쪽도 아니면 null을 돌려 IP 기준으로 폴백한다.
+     *
+     * 토큰은 신원 식별에만 쓰고 소비하지 않는다. 여기서 소비하면 뒤이은 회원가입이 실패한다.
+     */
+    private String resolveSignupEmail(String signupToken) {
+        if (signupToken == null || signupToken.isBlank()) {
+            return null;
+        }
+        Optional<String> verifiedEmail = emailVerificationService.findVerifiedEmail(signupToken);
+        if (verifiedEmail.isPresent()) {
+            return verifiedEmail.get();
+        }
+        try {
+            return jwtUtil.parseSetupToken(signupToken).get("email", String.class);
+        } catch (Exception e) {
+            // 위조·만료된 토큰은 신원으로 인정하지 않고 IP 기준으로 제한한다.
+            return null;
+        }
+    }
+
+    /**
+     * 프록시 뒤에서 실제 클라이언트 IP를 고른다.
+     *
+     * X-Forwarded-For는 클라이언트가 임의로 채워 보낼 수 있고 프록시는 거기에 덧붙이기만 하므로
+     * 맨 앞 값은 조작 가능하다. 신뢰할 수 있는 건 우리 프록시가 직접 관찰해 덧붙인 값뿐이라,
+     * 오른쪽에서 {@code trustedProxyHops}번째를 고른다. 헤더가 그보다 짧으면 앞쪽이 잘린
+     * 것이므로 남은 것 중 가장 왼쪽을 쓴다.
+     */
     private String resolveClientIp(HttpServletRequest httpRequest) {
         if (httpRequest == null) {
             return "unknown";
         }
         String forwardedFor = httpRequest.getHeader("X-Forwarded-For");
         if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
+            String[] hops = forwardedFor.split(",");
+            int index = Math.max(0, hops.length - trustedProxyHops);
+            String trustedHop = hops[index].trim();
+            if (!trustedHop.isEmpty()) {
+                return trustedHop;
+            }
         }
         String remoteAddr = httpRequest.getRemoteAddr();
         return remoteAddr == null ? "unknown" : remoteAddr;

@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -110,6 +111,20 @@ public class EmailVerificationService {
                 throw failure;
             }
         }
+    }
+
+    /**
+     * 토큰을 소비하지 않고 인증된 이메일만 조회한다.
+     *
+     * 회원가입이 끝나기 전(프로필 사진 업로드 시점)에 요청자를 식별하려면 토큰이 필요한데,
+     * 여기서 {@link #validateAndConsume}을 쓰면 뒤이은 회원가입이 토큰 없음으로 실패한다.
+     */
+    public Optional<String> findVerifiedEmail(String token) {
+        if (token == null || token.isBlank()) {
+            return Optional.empty();
+        }
+        return emailVerificationRepository.findByTokenAndUsedFalse(token)
+                .map(EmailVerification::getEmail);
     }
 
     @Transactional
