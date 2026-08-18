@@ -20,6 +20,7 @@ import com.todo.domain.team.dto.response.TeamSummaryResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
+import com.todo.domain.team.event.TeamMembershipRevokedEvent;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
@@ -33,6 +34,7 @@ import com.todo.global.file.service.FileDeletionOutboxService;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,6 +72,7 @@ public class TeamService {
     private final FileDeletionOutboxService fileDeletionOutboxService;
     private final NotificationService notificationService;
     private final NotificationMessageFactory notificationMessageFactory;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -272,6 +275,7 @@ public class TeamService {
                 teamId
         );
         teamMemberRepository.delete(target);
+        eventPublisher.publishEvent(new TeamMembershipRevokedEvent(targetUserId));
     }
 
     @Transactional
@@ -310,6 +314,7 @@ public class TeamService {
                 teamId
         );
         teamMemberRepository.delete(member);
+        eventPublisher.publishEvent(new TeamMembershipRevokedEvent(user.getId()));
     }
 
     @Transactional

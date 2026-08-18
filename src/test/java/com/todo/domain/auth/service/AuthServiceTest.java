@@ -10,7 +10,9 @@ import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.jwt.JwtUtil;
+import com.todo.global.ratelimit.SimpleRateLimiter;
 import com.todo.global.service.FileService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -30,9 +32,12 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,6 +62,13 @@ class AuthServiceTest {
     private FileService fileService;
     @Mock
     private EmailVerificationService emailVerificationService;
+    @Mock
+    private SimpleRateLimiter rateLimiter;
+
+    @BeforeEach
+    void setUpRateLimiter() {
+        lenient().when(rateLimiter.tryAcquire(anyString(), anyInt(), any())).thenReturn(true);
+    }
 
     // ──────────── signup ────────────
 
@@ -163,7 +175,7 @@ class AuthServiceTest {
         LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
         given(jwtUtil.refreshTokenExpiresAt()).willReturn(expiresAt);
 
-        LoginResult result = authService.login(new LoginRequest("user1", "password123!", "device-1"));
+        LoginResult result = authService.login(new LoginRequest("user1", "password123!", "device-1"), "1.2.3.4");
 
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(result.refreshToken()).isEqualTo("refresh-uuid");
@@ -174,7 +186,7 @@ class AuthServiceTest {
     void 로그인은_사용자가_없으면_예외를_던진다() {
         given(userRepository.findByLoginId("unknown")).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("unknown", "password123!", null)))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("unknown", "password123!", null), "1.2.3.4"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
@@ -185,9 +197,35 @@ class AuthServiceTest {
         given(userRepository.findByLoginId("user1")).willReturn(Optional.of(user));
         given(passwordEncoder.matches("wrong", "encoded")).willReturn(false);
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("user1", "wrong", null)))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("user1", "wrong", null), "1.2.3.4"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("아이디 또는 비밀번호가 올바르지 않습니다.");
+    }
+
+    @Test
+    void 로그인은_계정_기준_한도를_넘으면_비밀번호_검사_전에_거부한다() {
+        given(rateLimiter.tryAcquire(eq("login:id:user1"), anyInt(), any())).willReturn(false);
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("user1", "password123!", null), "1.2.3.4"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus())
+                        .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+
+        then(userRepository).should(never()).findByLoginId(any());
+        then(passwordEncoder).should(never()).matches(any(), any());
+    }
+
+    @Test
+    void 로그인은_IP_기준_한도를_넘으면_비밀번호_검사_전에_거부한다() {
+        given(rateLimiter.tryAcquire(eq("login:ip:1.2.3.4"), anyInt(), any())).willReturn(false);
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("user1", "password123!", null), "1.2.3.4"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus())
+                        .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+
+        then(passwordEncoder).should(never()).matches(any(), any());
     }
 
     // ──────────── refresh ────────────

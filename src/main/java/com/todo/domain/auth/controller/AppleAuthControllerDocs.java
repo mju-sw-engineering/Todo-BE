@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 
 @Tag(name = "Apple 인증", description = "Sign in with Apple 로그인/가입 API")
@@ -28,9 +29,11 @@ public interface AppleAuthControllerDocs {
                     description = "신규 유저 — 추가 정보 입력 필요 (setup token 반환, 5분 유효)",
                     content = @Content(schema = @Schema(implementation = AppleSetupResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401",
-                    description = "identity token 검증 실패 (서명·issuer·audience·nonce 불일치)")
+                    description = "identity token 검증 실패 (서명·issuer·audience·nonce 불일치)"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429",
+                    description = "로그인 시도 과다")
     })
-    ResponseEntity<ApiResponse<?>> appleLogin(AppleLoginRequest request);
+    ResponseEntity<ApiResponse<?>> appleLogin(AppleLoginRequest request, HttpServletRequest httpRequest);
 
     @Operation(summary = "Apple 가입 완료",
             description = "setup token과 닉네임·프로필·약관 동의를 받아 신규 Apple 유저를 생성하고 토큰을 발급합니다. " +
