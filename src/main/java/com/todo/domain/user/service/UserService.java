@@ -127,6 +127,8 @@ public class UserService {
         }
 
         user.updatePassword(passwordEncoder.encode(request.newPassword()));
+        // 탈취 의심으로 비밀번호를 바꾸는 경우를 위해 본인 세션 포함 전 기기를 로그아웃시킨다.
+        refreshTokenRepository.deleteByUserId(user.getId());
         notificationService.send(user, null, notificationMessageFactory.passwordChanged(), null);
     }
 

@@ -50,6 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -441,6 +442,8 @@ class UserServiceTest {
         userService.updatePassword("1", new UpdatePasswordRequest("currentPwd", "newPwd1!", "newPwd1!"));
 
         assertThat(user.getPassword()).isEqualTo("encodedNewPwd");
+        // 탈취 의심으로 바꾸는 경우를 위해 기존 세션을 전부 무효화한다
+        verify(refreshTokenRepository).deleteByUserId(1L);
     }
 
     @Test
@@ -464,6 +467,7 @@ class UserServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("현재 비밀번호가 일치하지 않습니다.");
         assertThat(user.getPassword()).isEqualTo("encodedPwd");
+        verify(refreshTokenRepository, never()).deleteByUserId(any());
     }
 
     @Test

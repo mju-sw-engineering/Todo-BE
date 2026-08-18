@@ -7,6 +7,7 @@ import com.todo.domain.auth.dto.response.FindIdResponse;
 import com.todo.domain.auth.dto.response.FindPasswordResponse;
 import com.todo.domain.auth.entity.PasswordResetToken;
 import com.todo.domain.auth.repository.PasswordResetTokenRepository;
+import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.notification.entity.NotificationType;
 import com.todo.domain.notification.message.NotificationMessage;
 import com.todo.domain.notification.message.NotificationMessageFactory;
@@ -51,6 +52,8 @@ class AccountRecoveryServiceTest {
     @Mock
     private PasswordResetTokenRepository passwordResetTokenRepository;
     @Mock
+    private RefreshTokenRepository refreshTokenRepository;
+    @Mock
     private EmailVerificationService emailVerificationService;
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -66,8 +69,8 @@ class AccountRecoveryServiceTest {
     void setUp() {
         Clock clock = Clock.fixed(NOW, KST);
         accountRecoveryService = new AccountRecoveryService(
-                userRepository, passwordResetTokenRepository, emailVerificationService, passwordEncoder, clock,
-                notificationService, notificationMessageFactory);
+                userRepository, passwordResetTokenRepository, refreshTokenRepository, emailVerificationService,
+                passwordEncoder, clock, notificationService, notificationMessageFactory);
         user = User.create("localUser", "encodedPwd", "닉네임", null);
         user.assignEmail(EMAIL);
         ReflectionTestUtils.setField(user, "id", 1L);
@@ -174,7 +177,21 @@ class AccountRecoveryServiceTest {
         // markAsUsed(clearAutomatically=true)가 영속성 컨텍스트를 비워 user를 detach시키므로,
         // 변경 후 명시적으로 저장하지 않으면 실제로는 DB에 반영되지 않는다.
         verify(userRepository).save(user);
+        // 탈취 복구 시나리오: 공격자가 쥔 기존 세션까지 전부 무효화돼야 한다
+        verify(refreshTokenRepository).deleteByUserId(1L);
         verify(notificationService).send(user, null, message, null);
+    }
+
+    @Test
+    void 유효하지_않은_토큰이면_비밀번호_재설정과_세션_무효화를_수행하지_않는다() {
+        given(passwordResetTokenRepository.findByTokenHash(hashOf("bad-token"))).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> accountRecoveryService.resetPassword(
+                new ResetPasswordRequest("bad-token", "newPassword1!", "newPassword1!")))
+                .isInstanceOf(BusinessException.class);
+
+        verify(userRepository, never()).save(any());
+        verify(refreshTokenRepository, never()).deleteByUserId(any());
     }
 
     @Test
