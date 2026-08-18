@@ -28,7 +28,15 @@ public record PresignedUploadRequest(
                         + "미전달 시 크기 제한 없이 서명됩니다(구버전 클라이언트 호환).",
                 example = "1048576"
         )
-        Long fileSize
+        Long fileSize,
+
+        @Schema(
+                description = "회원가입 진행 중 비로그인 PROFILE 업로드에만 쓰는 토큰. "
+                        + "이메일 가입은 emailVerificationToken, 애플 가입은 setupToken을 그대로 전달합니다. "
+                        + "전달하면 발급 한도를 IP가 아닌 가입자 단위로 적용해, 같은 공용 IP(학교 등)를 쓰는 "
+                        + "다른 사용자와 한도를 나눠 쓰지 않습니다. 미전달 시 IP 기준으로 제한됩니다."
+        )
+        String signupToken
 ) {
     public static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
 }

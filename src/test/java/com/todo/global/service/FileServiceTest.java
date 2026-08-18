@@ -81,7 +81,7 @@ class FileServiceTest {
 
         PresignedUploadResponse response = fileService.generatePresignedPutUrl(
                 1L,
-                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", null)
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", null, null)
         );
 
         assertThat(response.uploadUrl()).isEqualTo("https://storage.example.com/upload");
@@ -109,7 +109,7 @@ class FileServiceTest {
 
         fileService.generatePresignedPutUrl(
                 1L,
-                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", 1024L)
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", 1024L, null)
         );
 
         ArgumentCaptor<PutObjectPresignRequest> captor = ArgumentCaptor.forClass(PutObjectPresignRequest.class);
@@ -130,7 +130,7 @@ class FileServiceTest {
 
         PresignedUploadResponse response = fileService.generatePresignedPutUrl(
                 7L,
-                new PresignedUploadRequest(UploadType.TEAM, "team-image", "image/jpeg", null)
+                new PresignedUploadRequest(UploadType.TEAM, "team-image", "image/jpeg", null, null)
         );
 
         assertThat(response.objectKey()).startsWith("teams/temp/7/");
@@ -150,7 +150,7 @@ class FileServiceTest {
 
         PresignedUploadResponse response = fileService.generatePresignedPutUrl(
                 3L,
-                new PresignedUploadRequest(UploadType.PROOF, "proof.webp", "image/webp", null)
+                new PresignedUploadRequest(UploadType.PROOF, "proof.webp", "image/webp", null, null)
         );
 
         assertThat(response.objectKey()).startsWith("proofs/3/");
@@ -161,7 +161,7 @@ class FileServiceTest {
     void 지원하지_않는_이미지_형식이면_400_예외를_던진다() {
         assertThatThrownBy(() -> fileService.generatePresignedPutUrl(
                 1L,
-                new PresignedUploadRequest(UploadType.PROFILE, "profile.gif", "image/gif", null)
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.gif", "image/gif", null, null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("지원하지 않는 이미지 형식입니다.")
