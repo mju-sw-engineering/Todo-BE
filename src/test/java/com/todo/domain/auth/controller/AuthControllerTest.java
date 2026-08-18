@@ -22,6 +22,7 @@ import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.service.EmailVerificationService;
 import com.todo.domain.auth.service.SessionService;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.ratelimit.ClientIpResolver;
 import com.todo.global.response.ApiResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
@@ -39,8 +41,10 @@ import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class AuthControllerTest {
@@ -55,13 +59,18 @@ class AuthControllerTest {
     private AccountRecoveryService accountRecoveryService;
     @Mock
     private SessionService sessionService;
+    @Mock
+    private ClientIpResolver clientIpResolver;
 
     private AuthController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AuthController(authService, emailVerificationService, reauthService, accountRecoveryService, sessionService);
+        controller = new AuthController(
+                authService, emailVerificationService, reauthService, accountRecoveryService, sessionService,
+                clientIpResolver);
         ReflectionTestUtils.setField(controller, "cookieSecure", false);
+        lenient().when(clientIpResolver.resolve(any())).thenReturn("1.2.3.4");
     }
 
     @Test
@@ -129,11 +138,11 @@ class AuthControllerTest {
     void 이메일_인증코드_발송_요청은_202를_반환한다() {
         EmailSendRequest request = new EmailSendRequest("user@example.com");
 
-        ResponseEntity<ApiResponse<Void>> response = controller.sendEmailCode(request);
+        ResponseEntity<ApiResponse<Void>> response = controller.sendEmailCode(request, new MockHttpServletRequest());
 
         assertThat(response.getStatusCode().value()).isEqualTo(202);
         assertThat(response.getBody().getMessage()).isEqualTo("인증 코드 발송 요청이 접수되었습니다.");
-        then(emailVerificationService).should().sendCode("user@example.com");
+        then(emailVerificationService).should().sendCode("user@example.com", "1.2.3.4");
     }
 
     @Test
@@ -152,9 +161,9 @@ class AuthControllerTest {
     @Test
     void 로그인_응답을_반환하고_쿠키를_설정한다() {
         LoginRequest request = new LoginRequest("user1", "password", null);
-        given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
+        given(authService.login(request, "1.2.3.4")).willReturn(new LoginResult("access-token", "refresh-uuid"));
 
-        ResponseEntity<ApiResponse<LoginResponse>> response = controller.login(request);
+        ResponseEntity<ApiResponse<LoginResponse>> response = controller.login(request, new MockHttpServletRequest());
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody().getData().accessToken()).isEqualTo("access-token");
@@ -197,9 +206,9 @@ class AuthControllerTest {
     @Test
     void 로그인_쿠키는_보안_속성을_모두_포함한다() {
         LoginRequest request = new LoginRequest("user1", "password", null);
-        given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
+        given(authService.login(request, "1.2.3.4")).willReturn(new LoginResult("access-token", "refresh-uuid"));
 
-        String cookie = controller.login(request).getHeaders().getFirst(HttpHeaders.SET_COOKIE);
+        String cookie = controller.login(request, new MockHttpServletRequest()).getHeaders().getFirst(HttpHeaders.SET_COOKIE);
 
         assertThat(cookie)
                 .contains("refreshToken=refresh-uuid")
@@ -254,10 +263,10 @@ class AuthControllerTest {
     void cookieSecure가_true면_세_경로의_쿠키에_모두_Secure가_붙는다() {
         ReflectionTestUtils.setField(controller, "cookieSecure", true);
         LoginRequest request = new LoginRequest("user1", "password", null);
-        given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
+        given(authService.login(request, "1.2.3.4")).willReturn(new LoginResult("access-token", "refresh-uuid"));
         given(authService.refresh("old-uuid")).willReturn(new LoginResult("new-access", "new-uuid"));
 
-        assertThat(controller.login(request).getHeaders().getFirst(HttpHeaders.SET_COOKIE)).contains("; Secure");
+        assertThat(controller.login(request, new MockHttpServletRequest()).getHeaders().getFirst(HttpHeaders.SET_COOKIE)).contains("; Secure");
         assertThat(controller.refresh("old-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE)).contains("; Secure");
         assertThat(controller.logout("my-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE)).contains("; Secure");
     }
@@ -265,10 +274,10 @@ class AuthControllerTest {
     @Test
     void cookieSecure가_false면_세_경로의_쿠키에_Secure가_붙지_않는다() {
         LoginRequest request = new LoginRequest("user1", "password", null);
-        given(authService.login(request)).willReturn(new LoginResult("access-token", "refresh-uuid"));
+        given(authService.login(request, "1.2.3.4")).willReturn(new LoginResult("access-token", "refresh-uuid"));
         given(authService.refresh("old-uuid")).willReturn(new LoginResult("new-access", "new-uuid"));
 
-        assertThat(controller.login(request).getHeaders().getFirst(HttpHeaders.SET_COOKIE)).doesNotContain("; Secure");
+        assertThat(controller.login(request, new MockHttpServletRequest()).getHeaders().getFirst(HttpHeaders.SET_COOKIE)).doesNotContain("; Secure");
         assertThat(controller.refresh("old-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE)).doesNotContain("; Secure");
         assertThat(controller.logout("my-uuid").getHeaders().getFirst(HttpHeaders.SET_COOKIE)).doesNotContain("; Secure");
     }

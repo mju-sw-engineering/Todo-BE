@@ -55,8 +55,13 @@ public class EmailVerification extends BaseTimeEntity {
         return this.attemptCount >= maxAttempts;
     }
 
-    public void verify(String token) {
+    /**
+     * 코드 검증 성공 시 토큰을 발급하고 만료를 토큰 단계 수명으로 재부여한다.
+     * 연장하지 않으면 코드 만료(3분)가 그대로 남아 가입 완료 전에 토큰이 죽는다.
+     */
+    public void verify(String token, LocalDateTime tokenExpiresAt) {
         this.token = token;
+        this.expiresAt = tokenExpiresAt;
     }
 
     public void markAsUsed() {

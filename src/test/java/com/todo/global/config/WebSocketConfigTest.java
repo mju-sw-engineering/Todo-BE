@@ -1,6 +1,7 @@
 package com.todo.global.config;
 
 import com.todo.global.websocket.WebSocketAuthChannelInterceptor;
+import com.todo.global.websocket.WebSocketSessionRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -19,6 +20,8 @@ class WebSocketConfigTest {
     @Mock
     private WebSocketAuthChannelInterceptor webSocketAuthChannelInterceptor;
     @Mock
+    private WebSocketSessionRegistry webSocketSessionRegistry;
+    @Mock
     private StompEndpointRegistry registry;
     @Mock
     private StompWebSocketEndpointRegistration registration;
@@ -32,6 +35,7 @@ class WebSocketConfigTest {
         ));
         WebSocketConfig webSocketConfig = new WebSocketConfig(
                 webSocketAuthChannelInterceptor,
+                webSocketSessionRegistry,
                 corsProperties
         );
         given(registry.addEndpoint("/ws")).willReturn(registration);

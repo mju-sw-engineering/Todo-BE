@@ -8,6 +8,7 @@ import com.todo.global.jwt.JwtUtil;
 import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.ratelimit.ClientIpResolver;
 import com.todo.global.ratelimit.SimpleRateLimiter;
 import com.todo.global.response.ApiResponse;
 import com.todo.global.service.FileService;
@@ -15,7 +16,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -29,6 +30,7 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/files")
+@RequiredArgsConstructor
 @Tag(name = "File", description = "파일 업로드 API")
 public class FileController {
 
@@ -43,27 +45,7 @@ public class FileController {
     private final SimpleRateLimiter rateLimiter;
     private final EmailVerificationService emailVerificationService;
     private final JwtUtil jwtUtil;
-
-    /**
-     * 앱 앞단에 있는, 우리가 신뢰하는 프록시 단 수. 운영은 Coolify(Traefik) 한 단이라 1이다.
-     * CDN 등을 앞에 추가하면 이 값을 함께 올려야 한다. 값이 실제 구성보다 작으면
-     * 모든 사용자가 프록시 IP 하나로 묶여 비인증 발급 한도를 공유하게 된다.
-     */
-    private final int trustedProxyHops;
-
-    public FileController(FileService fileService,
-                          UserRepository userRepository,
-                          SimpleRateLimiter rateLimiter,
-                          EmailVerificationService emailVerificationService,
-                          JwtUtil jwtUtil,
-                          @Value("${app.trusted-proxy-hops:1}") int trustedProxyHops) {
-        this.fileService = fileService;
-        this.userRepository = userRepository;
-        this.rateLimiter = rateLimiter;
-        this.emailVerificationService = emailVerificationService;
-        this.jwtUtil = jwtUtil;
-        this.trustedProxyHops = trustedProxyHops;
-    }
+    private final ClientIpResolver clientIpResolver;
 
     @PostMapping("/presigned-upload")
     @Operation(
@@ -116,7 +98,7 @@ public class FileController {
             requireQuota("presigned-upload:signup:" + signupEmail, SIGNUP_TOKEN_ISSUE_LIMIT);
             return;
         }
-        requireQuota("presigned-upload:ip:" + resolveClientIp(httpRequest), ANONYMOUS_ISSUE_LIMIT);
+        requireQuota("presigned-upload:ip:" + clientIpResolver.resolve(httpRequest), ANONYMOUS_ISSUE_LIMIT);
     }
 
     private void requireQuota(String key, int limit) {
@@ -147,28 +129,4 @@ public class FileController {
         }
     }
 
-    /**
-     * 프록시 뒤에서 실제 클라이언트 IP를 고른다.
-     *
-     * X-Forwarded-For는 클라이언트가 임의로 채워 보낼 수 있고 프록시는 거기에 덧붙이기만 하므로
-     * 맨 앞 값은 조작 가능하다. 신뢰할 수 있는 건 우리 프록시가 직접 관찰해 덧붙인 값뿐이라,
-     * 오른쪽에서 {@code trustedProxyHops}번째를 고른다. 헤더가 그보다 짧으면 앞쪽이 잘린
-     * 것이므로 남은 것 중 가장 왼쪽을 쓴다.
-     */
-    private String resolveClientIp(HttpServletRequest httpRequest) {
-        if (httpRequest == null) {
-            return "unknown";
-        }
-        String forwardedFor = httpRequest.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            String[] hops = forwardedFor.split(",");
-            int index = Math.max(0, hops.length - trustedProxyHops);
-            String trustedHop = hops[index].trim();
-            if (!trustedHop.isEmpty()) {
-                return trustedHop;
-            }
-        }
-        String remoteAddr = httpRequest.getRemoteAddr();
-        return remoteAddr == null ? "unknown" : remoteAddr;
-    }
 }
