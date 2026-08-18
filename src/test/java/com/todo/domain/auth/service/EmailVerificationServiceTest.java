@@ -5,6 +5,7 @@ import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.mail.entity.MailType;
 import com.todo.global.mail.service.MailOutboxService;
+import com.todo.global.ratelimit.SimpleRateLimiter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +24,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -45,17 +47,21 @@ class EmailVerificationServiceTest {
     @Mock
     private TransactionTemplate transactionTemplate;
 
+    @Mock
+    private SimpleRateLimiter rateLimiter;
+
     @BeforeEach
     void setUp() {
         lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<?> callback = invocation.getArgument(0);
             return callback.doInTransaction(null);
         });
+        lenient().when(rateLimiter.tryAcquire(anyString(), anyInt(), any())).thenReturn(true);
     }
 
     @Test
     void 인증코드_발송_성공() {
-        emailVerificationService.sendCode("user@example.com");
+        emailVerificationService.sendCode("user@example.com", "1.2.3.4");
 
         ArgumentCaptor<EmailVerification> captor = ArgumentCaptor.forClass(EmailVerification.class);
         then(emailVerificationRepository).should().save(captor.capture());
@@ -83,7 +89,7 @@ class EmailVerificationServiceTest {
         given(emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc("user@example.com"))
                 .willReturn(Optional.of(recent));
 
-        assertThatThrownBy(() -> emailVerificationService.sendCode("user@example.com"))
+        assertThatThrownBy(() -> emailVerificationService.sendCode("user@example.com", "1.2.3.4"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("인증 코드는 1분에 한 번만 요청할 수 있습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus())
@@ -94,13 +100,40 @@ class EmailVerificationServiceTest {
     }
 
     @Test
+    void 인증코드_발송은_출처_기준_한도를_넘으면_저장_없이_거부한다() {
+        given(rateLimiter.tryAcquire(eq("email-send:ip:1.2.3.4"), anyInt(), any())).willReturn(false);
+
+        assertThatThrownBy(() -> emailVerificationService.sendCode("user@example.com", "1.2.3.4"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus())
+                        .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+
+        then(emailVerificationRepository).shouldHaveNoInteractions();
+        then(mailOutboxService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 인증코드_발송은_전역_총량_한도를_넘으면_저장_없이_거부한다() {
+        given(rateLimiter.tryAcquire(eq("email-send:global"), anyInt(), any())).willReturn(false);
+
+        assertThatThrownBy(() -> emailVerificationService.sendCode("user@example.com", "1.2.3.4"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus())
+                        .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+
+        then(emailVerificationRepository).shouldHaveNoInteractions();
+        then(mailOutboxService).shouldHaveNoInteractions();
+    }
+
+    @Test
     void 인증코드는_1분이_지난_뒤에는_재요청할_수_있다() {
         EmailVerification old = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
         ReflectionTestUtils.setField(old, "createdAt", LocalDateTime.now().minusMinutes(2));
         given(emailVerificationRepository.findTopByEmailOrderByCreatedAtDesc("user@example.com"))
                 .willReturn(Optional.of(old));
 
-        emailVerificationService.sendCode("user@example.com");
+        emailVerificationService.sendCode("user@example.com", "1.2.3.4");
 
         then(emailVerificationRepository).should().save(any(EmailVerification.class));
     }

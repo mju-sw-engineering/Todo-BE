@@ -21,6 +21,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 
@@ -36,12 +37,12 @@ public interface AuthControllerDocs {
             @ApiResponse(responseCode = "202", description = "인증 코드 발송 요청 접수"),
             @ApiResponse(responseCode = "400", description = "이메일 형식 오류",
                     content = @Content(schema = @Schema(hidden = true))),
-            @ApiResponse(responseCode = "429", description = "인증 코드 재요청 제한",
+            @ApiResponse(responseCode = "429", description = "인증 코드 재요청 제한 또는 발송 요청 과다",
                     content = @Content(schema = @Schema(hidden = true))),
             @ApiResponse(responseCode = "500", description = "발송 요청 저장 실패",
                     content = @Content(schema = @Schema(hidden = true)))
     })
-    ResponseEntity<com.todo.global.response.ApiResponse<Void>> sendEmailCode(EmailSendRequest request);
+    ResponseEntity<com.todo.global.response.ApiResponse<Void>> sendEmailCode(EmailSendRequest request, HttpServletRequest httpRequest);
 
     @Operation(summary = "이메일 인증 코드 확인", description = "발송된 6자리 코드를 확인하고 회원가입에 사용할 인증 토큰을 반환합니다.")
     @ApiResponses({
@@ -66,9 +67,11 @@ public interface AuthControllerDocs {
             @ApiResponse(responseCode = "200", description = "로그인 성공",
                     content = @Content(schema = @Schema(implementation = LoginResponse.class))),
             @ApiResponse(responseCode = "400", description = "아이디 또는 비밀번호 오류",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @ApiResponse(responseCode = "429", description = "로그인 시도 과다",
                     content = @Content(schema = @Schema(hidden = true)))
     })
-    ResponseEntity<com.todo.global.response.ApiResponse<LoginResponse>> login(LoginRequest request);
+    ResponseEntity<com.todo.global.response.ApiResponse<LoginResponse>> login(LoginRequest request, HttpServletRequest httpRequest);
 
     @Operation(
             summary = "토큰 재발급",

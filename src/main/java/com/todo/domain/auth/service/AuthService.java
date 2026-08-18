@@ -11,6 +11,7 @@ import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.jwt.JwtUtil;
+import com.todo.global.ratelimit.SimpleRateLimiter;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,10 +22,17 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AuthService implements UserDetailsService {
+
+    // 계정 키가 주 방어선(재인증과 같은 한도), IP 키는 공용 IP 뒤 다수 사용자를 고려해 느슨하게.
+    private static final int LOGIN_ID_ATTEMPT_LIMIT = 5;
+    private static final int LOGIN_IP_ATTEMPT_LIMIT = 30;
+    private static final Duration LOGIN_ATTEMPT_WINDOW = Duration.ofMinutes(1);
 
     private final UserRepository userRepository;
     private final UserConsentRecorder userConsentRecorder;
@@ -34,6 +42,7 @@ public class AuthService implements UserDetailsService {
     private final JwtUtil jwtUtil;
     private final FileService fileService;
     private final EmailVerificationService emailVerificationService;
+    private final SimpleRateLimiter rateLimiter;
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
@@ -64,7 +73,12 @@ public class AuthService implements UserDetailsService {
     }
 
     @Transactional
-    public LoginResult login(LoginRequest request) {
+    public LoginResult login(LoginRequest request, String clientIp) {
+        // BCrypt 비교 전에 차단해 무제한 온라인 추측과 해시 연산 부하를 막는다.
+        // 계정 존재 여부가 드러나지 않도록 한도 초과 응답은 일반 메시지를 쓴다.
+        requireLoginQuota("login:id:" + request.loginId(), LOGIN_ID_ATTEMPT_LIMIT);
+        requireLoginQuota("login:ip:" + clientIp, LOGIN_IP_ATTEMPT_LIMIT);
+
         User user = userRepository.findByLoginId(request.loginId())
                 .orElseThrow(() -> new BusinessException("아이디 또는 비밀번호가 올바르지 않습니다.", HttpStatus.UNAUTHORIZED));
 
@@ -137,5 +151,11 @@ public class AuthService implements UserDetailsService {
                 .password(user.getPassword() != null ? user.getPassword() : "")
                 .roles("USER")
                 .build();
+    }
+
+    private void requireLoginQuota(String key, int limit) {
+        if (!rateLimiter.tryAcquire(key, limit, LOGIN_ATTEMPT_WINDOW)) {
+            throw new BusinessException("요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.", HttpStatus.TOO_MANY_REQUESTS);
+        }
     }
 }
