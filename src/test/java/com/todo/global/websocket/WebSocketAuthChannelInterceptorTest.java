@@ -36,11 +36,13 @@ class WebSocketAuthChannelInterceptorTest {
     @Mock
     private TeamSubscriptionValidator subscriptionValidator;
     @Mock
+    private WebSocketSessionRegistry sessionRegistry;
+    @Mock
     private MessageChannel channel;
 
     @Test
     void connect_요청의_bearer_토큰이_유효하면_user를_설정한다() {
-        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
         Message<byte[]> message = stompMessage(StompCommand.CONNECT, "Bearer valid-token");
         given(jwtUtil.isValid("valid-token")).willReturn(true);
         given(jwtUtil.extractUserId("valid-token")).willReturn(1L);
@@ -57,7 +59,7 @@ class WebSocketAuthChannelInterceptorTest {
 
     @Test
     void connect_요청에_authorization_헤더가_없으면_예외를_던진다() {
-        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
         Message<byte[]> message = stompMessage(StompCommand.CONNECT, null);
 
         assertThatThrownBy(() -> interceptor.preSend(message, channel))
@@ -67,7 +69,7 @@ class WebSocketAuthChannelInterceptorTest {
 
     @Test
     void connect_요청의_토큰이_유효하지_않으면_예외를_던진다() {
-        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
         Message<byte[]> message = stompMessage(StompCommand.CONNECT, "Bearer invalid-token");
         given(jwtUtil.isValid("invalid-token")).willReturn(false);
 
@@ -78,7 +80,7 @@ class WebSocketAuthChannelInterceptorTest {
 
     @Test
     void connect_요청의_사용자가_삭제됐으면_연결을_거부한다() {
-        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
         Message<byte[]> message = stompMessage(StompCommand.CONNECT, "Bearer deleted-user-token");
         given(jwtUtil.isValid("deleted-user-token")).willReturn(true);
         given(jwtUtil.extractUserId("deleted-user-token")).willReturn(999L);
@@ -91,9 +93,9 @@ class WebSocketAuthChannelInterceptorTest {
     }
 
     @Test
-    void connect가_아닌_메시지는_그대로_반환한다() {
-        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
-        Message<byte[]> message = stompMessage(StompCommand.SEND, null);
+    void 검사_대상이_아닌_명령은_그대로_반환한다() {
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
+        Message<byte[]> message = stompMessage(StompCommand.UNSUBSCRIBE, null);
 
         Message<?> result = interceptor.preSend(message, channel);
 
@@ -102,8 +104,22 @@ class WebSocketAuthChannelInterceptorTest {
     }
 
     @Test
+    void connect_성공시_세션에_사용자를_바인딩한다() {
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
+        Message<byte[]> message = stompMessage(StompCommand.CONNECT, "Bearer valid-token");
+        given(jwtUtil.isValid("valid-token")).willReturn(true);
+        given(jwtUtil.extractUserId("valid-token")).willReturn(1L);
+        UserDetails userDetails = new User("user1", "password", List.of());
+        given(authService.loadUserByUsername("1")).willReturn(userDetails);
+
+        interceptor.preSend(message, channel);
+
+        then(sessionRegistry).should().bindUser("session-1", 1L);
+    }
+
+    @Test
     void subscribe_요청은_팀원_검증을_위임한다() {
-        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
         Message<byte[]> message = stompMessageWithUser(StompCommand.SUBSCRIBE, "/topic/teams/10", "user1");
 
         interceptor.preSend(message, channel);
@@ -113,7 +129,7 @@ class WebSocketAuthChannelInterceptorTest {
 
     @Test
     void subscribe_요청의_팀원_검증_실패시_예외를_던진다() {
-        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
         Message<byte[]> message = stompMessageWithUser(StompCommand.SUBSCRIBE, "/topic/teams/10", "user1");
         willThrow(new MessageDeliveryException("해당 채널을 구독할 권한이 없습니다."))
                 .given(subscriptionValidator).validate("/topic/teams/10", "user1");
@@ -125,8 +141,58 @@ class WebSocketAuthChannelInterceptorTest {
 
     @Test
     void subscribe_요청에_인증_정보가_없으면_예외를_던진다() {
-        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator);
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
         Message<byte[]> message = stompMessage(StompCommand.SUBSCRIBE, null);
+
+        assertThatThrownBy(() -> interceptor.preSend(message, channel))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("인증이 필요합니다.");
+    }
+
+    @Test
+    void send_요청의_app_경로는_통과한다() {
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
+        Message<byte[]> message = stompMessageWithUser(StompCommand.SEND, "/app/teams/10/chat", "user1");
+
+        Message<?> result = interceptor.preSend(message, channel);
+
+        assertThat(result).isSameAs(message);
+    }
+
+    @Test
+    void send_요청이_topic으로_직접_발행하면_거부한다() {
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
+        Message<byte[]> message = stompMessageWithUser(StompCommand.SEND, "/topic/teams/10", "user1");
+
+        assertThatThrownBy(() -> interceptor.preSend(message, channel))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("허용되지 않은 발행 경로입니다.");
+    }
+
+    @Test
+    void send_요청이_queue로_직접_발행하면_거부한다() {
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
+        Message<byte[]> message = stompMessageWithUser(StompCommand.SEND, "/user/queue/notifications", "user1");
+
+        assertThatThrownBy(() -> interceptor.preSend(message, channel))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("허용되지 않은 발행 경로입니다.");
+    }
+
+    @Test
+    void send_요청에_destination이_없으면_거부한다() {
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
+        Message<byte[]> message = stompMessageWithUser(StompCommand.SEND, null, "user1");
+
+        assertThatThrownBy(() -> interceptor.preSend(message, channel))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("허용되지 않은 발행 경로입니다.");
+    }
+
+    @Test
+    void send_요청에_인증_정보가_없으면_예외를_던진다() {
+        WebSocketAuthChannelInterceptor interceptor = new WebSocketAuthChannelInterceptor(jwtUtil, authService, subscriptionValidator, sessionRegistry);
+        Message<byte[]> message = stompMessage(StompCommand.SEND, null);
 
         assertThatThrownBy(() -> interceptor.preSend(message, channel))
                 .isInstanceOf(MessageDeliveryException.class)
@@ -135,6 +201,7 @@ class WebSocketAuthChannelInterceptorTest {
 
     private Message<byte[]> stompMessage(StompCommand command, String authorization) {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
+        accessor.setSessionId("session-1");
         if (authorization != null) {
             accessor.addNativeHeader("Authorization", authorization);
         }

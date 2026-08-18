@@ -19,6 +19,7 @@ import com.todo.domain.team.dto.response.TeamListResponse;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
+import com.todo.domain.team.event.TeamMembershipRevokedEvent;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -89,6 +91,8 @@ class TeamServiceTest {
     private NotificationService notificationService;
     @Mock
     private NotificationMessageFactory notificationMessageFactory;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @Test
     void 팀_생성_성공_이미지없음() {
@@ -668,6 +672,7 @@ class TeamServiceTest {
         then(todoWorkItemLifecycleService).should().handleTeamDeparture(10L, user);
         then(teamMemberRepository).should().delete(member);
         then(notificationService).should().sendAll(List.of(remainingUser), user, message, 10L);
+        then(eventPublisher).should().publishEvent(new TeamMembershipRevokedEvent(1L));
     }
 
     @Test
@@ -720,6 +725,7 @@ class TeamServiceTest {
         inOrder.verify(todoWorkItemLifecycleService).handleTeamDeparture(10L, targetUser);
         inOrder.verify(teamMemberRepository).delete(targetMember);
         then(notificationService).should().send(targetUser, leader, message, 10L);
+        then(eventPublisher).should().publishEvent(new TeamMembershipRevokedEvent(2L));
     }
 
     @Test
