@@ -1,3 +1,5 @@
+# 로컬 개발 전용. 운영은 docker-compose.prod.yml이 환경변수를 사용한다.
+# 아래 크리덴셜은 로컬 고정값이므로 운영 값을 절대 넣지 않는다.
 services:
   mysql:
     image: mysql:8.0
@@ -8,7 +10,9 @@ services:
       MYSQL_USER: todo
       MYSQL_PASSWORD: todo1234
     ports:
-      - "3306:3306"
+      # 루프백에만 바인딩한다. 인터페이스 전체에 열면 카페·학교처럼 공유된 망에서
+      # 같은 네트워크의 누구나 위 고정 크리덴셜로 접속할 수 있다.
+      - "127.0.0.1:3306:3306"
     volumes:
       - todo-mysql-data:/var/lib/mysql
 
