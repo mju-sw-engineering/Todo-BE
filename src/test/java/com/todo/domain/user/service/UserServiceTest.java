@@ -14,6 +14,7 @@ import com.todo.domain.notification.repository.NotificationRepository;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
+import com.todo.domain.team.event.TeamMembershipRevokedEvent;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.service.TeamService;
 import com.todo.domain.todo.repository.TodoReactionRepository;
@@ -429,7 +430,17 @@ class UserServiceTest {
 
         userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
-        verifyNoInteractions(eventPublisher);
+        verify(eventPublisher, never()).publishEvent(any(AppleAccountRevokeRequestedEvent.class));
+    }
+
+    @Test
+    void 회원탈퇴는_WebSocket_세션_종료를_위한_멤버십_상실_이벤트를_발행한다() {
+        User withdrawing = withdrawingUser();
+        givenWithdrawalUser(withdrawing);
+
+        userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
+
+        verify(eventPublisher).publishEvent(new TeamMembershipRevokedEvent(1L));
     }
 
     @Test
