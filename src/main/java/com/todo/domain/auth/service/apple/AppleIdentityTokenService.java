@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.todo.global.config.AppleProperties;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.ratelimit.SimpleRateLimiter;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -17,6 +18,8 @@ import java.security.KeyFactory;
 import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.spec.RSAPublicKeySpec;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,18 +28,33 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AppleIdentityTokenService {
 
     private static final String APPLE_ISS = "https://appleid.apple.com";
+    private static final String APPLE_ALG = "RS256";
+    // 위조 kid 반복 요청이 매번 Apple JWKS 조회를 일으키지 못하게 실패한 kid를 잠시 기억한다.
+    private static final Duration NEGATIVE_KID_TTL = Duration.ofMinutes(5);
+    // 정상 운영에서 fetch는 키 롤테이션 때뿐이라 이 한도에 닿지 않는다. 공개 입력으로
+    // 유발되는 외부 호출 증폭을 막는 안전판.
+    private static final String JWKS_FETCH_KEY = "apple-jwks:fetch";
+    private static final int JWKS_FETCH_LIMIT = 10;
+    private static final Duration JWKS_FETCH_WINDOW = Duration.ofMinutes(1);
 
     private final AppleProperties appleProperties;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final SimpleRateLimiter rateLimiter;
+    private final Clock clock;
     private final Map<String, PublicKey> publicKeyCache = new ConcurrentHashMap<>();
+    private final Map<String, Long> negativeKidExpiryMillis = new ConcurrentHashMap<>();
 
     public AppleIdentityTokenService(AppleProperties appleProperties,
                                      @Qualifier("appleRestClient") RestClient restClient,
-                                     ObjectMapper objectMapper) {
+                                     ObjectMapper objectMapper,
+                                     SimpleRateLimiter rateLimiter,
+                                     Clock clock) {
         this.appleProperties = appleProperties;
         this.restClient = restClient;
         this.objectMapper = objectMapper;
+        this.rateLimiter = rateLimiter;
+        this.clock = clock;
     }
 
     /**
@@ -46,6 +64,7 @@ public class AppleIdentityTokenService {
 
     public VerifyResult verify(String identityToken, String nonce) {
         String kid = extractKid(identityToken);
+        requireKidNotNegativelyCached(kid);
         PublicKey publicKey = publicKeyCache.computeIfAbsent(kid, this::fetchPublicKey);
 
         try {
@@ -117,13 +136,37 @@ public class AppleIdentityTokenService {
             String header = identityToken.split("\\.")[0];
             byte[] decoded = Base64.getUrlDecoder().decode(header);
             JsonNode node = objectMapper.readTree(decoded);
+            // Apple은 RS256만 쓴다. 다른 alg는 위조이므로 공개키 조회 전에 거른다.
+            JsonNode alg = node.get("alg");
+            if (alg == null || !APPLE_ALG.equals(alg.asText())) {
+                throw new BusinessException("Apple identity token 형식이 올바르지 않습니다.", HttpStatus.UNAUTHORIZED);
+            }
             return node.get("kid").asText();
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             throw new BusinessException("Apple identity token 형식이 올바르지 않습니다.", HttpStatus.UNAUTHORIZED);
         }
     }
 
+    private void requireKidNotNegativelyCached(String kid) {
+        Long expiry = negativeKidExpiryMillis.get(kid);
+        if (expiry == null) {
+            return;
+        }
+        if (clock.millis() >= expiry) {
+            negativeKidExpiryMillis.remove(kid);
+            return;
+        }
+        throw new BusinessException("Apple 공개키를 찾을 수 없습니다. kid=" + kid, HttpStatus.UNAUTHORIZED);
+    }
+
     private PublicKey fetchPublicKey(String kid) {
+        // 위조 kid·서명 불일치가 유발하는 재조회까지 포함한 총량 안전판. 한도에 닿으면
+        // 외부 호출 없이 실패시킨다 (캐시된 kid의 정상 검증은 여기 오지 않는다).
+        if (!rateLimiter.tryAcquire(JWKS_FETCH_KEY, JWKS_FETCH_LIMIT, JWKS_FETCH_WINDOW)) {
+            throw new BusinessException("Apple identity token 검증에 실패했습니다.", HttpStatus.UNAUTHORIZED);
+        }
         try {
             String response = restClient.get()
                     .uri(appleProperties.publicKeyUrl())
@@ -136,6 +179,7 @@ public class AppleIdentityTokenService {
                     return toPublicKey(key);
                 }
             }
+            negativeKidExpiryMillis.put(kid, clock.millis() + NEGATIVE_KID_TTL.toMillis());
             throw new BusinessException("Apple 공개키를 찾을 수 없습니다. kid=" + kid, HttpStatus.UNAUTHORIZED);
         } catch (BusinessException e) {
             throw e;

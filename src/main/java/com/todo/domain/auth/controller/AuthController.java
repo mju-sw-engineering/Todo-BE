@@ -21,7 +21,9 @@ import com.todo.domain.auth.service.AuthService;
 import com.todo.domain.auth.service.ReauthService;
 import com.todo.domain.auth.service.EmailVerificationService;
 import com.todo.domain.auth.service.SessionService;
+import com.todo.global.ratelimit.ClientIpResolver;
 import com.todo.global.response.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,13 +51,17 @@ public class AuthController implements AuthControllerDocs {
     private final ReauthService reauthService;
     private final AccountRecoveryService accountRecoveryService;
     private final SessionService sessionService;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${cookie.secure}")
     private boolean cookieSecure;
 
     @PostMapping("/email/send")
-    public ResponseEntity<ApiResponse<Void>> sendEmailCode(@Valid @RequestBody EmailSendRequest request) {
-        emailVerificationService.sendCode(request.email());
+    public ResponseEntity<ApiResponse<Void>> sendEmailCode(
+            @Valid @RequestBody EmailSendRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        emailVerificationService.sendCode(request.email(), clientIpResolver.resolve(httpRequest));
         return ResponseEntity.accepted()
                 .body(ApiResponse.success(null, "인증 코드 발송 요청이 접수되었습니다."));
     }
@@ -72,8 +78,11 @@ public class AuthController implements AuthControllerDocs {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
-        LoginResult result = authService.login(request);
+    public ResponseEntity<ApiResponse<LoginResponse>> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        LoginResult result = authService.login(request, clientIpResolver.resolve(httpRequest));
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(result.refreshToken()).toString())
                 .body(ApiResponse.success(new LoginResponse(result.accessToken()), "로그인되었습니다"));

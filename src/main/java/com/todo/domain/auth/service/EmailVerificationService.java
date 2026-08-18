@@ -5,6 +5,7 @@ import com.todo.domain.auth.repository.EmailVerificationRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.mail.entity.MailType;
 import com.todo.global.mail.service.MailOutboxService;
+import com.todo.global.ratelimit.SimpleRateLimiter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -26,15 +27,24 @@ public class EmailVerificationService {
     private static final int MAIL_MAX_ATTEMPTS = 2;
     private static final int MAX_VERIFY_ATTEMPTS = 5;
     private static final Duration RESEND_INTERVAL = Duration.ofMinutes(1);
+    // 수신자별 쿨다운은 같은 주소 반복만 막는다. 서로 다른 주소로 outbox·SMTP를
+    // 소모하는 릴레이 악용은 출처별·전역 총량으로 막는다. (한 사람의 정상 가입은 1~3회)
+    private static final int SEND_IP_LIMIT = 10;
+    private static final int SEND_GLOBAL_LIMIT = 100;
+    private static final Duration SEND_LIMIT_WINDOW = Duration.ofHours(1);
+    private static final String SEND_GLOBAL_KEY = "email-send:global";
     // 인증 후 가입 폼 작성·프로필 업로드까지의 여유. 이 안에 가입을 마쳐야 한다.
     private static final Duration VERIFIED_TOKEN_TTL = Duration.ofMinutes(30);
 
     private final EmailVerificationRepository emailVerificationRepository;
     private final MailOutboxService mailOutboxService;
     private final TransactionTemplate transactionTemplate;
+    private final SimpleRateLimiter rateLimiter;
 
     @Transactional
-    public void sendCode(String email) {
+    public void sendCode(String email, String clientIp) {
+        requireSendQuota("email-send:ip:" + clientIp, SEND_IP_LIMIT);
+        requireSendQuota(SEND_GLOBAL_KEY, SEND_GLOBAL_LIMIT);
         requireResendInterval(email);
 
         String code = String.format("%06d", new SecureRandom().nextInt(1_000_000));
@@ -51,6 +61,12 @@ public class EmailVerificationService {
                 expiresAt,
                 MAIL_MAX_ATTEMPTS
         );
+    }
+
+    private void requireSendQuota(String key, int limit) {
+        if (!rateLimiter.tryAcquire(key, limit, SEND_LIMIT_WINDOW)) {
+            throw new BusinessException("요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.", HttpStatus.TOO_MANY_REQUESTS);
+        }
     }
 
     private void requireResendInterval(String email) {

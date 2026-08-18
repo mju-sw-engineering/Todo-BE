@@ -3,6 +3,7 @@ package com.todo.domain.auth.service.apple;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.todo.global.config.AppleProperties;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.ratelimit.SimpleRateLimiter;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.StandardCharsets;
 import java.security.*;
+import java.time.Clock;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
@@ -20,8 +23,14 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class AppleIdentityTokenServiceTest {
@@ -35,6 +44,8 @@ class AppleIdentityTokenServiceTest {
     private AppleProperties appleProperties;
     @Mock
     private RestClient restClient;
+    @Mock
+    private SimpleRateLimiter rateLimiter;
 
     private AppleIdentityTokenService service;
     private KeyPair rsaKeyPair;
@@ -42,7 +53,9 @@ class AppleIdentityTokenServiceTest {
     @BeforeEach
     void setUp() throws Exception {
         rsaKeyPair = KeyPairGenerator.getInstance("RSA").generateKeyPair();
-        service = new AppleIdentityTokenService(appleProperties, restClient, new ObjectMapper());
+        service = new AppleIdentityTokenService(
+                appleProperties, restClient, new ObjectMapper(), rateLimiter, Clock.systemUTC());
+        lenient().when(rateLimiter.tryAcquire(anyString(), anyInt(), any())).thenReturn(true);
     }
 
     @Test
@@ -104,6 +117,51 @@ class AppleIdentityTokenServiceTest {
     void 토큰_형식이_올바르지_않으면_예외를_던진다() {
         assertThatThrownBy(() -> service.verify("invalid.token", "nonce"))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void alg가_RS256이_아니면_공개키_조회_없이_거부한다() {
+        String header = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"HS256\",\"kid\":\"test-kid\"}".getBytes(StandardCharsets.UTF_8));
+        String token = header + ".payload.signature";
+
+        assertThatThrownBy(() -> service.verify(token, "nonce"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Apple identity token 형식이 올바르지 않습니다.");
+
+        then(restClient).should(never()).get();
+    }
+
+    @Test
+    void JWKS에_없는_kid는_기억해두고_반복_요청에_재조회하지_않는다() throws Exception {
+        // JWKS에는 other-kid만 있고 토큰은 test-kid로 서명됨
+        mockPublicKeyFetch("other-kid", rsaKeyPair.getPublic());
+        String nonce = "test-nonce";
+        String token = buildToken(IOS_CLIENT_ID, SOCIAL_ID, sha256Hex(nonce), new Date(System.currentTimeMillis() + 600_000));
+
+        assertThatThrownBy(() -> service.verify(token, nonce))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Apple 공개키를 찾을 수 없습니다");
+        assertThatThrownBy(() -> service.verify(token, nonce))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Apple 공개키를 찾을 수 없습니다");
+
+        // 두 번째 요청은 네거티브 캐시에서 걸러져 외부 조회가 한 번뿐이어야 한다
+        then(restClient).should(times(1)).get();
+    }
+
+    @Test
+    void JWKS_조회_한도를_넘으면_외부_호출_없이_거부한다() throws Exception {
+        given(rateLimiter.tryAcquire(anyString(), anyInt(), any())).willReturn(false);
+        String nonce = "test-nonce";
+        String token = buildToken(IOS_CLIENT_ID, SOCIAL_ID, sha256Hex(nonce), new Date(System.currentTimeMillis() + 600_000));
+
+        assertThatThrownBy(() -> service.verify(token, nonce))
+                .isInstanceOf(BusinessException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        then(restClient).should(never()).get();
     }
 
     // ── 헬퍼 ──
