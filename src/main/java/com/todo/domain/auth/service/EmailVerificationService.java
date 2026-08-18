@@ -26,6 +26,8 @@ public class EmailVerificationService {
     private static final int MAIL_MAX_ATTEMPTS = 2;
     private static final int MAX_VERIFY_ATTEMPTS = 5;
     private static final Duration RESEND_INTERVAL = Duration.ofMinutes(1);
+    // 인증 후 가입 폼 작성·프로필 업로드까지의 여유. 이 안에 가입을 마쳐야 한다.
+    private static final Duration VERIFIED_TOKEN_TTL = Duration.ofMinutes(30);
 
     private final EmailVerificationRepository emailVerificationRepository;
     private final MailOutboxService mailOutboxService;
@@ -93,7 +95,7 @@ public class EmailVerificationService {
         }
 
         String token = UUID.randomUUID().toString();
-        ev.verify(token);
+        ev.verify(token, LocalDateTime.now().plus(VERIFIED_TOKEN_TTL));
         return VerifyCodeResult.success(token);
     }
 
@@ -124,6 +126,7 @@ public class EmailVerificationService {
             return Optional.empty();
         }
         return emailVerificationRepository.findByTokenAndUsedFalse(token)
+                .filter(ev -> !ev.isExpired())
                 .map(EmailVerification::getEmail);
     }
 
@@ -133,6 +136,9 @@ public class EmailVerificationService {
                 .findByTokenAndUsedFalse(token)
                 .orElseThrow(() -> new BusinessException("유효하지 않은 이메일 인증 토큰입니다.", HttpStatus.BAD_REQUEST));
 
+        if (ev.isExpired()) {
+            throw new BusinessException("만료된 이메일 인증 토큰입니다.", HttpStatus.BAD_REQUEST);
+        }
         if (!ev.getEmail().equals(email)) {
             throw new BusinessException("이메일 인증 정보가 일치하지 않습니다.", HttpStatus.BAD_REQUEST);
         }
