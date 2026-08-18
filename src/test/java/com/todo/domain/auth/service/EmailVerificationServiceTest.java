@@ -180,6 +180,18 @@ class EmailVerificationServiceTest {
     }
 
     @Test
+    void 인증코드_확인_성공시_토큰_만료를_코드_만료보다_길게_재부여한다() {
+        EmailVerification ev = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
+        given(emailVerificationRepository.findTopByEmailAndUsedFalseOrderByCreatedAtDesc("user@example.com"))
+                .willReturn(Optional.of(ev));
+
+        emailVerificationService.verifyCode("user@example.com", "123456");
+
+        // 코드 단계 만료(3분)가 토큰 단계 수명(30분)으로 연장된다
+        assertThat(ev.getExpiresAt()).isAfter(LocalDateTime.now().plusMinutes(29));
+    }
+
+    @Test
     void 인증코드_확인_실패_요청없음() {
         given(emailVerificationRepository.findTopByEmailAndUsedFalseOrderByCreatedAtDesc("user@example.com"))
                 .willReturn(Optional.empty());
@@ -214,12 +226,43 @@ class EmailVerificationServiceTest {
     @Test
     void 토큰_검증_및_소비_성공() {
         EmailVerification ev = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
-        ev.verify("test-token");
+        ev.verify("test-token", LocalDateTime.now().plusMinutes(30));
         given(emailVerificationRepository.findByTokenAndUsedFalse("test-token")).willReturn(Optional.of(ev));
 
         emailVerificationService.validateAndConsume("test-token", "user@example.com");
 
         assertThat(ev.isUsed()).isTrue();
+    }
+
+    @Test
+    void 토큰_검증_실패_만료된_토큰은_소비하지_않고_거부한다() {
+        EmailVerification ev = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
+        ev.verify("test-token", LocalDateTime.now().minusSeconds(1));
+        given(emailVerificationRepository.findByTokenAndUsedFalse("test-token")).willReturn(Optional.of(ev));
+
+        assertThatThrownBy(() -> emailVerificationService.validateAndConsume("test-token", "user@example.com"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("만료된 이메일 인증 토큰입니다.");
+
+        assertThat(ev.isUsed()).isFalse();
+    }
+
+    @Test
+    void 인증된_이메일_조회는_유효한_토큰이면_이메일을_반환한다() {
+        EmailVerification ev = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
+        ev.verify("test-token", LocalDateTime.now().plusMinutes(30));
+        given(emailVerificationRepository.findByTokenAndUsedFalse("test-token")).willReturn(Optional.of(ev));
+
+        assertThat(emailVerificationService.findVerifiedEmail("test-token")).contains("user@example.com");
+    }
+
+    @Test
+    void 인증된_이메일_조회는_만료된_토큰이면_빈_값을_반환한다() {
+        EmailVerification ev = EmailVerification.create("user@example.com", "123456", LocalDateTime.now().plusMinutes(3));
+        ev.verify("test-token", LocalDateTime.now().minusSeconds(1));
+        given(emailVerificationRepository.findByTokenAndUsedFalse("test-token")).willReturn(Optional.of(ev));
+
+        assertThat(emailVerificationService.findVerifiedEmail("test-token")).isEmpty();
     }
 
     @Test
@@ -234,7 +277,7 @@ class EmailVerificationServiceTest {
     @Test
     void 토큰_검증_실패_이메일불일치() {
         EmailVerification ev = EmailVerification.create("other@example.com", "123456", LocalDateTime.now().plusMinutes(3));
-        ev.verify("test-token");
+        ev.verify("test-token", LocalDateTime.now().plusMinutes(30));
         given(emailVerificationRepository.findByTokenAndUsedFalse("test-token")).willReturn(Optional.of(ev));
 
         assertThatThrownBy(() -> emailVerificationService.validateAndConsume("test-token", "user@example.com"))
