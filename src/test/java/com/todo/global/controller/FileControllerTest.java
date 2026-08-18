@@ -9,6 +9,7 @@ import io.jsonwebtoken.Claims;
 import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.ratelimit.ClientIpResolver;
 import com.todo.global.ratelimit.SimpleRateLimiter;
 import com.todo.global.response.ApiResponse;
 import com.todo.global.service.FileService;
@@ -315,7 +316,8 @@ class FileControllerTest {
 
     private FileController controller(int trustedProxyHops) {
         return new FileController(
-                fileService, userRepository, rateLimiter, emailVerificationService, jwtUtil, trustedProxyHops);
+                fileService, userRepository, rateLimiter, emailVerificationService, jwtUtil,
+                new ClientIpResolver(trustedProxyHops));
     }
 
     private PresignedUploadRequest profileRequest() {
