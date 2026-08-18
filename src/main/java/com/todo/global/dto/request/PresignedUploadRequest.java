@@ -21,11 +21,11 @@ public record PresignedUploadRequest(
         @Schema(description = "파일 MIME 타입", example = "image/png")
         String contentType,
 
+        @NotNull
         @Positive
         @Max(MAX_FILE_SIZE)
         @Schema(
-                description = "업로드할 파일 크기(byte). 전달하면 해당 크기로 서명되어 다른 크기로는 업로드할 수 없습니다. "
-                        + "미전달 시 크기 제한 없이 서명됩니다(구버전 클라이언트 호환).",
+                description = "업로드할 파일 크기(byte). 해당 크기로 서명되어 다른 크기로는 업로드할 수 없습니다.",
                 example = "1048576"
         )
         Long fileSize,

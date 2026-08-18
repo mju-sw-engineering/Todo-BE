@@ -224,7 +224,7 @@ class FileControllerTest {
     @Test
     void 팀_업로드는_로그인이_필요하다() {
         FileController controller = controller();
-        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.TEAM, "team.png", "image/png", null, null);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.TEAM, "team.png", "image/png", 1024L, null);
 
         assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, null, httpRequest("1.2.3.4")))
                 .isInstanceOf(BusinessException.class)
@@ -235,7 +235,7 @@ class FileControllerTest {
     @Test
     void 팀_업로드는_사용자를_찾아_userId를_전달한다() {
         FileController controller = controller();
-        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.TEAM, "team.png", "image/png", null, null);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.TEAM, "team.png", "image/png", 1024L, null);
         PresignedUploadResponse serviceResponse = new PresignedUploadResponse("https://upload", "teams/temp/1/a.png");
         User user = userWithId(1L);
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
@@ -250,7 +250,7 @@ class FileControllerTest {
     @Test
     void 팀_업로드는_사용자가_없으면_401_예외를_던진다() {
         FileController controller = controller();
-        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.TEAM, "team.png", "image/png", null, null);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.TEAM, "team.png", "image/png", 1024L, null);
         given(userRepository.findById(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, auth(), httpRequest("1.2.3.4")))
@@ -262,7 +262,7 @@ class FileControllerTest {
     @Test
     void 인증샷_업로드는_로그인이_필요하다() {
         FileController controller = controller();
-        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", null, null);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", 1024L, null);
 
         assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, null, httpRequest("1.2.3.4")))
                 .isInstanceOf(BusinessException.class)
@@ -273,7 +273,7 @@ class FileControllerTest {
     @Test
     void 인증샷_업로드는_인증객체가_있어도_미인증이면_401_예외를_던진다() {
         FileController controller = controller();
-        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", null, null);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", 1024L, null);
 
         assertThatThrownBy(() ->
                 controller.generatePresignedUploadUrl(request, unauthenticatedAuth(), httpRequest("1.2.3.4")))
@@ -285,7 +285,7 @@ class FileControllerTest {
     @Test
     void 인증샷_업로드는_사용자를_찾아_userId를_전달한다() {
         FileController controller = controller();
-        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", null, null);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", 1024L, null);
         PresignedUploadResponse serviceResponse = new PresignedUploadResponse("https://upload", "proofs/1/a.png");
         User user = userWithId(1L);
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
@@ -300,7 +300,7 @@ class FileControllerTest {
     @Test
     void 인증샷_업로드는_사용자가_없으면_401_예외를_던진다() {
         FileController controller = controller();
-        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", null, null);
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.PROOF, "proof.png", "image/png", 1024L, null);
         given(userRepository.findById(1L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, auth(), httpRequest("1.2.3.4")))
@@ -323,7 +323,7 @@ class FileControllerTest {
     }
 
     private PresignedUploadRequest profileRequest(String signupToken) {
-        return new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", null, signupToken);
+        return new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", 1024L, signupToken);
     }
 
     private void givenRateLimitAllowed() {
