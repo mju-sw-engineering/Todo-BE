@@ -143,6 +143,7 @@ public class TeamChatService {
         notificationService.pushAll(
                 receivers.stream().map(TeamMember::getUser).toList(),
                 notificationMessageFactory.chatMessage(sender.getNickname(), content),
+                teamId,
                 teamId
         );
     }

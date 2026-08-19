@@ -107,7 +107,8 @@ public class AvailabilityService {
                 receivers,
                 creator,
                 notificationMessageFactory.availabilityPollCreated(poll.getTitle()),
-                poll.getId()
+                poll.getId(),
+                poll.getTeam().getId()
         );
     }
 

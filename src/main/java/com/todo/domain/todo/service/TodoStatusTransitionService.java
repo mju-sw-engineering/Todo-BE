@@ -74,7 +74,8 @@ public class TodoStatusTransitionService {
                 receivers,
                 null,
                 notificationMessageFactory.todoAllCompleted(todo.getTitle()),
-                todo.getId()
+                todo.getId(),
+                todo.getTeam().getId()
         );
     }
 
@@ -93,7 +94,8 @@ public class TodoStatusTransitionService {
                     workItem.getAssignee(),
                     null,
                     notificationMessageFactory.todoWorkItemExpired(todo.getTitle()),
-                    todo.getId()
+                    todo.getId(),
+                    todo.getTeam().getId()
             );
         }
     }

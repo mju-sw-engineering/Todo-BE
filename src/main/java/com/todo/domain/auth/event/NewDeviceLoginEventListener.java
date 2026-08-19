@@ -29,6 +29,6 @@ public class NewDeviceLoginEventListener {
         if (user == null) {
             return;
         }
-        notificationService.send(user, null, notificationMessageFactory.newDeviceLogin(), null);
+        notificationService.send(user, null, notificationMessageFactory.newDeviceLogin(), null, null);
     }
 }

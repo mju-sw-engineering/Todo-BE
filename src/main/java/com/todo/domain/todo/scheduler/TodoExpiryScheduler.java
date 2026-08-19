@@ -72,7 +72,8 @@ public class TodoExpiryScheduler {
                     assignee,
                     null,
                     notificationMessageFactory.todoWorkItemExpired(item.getTodoTitle()),
-                    item.getTodoId()
+                    item.getTodoId(),
+                    item.getTeamId()
             );
         }
     }

@@ -30,7 +30,7 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
      */
     @Query("""
             SELECT wi.id AS workItemId, wi.todo.id AS todoId, wi.todo.title AS todoTitle,
-                   wi.assignee.id AS assigneeId
+                   wi.assignee.id AS assigneeId, wi.todo.team.id AS teamId
             FROM TodoWorkItem wi
             WHERE wi.status = com.todo.domain.todo.entity.WorkItemStatus.IN_PROGRESS
               AND wi.assignee IS NOT NULL
@@ -62,7 +62,7 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
      */
     @Query("""
             SELECT wi.id AS workItemId, wi.todo.id AS todoId, wi.todo.title AS todoTitle,
-                   wi.assignee.id AS assigneeId
+                   wi.assignee.id AS assigneeId, wi.todo.team.id AS teamId
             FROM TodoWorkItem wi
             WHERE wi.status = com.todo.domain.todo.entity.WorkItemStatus.IN_PROGRESS
               AND wi.assignee IS NOT NULL

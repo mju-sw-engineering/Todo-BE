@@ -5,4 +5,5 @@ public interface TodoWorkItemNotificationInfo {
     Long getTodoId();
     String getTodoTitle();
     Long getAssigneeId();
+    Long getTeamId();
 }

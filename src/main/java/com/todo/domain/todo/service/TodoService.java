@@ -367,7 +367,8 @@ public class TodoService {
                 submitter,
                 reactor,
                 notificationMessageFactory.todoReactionAdded(workItem.getTodo().getTitle()),
-                workItem.getTodo().getId()
+                workItem.getTodo().getId(),
+                workItem.getTodo().getTeam().getId()
         );
     }
 
@@ -478,7 +479,8 @@ public class TodoService {
                     receivers,
                     creator,
                     notificationMessageFactory.todoCreated(todo.getTitle()),
-                    todo.getId()
+                    todo.getId(),
+                    todo.getTeam().getId()
             );
             return;
         }
@@ -504,7 +506,8 @@ public class TodoService {
                 createdReceivers,
                 creator,
                 notificationMessageFactory.todoCreated(todo.getTitle()),
-                todo.getId()
+                todo.getId(),
+                todo.getTeam().getId()
         );
 
         assignmentCounts.forEach((assigneeId, count) -> {
@@ -513,7 +516,8 @@ public class TodoService {
                         assignedUsers.get(assigneeId),
                         creator,
                         notificationMessageFactory.todoAssigned(todo.getTitle(), Math.toIntExact(count)),
-                        todo.getId()
+                        todo.getId(),
+                        todo.getTeam().getId()
                 );
             }
         });
@@ -614,7 +618,8 @@ public class TodoService {
                 receivers,
                 submitter,
                 notificationMessageFactory.todoSubmitted(todo.getTitle()),
-                todo.getId()
+                todo.getId(),
+                todo.getTeam().getId()
         );
     }
 
@@ -661,7 +666,8 @@ public class TodoService {
                     assignee,
                     requester,
                     notificationMessageFactory.todoAssigned(todo.getTitle(), 1),
-                    todo.getId()
+                    todo.getId(),
+                    todo.getTeam().getId()
             );
         }
         return AssignmentResult.success(TodoWorkItemAssigneeResponse.from(workItem));
