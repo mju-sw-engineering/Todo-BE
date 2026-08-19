@@ -47,7 +47,7 @@ class TodoDeadlineApproachingSchedulerTest {
         scheduler.notifyApproachingDeadlines();
 
         then(todoWorkItemRepository).should(never()).markDeadlineReminderSent(any(), any());
-        then(notificationService).should(never()).send(any(), any(), any(), any());
+        then(notificationService).should(never()).send(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -57,6 +57,7 @@ class TodoDeadlineApproachingSchedulerTest {
         given(info.getTodoId()).willReturn(10L);
         given(info.getTodoTitle()).willReturn("기말 발표");
         given(info.getAssigneeId()).willReturn(1L);
+        given(info.getTeamId()).willReturn(20L);
         given(todoWorkItemRepository.findApproachingDeadlineWorkItems(any(), any())).willReturn(List.of(info));
         User assignee = User.create("1", "pw", "닉네임", null);
         ReflectionTestUtils.setField(assignee, "id", 1L);
@@ -67,7 +68,7 @@ class TodoDeadlineApproachingSchedulerTest {
         scheduler.notifyApproachingDeadlines();
 
         then(todoWorkItemRepository).should().markDeadlineReminderSent(eq(List.of(30L)), any(LocalDateTime.class));
-        then(notificationService).should().send(assignee, null, message, 10L);
+        then(notificationService).should().send(assignee, null, message, 10L, 20L);
     }
 
     @Test
@@ -81,6 +82,6 @@ class TodoDeadlineApproachingSchedulerTest {
         scheduler.notifyApproachingDeadlines();
 
         then(todoWorkItemRepository).should().markDeadlineReminderSent(eq(List.of(30L)), any(LocalDateTime.class));
-        then(notificationService).should(never()).send(any(), any(), any(), any());
+        then(notificationService).should(never()).send(any(), any(), any(), any(), any());
     }
 }

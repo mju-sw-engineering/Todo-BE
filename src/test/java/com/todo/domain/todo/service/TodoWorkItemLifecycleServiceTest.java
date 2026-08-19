@@ -96,7 +96,7 @@ class TodoWorkItemLifecycleServiceTest {
 
         assertThat(task.getAssignee()).isNull();
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.IN_PROGRESS);
-        then(notificationService).should().sendAll(List.of(remaining), departing, message, TODO_ID);
+        then(notificationService).should().sendAll(List.of(remaining), departing, message, TODO_ID, TEAM_ID);
     }
 
     @Test
@@ -125,7 +125,7 @@ class TodoWorkItemLifecycleServiceTest {
         then(todoWorkItemRepository).should().delete(leavingItem);
         then(teamRepository).should().incrementSuccessCount(TEAM_ID);
         // Todo가 이 재평가로 SUCCESS 전이되므로 TODO_ALL_COMPLETED 알림이 나간다.
-        then(notificationService).should().sendAll(any(), eq(null), any(), eq(TODO_ID));
+        then(notificationService).should().sendAll(any(), eq(null), any(), eq(TODO_ID), eq(TEAM_ID));
     }
 
     @Test
@@ -152,7 +152,7 @@ class TodoWorkItemLifecycleServiceTest {
 
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.FAIL);
         then(teamRepository).shouldHaveNoInteractions();
-        then(notificationService).should().sendAll(List.of(), departing, message, TODO_ID);
+        then(notificationService).should().sendAll(List.of(), departing, message, TODO_ID, TEAM_ID);
     }
 
     @Test

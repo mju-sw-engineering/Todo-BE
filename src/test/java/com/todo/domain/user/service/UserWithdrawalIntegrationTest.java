@@ -134,10 +134,10 @@ class UserWithdrawalIntegrationTest {
     @Test
     void 탈퇴자의_수신알림과_동의이력은_삭제하고_다른_팀원이_받은_알림은_보존한다() {
         notificationRepository.save(Notification.create(
-                withdrawing, null, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L));
+                withdrawing, null, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L, team.getId()));
         notificationRepository.save(Notification.create(
                 staying, withdrawing, NotificationType.TODO_CREATED, "제목",
-                NotificationActorText.PLACEHOLDER + "님이 만들었습니다.", 1L));
+                NotificationActorText.PLACEHOLDER + "님이 만들었습니다.", 1L, team.getId()));
         userConsentRepository.save(UserConsent.create(withdrawing, ConsentType.PRIVACY, "v1"));
         entityManager.flush();
 
@@ -284,7 +284,7 @@ class UserWithdrawalIntegrationTest {
     @Test
     void 참조_정리를_빠뜨리면_사용자_삭제가_DB_제약으로_실패한다() {
         notificationRepository.save(Notification.create(
-                withdrawing, null, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L));
+                withdrawing, null, NotificationType.CHAT_MESSAGE, "제목", "내용", 1L, team.getId()));
         entityManager.flush();
         entityManager.clear();
 

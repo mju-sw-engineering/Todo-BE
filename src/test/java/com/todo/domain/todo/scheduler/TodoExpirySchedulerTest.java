@@ -67,6 +67,7 @@ class TodoExpirySchedulerTest {
         given(info.getTodoId()).willReturn(10L);
         given(info.getTodoTitle()).willReturn("기말 발표");
         given(info.getAssigneeId()).willReturn(1L);
+        given(info.getTeamId()).willReturn(20L);
         given(todoWorkItemRepository.findOverdueForNotification(any(LocalDateTime.class))).willReturn(List.of(info));
         User assignee = User.create("1", "pw", "닉네임", null);
         ReflectionTestUtils.setField(assignee, "id", 1L);
@@ -76,7 +77,7 @@ class TodoExpirySchedulerTest {
 
         todoExpiryScheduler.expireOverdueTodos();
 
-        then(notificationService).should().send(assignee, null, message, 10L);
+        then(notificationService).should().send(assignee, null, message, 10L, 20L);
     }
 
     @Test
@@ -89,6 +90,6 @@ class TodoExpirySchedulerTest {
 
         todoExpiryScheduler.expireOverdueTodos();
 
-        then(notificationService).should(never()).send(any(), any(), any(), any());
+        then(notificationService).should(never()).send(any(), any(), any(), any(), any());
     }
 }

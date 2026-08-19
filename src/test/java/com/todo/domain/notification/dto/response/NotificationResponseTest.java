@@ -2,6 +2,7 @@ package com.todo.domain.notification.dto.response;
 
 import com.todo.domain.notification.entity.Notification;
 import com.todo.domain.notification.entity.NotificationType;
+import com.todo.domain.notification.entity.ReferenceType;
 import com.todo.domain.notification.message.NotificationActorText;
 import com.todo.domain.user.entity.User;
 import org.junit.jupiter.api.Test;
@@ -67,9 +68,31 @@ class NotificationResponseTest {
 
     private Notification notification(User actor, String title, String content) {
         Notification notification = Notification.create(
-                user("수신자"), actor, NotificationType.TODO_CREATED, title, content, 10L
+                user("수신자"), actor, NotificationType.TODO_CREATED, title, content, 10L, 20L
         );
         ReflectionTestUtils.setField(notification, "createdAt", LocalDateTime.of(2026, 8, 2, 12, 0));
         return notification;
+    }
+
+    @Test
+    void referenceType은_NotificationType에서_파생되어_실린다() {
+        Notification notification = notification(user("윤진"), "제목", "내용");
+
+        NotificationResponse response = NotificationResponse.from(notification);
+
+        assertThat(response.referenceType()).isEqualTo(ReferenceType.TODO);
+        assertThat(response.teamId()).isEqualTo(20L);
+    }
+
+    @Test
+    void pushOnly는_type으로부터_referenceType을_파생하고_teamId를_그대로_싣는다() {
+        NotificationResponse response = NotificationResponse.pushOnly(
+                NotificationType.CHAT_MESSAGE, "제목", "내용", 30L, 30L
+        );
+
+        assertThat(response.notificationId()).isNull();
+        assertThat(response.referenceType()).isEqualTo(ReferenceType.CHAT);
+        assertThat(response.referenceId()).isEqualTo(30L);
+        assertThat(response.teamId()).isEqualTo(30L);
     }
 }
