@@ -179,7 +179,7 @@ class AccountRecoveryServiceTest {
         verify(userRepository).save(user);
         // 탈취 복구 시나리오: 공격자가 쥔 기존 세션까지 전부 무효화돼야 한다
         verify(refreshTokenRepository).deleteByUserId(1L);
-        verify(notificationService).send(user, null, message, null);
+        verify(notificationService).send(user, null, message, null, null);
     }
 
     @Test

@@ -36,8 +36,8 @@ public class NotificationService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
-    public void send(User receiver, User actor, NotificationMessage message, Long referenceId) {
-        sendAll(List.of(receiver), actor, message, referenceId);
+    public void send(User receiver, User actor, NotificationMessage message, Long referenceId, Long teamId) {
+        sendAll(List.of(receiver), actor, message, referenceId, teamId);
     }
 
     /**
@@ -51,7 +51,7 @@ public class NotificationService {
      * @param actor 알림을 유발한 사람. 행위자가 없는 시스템 알림이면 null
      */
     @Transactional
-    public void sendAll(List<User> receivers, User actor, NotificationMessage message, Long referenceId) {
+    public void sendAll(List<User> receivers, User actor, NotificationMessage message, Long referenceId, Long teamId) {
         if (receivers.isEmpty()) {
             return;
         }
@@ -59,7 +59,8 @@ public class NotificationService {
         List<Notification> notifications = notificationRepository.saveAll(
                 receivers.stream()
                         .map(receiver -> Notification.create(
-                                receiver, actor, message.type(), message.title(), message.content(), referenceId))
+                                receiver, actor, message.type(), message.title(), message.content(),
+                                referenceId, teamId))
                         .toList()
         );
 
@@ -86,13 +87,13 @@ public class NotificationService {
      * <p>저장하지 않으므로 actor를 받지 않는다. 발송 시점의 닉네임이 곧 현재 닉네임이라
      * 문구가 낡을 수 없다. 문구에 이름을 그대로 넣어도 된다.
      */
-    public void pushAll(List<User> receivers, NotificationMessage message, Long referenceId) {
+    public void pushAll(List<User> receivers, NotificationMessage message, Long referenceId, Long teamId) {
         if (receivers.isEmpty()) {
             return;
         }
 
         NotificationResponse payload = NotificationResponse.pushOnly(
-                message.type(), message.title(), message.content(), referenceId);
+                message.type(), message.title(), message.content(), referenceId, teamId);
         List<NotificationDelivery> deliveries = receivers.stream()
                 .map(receiver -> new NotificationDelivery(receiver.getId().toString(), payload))
                 .toList();

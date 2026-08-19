@@ -89,7 +89,7 @@ class TodoStatusTransitionServiceTest {
 
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
         then(teamRepository).should().incrementSuccessCount(TEAM_ID);
-        then(notificationService).should().sendAll(List.of(member), null, message, TODO_ID);
+        then(notificationService).should().sendAll(List.of(member), null, message, TODO_ID, TEAM_ID);
     }
 
     @Test
@@ -129,7 +129,7 @@ class TodoStatusTransitionServiceTest {
 
         assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.FAIL);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.FAIL);
-        then(notificationService).should().send(workItem.getAssignee(), null, message, TODO_ID);
+        then(notificationService).should().send(workItem.getAssignee(), null, message, TODO_ID, TEAM_ID);
     }
 
     @Test

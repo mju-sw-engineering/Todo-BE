@@ -67,7 +67,8 @@ public class TodoDeadlineApproachingScheduler {
                     assignee,
                     null,
                     notificationMessageFactory.todoDeadlineApproaching(item.getTodoTitle()),
-                    item.getTodoId()
+                    item.getTodoId(),
+                    item.getTeamId()
             );
         }
     }

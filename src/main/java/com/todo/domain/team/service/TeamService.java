@@ -223,6 +223,7 @@ public class TeamService {
                 receivers,
                 newMember,
                 notificationMessageFactory.teamMemberJoined(),
+                team.getId(),
                 team.getId()
         );
     }
@@ -272,6 +273,7 @@ public class TeamService {
                 target.getUser(),
                 requester,
                 notificationMessageFactory.teamMemberRemoved(),
+                teamId,
                 teamId
         );
         teamMemberRepository.delete(target);
@@ -302,6 +304,7 @@ public class TeamService {
                     others.get(0).getUser(),
                     null,
                     notificationMessageFactory.teamLeaderChanged(),
+                    teamId,
                     teamId
             );
         }
@@ -311,6 +314,7 @@ public class TeamService {
                 others.stream().map(TeamMember::getUser).toList(),
                 user,
                 notificationMessageFactory.teamMemberLeft(),
+                teamId,
                 teamId
         );
         teamMemberRepository.delete(member);

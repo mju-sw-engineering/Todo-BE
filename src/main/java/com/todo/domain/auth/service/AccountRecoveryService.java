@@ -113,7 +113,7 @@ public class AccountRecoveryService {
         // 재설정은 계정 탈취 복구 수단이다. 기존 세션을 남기면 토큰을 쥔 공격자가
         // 재설정 후에도 refresh로 접근을 이어갈 수 있으므로 전 기기를 로그아웃시킨다.
         refreshTokenRepository.deleteByUserId(user.getId());
-        notificationService.send(user, null, notificationMessageFactory.passwordChanged(), null);
+        notificationService.send(user, null, notificationMessageFactory.passwordChanged(), null, null);
     }
 
     private User findLocalUserByEmail(String email) {

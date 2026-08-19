@@ -137,7 +137,7 @@ class AvailabilityServiceTest {
         availabilityService.createPoll(10L, "1", request);
 
         then(pollRepository).should().save(any(AvailabilityPoll.class));
-        then(notificationService).should().sendAll(List.of(other), user, message, null);
+        then(notificationService).should().sendAll(List.of(other), user, message, null, 10L);
     }
 
     @Test

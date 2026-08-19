@@ -121,7 +121,8 @@ public class TodoWorkItemLifecycleService {
                 receivers,
                 departingUser,
                 notificationMessageFactory.todoUnassigned(todo.getTitle(), unassignedCount),
-                todo.getId()
+                todo.getId(),
+                todo.getTeam().getId()
         );
     }
 }

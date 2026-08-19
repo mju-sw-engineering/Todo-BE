@@ -47,13 +47,28 @@ public class Notification extends BaseTimeEntity {
 
     private Long referenceId;
 
+    /**
+     * referenceId가 가리키는 대상의 종류. 호출부가 직접 넘기지 않고 {@link NotificationType}에서
+     * 자동으로 파생시킨다 — 타입과 참조 종류가 어긋나는 조합이 애초에 생길 수 없게 하기 위함.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ReferenceType referenceType;
+
+    /**
+     * 알림이 속한 팀. referenceId만으로는 프론트가 이동 경로(teamId)를 재구성할 수 없어 별도로 저장한다.
+     * 팀과 무관한 알림(NEW_DEVICE_LOGIN, PASSWORD_CHANGED)은 null.
+     */
+    private Long teamId;
+
     public static Notification create(
             User receiver,
             User actor,
             NotificationType type,
             String title,
             String content,
-            Long referenceId
+            Long referenceId,
+            Long teamId
     ) {
         Notification notification = new Notification();
         notification.receiver = receiver;
@@ -63,6 +78,8 @@ public class Notification extends BaseTimeEntity {
         notification.content = content;
         notification.isRead = false;
         notification.referenceId = referenceId;
+        notification.referenceType = type.referenceType();
+        notification.teamId = teamId;
         return notification;
     }
 

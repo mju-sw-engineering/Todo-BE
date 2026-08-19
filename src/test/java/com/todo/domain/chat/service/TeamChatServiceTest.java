@@ -128,8 +128,8 @@ class TeamChatServiceTest {
 
         teamChatService.saveMessage(100L, "1", new ChatMessageRequest("안녕"));
 
-        then(notificationService).should().pushAll(eq(List.of(receiver)), eq(message), eq(100L));
-        then(notificationService).should(never()).sendAll(any(), any(), any(), any());
+        then(notificationService).should().pushAll(eq(List.of(receiver)), eq(message), eq(100L), eq(100L));
+        then(notificationService).should(never()).sendAll(any(), any(), any(), any(), any());
     }
 
     @Test

@@ -50,7 +50,7 @@ class NewDeviceLoginEventListenerTest {
 
         listener.onNewDeviceLoginDetected(new NewDeviceLoginDetectedEvent(1L));
 
-        verify(notificationService).send(user, null, message, null);
+        verify(notificationService).send(user, null, message, null, null);
     }
 
     @Test
@@ -59,6 +59,6 @@ class NewDeviceLoginEventListenerTest {
 
         listener.onNewDeviceLoginDetected(new NewDeviceLoginDetectedEvent(1L));
 
-        verify(notificationService, never()).send(any(), any(), any(), any());
+        verify(notificationService, never()).send(any(), any(), any(), any(), any());
     }
 }

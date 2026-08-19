@@ -85,4 +85,41 @@ class TodoWorkItemRepositoryTest {
         assertThat(todoWorkItemRepository.findProofThumbnailKeysByTodoIdIn(List.of(target.getId())))
                 .containsExactly("proofs/thumb.jpg");
     }
+
+    @Test
+    void 마감_임박_조회는_소속_팀_id를_함께_내려준다() {
+        LocalDateTime now = LocalDateTime.now();
+        Team team = entityManager.persist(Team.create("팀", null, "INVITE3"));
+        User assignee = entityManager.persist(User.create("loginC", "pw", "닉C", null));
+        Todo todo = entityManager.persist(Todo.create(
+                team, assignee, "마감 임박", null, now.plusMinutes(10), TodoMode.DIRECT));
+        TodoWorkItem workItem = entityManager.persist(TodoWorkItem.createDirect(todo, assignee));
+        entityManager.flush();
+
+        List<TodoWorkItemNotificationInfo> result =
+                todoWorkItemRepository.findApproachingDeadlineWorkItems(now, now.plusMinutes(30));
+
+        assertThat(result).singleElement().satisfies(info -> {
+            assertThat(info.getWorkItemId()).isEqualTo(workItem.getId());
+            assertThat(info.getTeamId()).isEqualTo(team.getId());
+        });
+    }
+
+    @Test
+    void 만료_알림_대상_조회는_소속_팀_id를_함께_내려준다() {
+        LocalDateTime now = LocalDateTime.now();
+        Team team = entityManager.persist(Team.create("팀", null, "INVITE4"));
+        User assignee = entityManager.persist(User.create("loginD", "pw", "닉D", null));
+        Todo todo = entityManager.persist(Todo.create(
+                team, assignee, "만료됨", null, now.minusHours(1), TodoMode.DIRECT));
+        TodoWorkItem workItem = entityManager.persist(TodoWorkItem.createDirect(todo, assignee));
+        entityManager.flush();
+
+        List<TodoWorkItemNotificationInfo> result = todoWorkItemRepository.findOverdueForNotification(now);
+
+        assertThat(result).singleElement().satisfies(info -> {
+            assertThat(info.getWorkItemId()).isEqualTo(workItem.getId());
+            assertThat(info.getTeamId()).isEqualTo(team.getId());
+        });
+    }
 }

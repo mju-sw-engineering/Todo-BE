@@ -348,7 +348,7 @@ class TeamServiceTest {
 
         assertThat(response.teamId()).isEqualTo(10L);
         then(teamMemberRepository).should().save(argThat(m -> m.getRole() == TeamMemberRole.MEMBER));
-        then(notificationService).should().sendAll(List.of(existingMember), user, message, 10L);
+        then(notificationService).should().sendAll(List.of(existingMember), user, message, 10L, 10L);
     }
 
     @Test
@@ -671,7 +671,7 @@ class TeamServiceTest {
 
         then(todoWorkItemLifecycleService).should().handleTeamDeparture(10L, user);
         then(teamMemberRepository).should().delete(member);
-        then(notificationService).should().sendAll(List.of(remainingUser), user, message, 10L);
+        then(notificationService).should().sendAll(List.of(remainingUser), user, message, 10L, 10L);
         then(eventPublisher).should().publishEvent(new TeamMembershipRevokedEvent(1L));
     }
 
@@ -697,8 +697,8 @@ class TeamServiceTest {
         teamService.leaveTeam("1", 10L);
 
         assertThat(next.getRole()).isEqualTo(TeamMemberRole.LEADER);
-        then(notificationService).should().send(nextUser, null, leaderChangedMessage, 10L);
-        then(notificationService).should().sendAll(List.of(nextUser), leader, leftMessage, 10L);
+        then(notificationService).should().send(nextUser, null, leaderChangedMessage, 10L, 10L);
+        then(notificationService).should().sendAll(List.of(nextUser), leader, leftMessage, 10L, 10L);
         then(teamMemberRepository).should().delete(leaderMember);
     }
 
@@ -724,7 +724,7 @@ class TeamServiceTest {
         var inOrder = inOrder(todoWorkItemLifecycleService, teamMemberRepository);
         inOrder.verify(todoWorkItemLifecycleService).handleTeamDeparture(10L, targetUser);
         inOrder.verify(teamMemberRepository).delete(targetMember);
-        then(notificationService).should().send(targetUser, leader, message, 10L);
+        then(notificationService).should().send(targetUser, leader, message, 10L, 10L);
         then(eventPublisher).should().publishEvent(new TeamMembershipRevokedEvent(2L));
     }
 

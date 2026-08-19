@@ -415,7 +415,7 @@ class TodoServiceTest {
         assertThat(response.type()).isEqualTo(TodoReactionType.LIKE);
         assertThat(response.count()).isEqualTo(1L);
         then(todoReactionRepository).should().save(any(TodoReaction.class));
-        then(notificationService).should().send(eq(assignee), eq(reactor), any(), eq(todo.getId()));
+        then(notificationService).should().send(eq(assignee), eq(reactor), any(), eq(todo.getId()), eq(TEAM_ID));
     }
 
     @Test
@@ -433,7 +433,7 @@ class TodoServiceTest {
 
         todoService.reactTodoWorkItem(20L, "1", new ReactTodoRequest(TodoReactionType.LIKE));
 
-        then(notificationService).should(never()).send(any(), any(), any(), any());
+        then(notificationService).should(never()).send(any(), any(), any(), any(), any());
     }
 
     @Test
