@@ -1,5 +1,8 @@
 package com.todo.global.service;
 
+import com.todo.domain.team.repository.TeamMemberRepository;
+import com.todo.domain.todo.entity.Todo;
+import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.global.config.MinioProperties;
 import com.todo.global.dto.UploadType;
 import com.todo.global.dto.request.PresignedUploadRequest;
@@ -49,12 +52,16 @@ public class FileService {
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final MinioProperties props;
+    private final TodoRepository todoRepository;
+    private final TeamMemberRepository teamMemberRepository;
 
     public PresignedUploadResponse generatePresignedPutUrl(Long userId, PresignedUploadRequest request) {
         validateImageContentType(request.contentType());
 
         String ext = extractExtension(request.fileName());
-        String key = buildObjectKey(userId, request.type(), ext);
+        String key = request.type() == UploadType.PROOF
+                ? buildProofObjectKey(userId, request.todoId(), ext)
+                : buildObjectKey(userId, request.type(), ext);
 
         // 크기 없이 서명하면 URL 하나로 무제한 크기를 업로드할 수 있다. DTO 검증(@NotNull)이
         // 막지만, 다른 호출 경로가 생겨도 무제한 서명이 조용히 발급되지 않도록 여기서도 막는다.
@@ -150,14 +157,19 @@ public class FileService {
      * Presigned URL로 업로드된 인증 사진을 제출 직전에 다시 검증한다.
      * 서명 시 크기를 강제하지만, 실제 저장된 객체의 크기와 MIME은 HEAD 결과를 기준으로
      * 한 번 더 확인한다 (서명 정책 변경·수동 업로드 등에 대한 방어).
+     *
+     * <p>썸네일 여부는 DB 조회 없이 바로 판별되므로, teamId 조회보다 먼저 확인해 불필요한
+     * 조회를 피한다.
      */
-    public void validateProofImage(Long userId, String objectKey) {
-        String expectedPrefix = "proofs/" + userId + "/";
+    public void validateProofImage(Long userId, Long todoId, String objectKey) {
+        if (objectKey != null && objectKey.contains("/thumbs/")) {
+            throw new BusinessException("썸네일 파일은 인증 사진으로 제출할 수 없습니다.", HttpStatus.BAD_REQUEST);
+        }
+
+        Long teamId = resolveTodoTeamId(todoId);
+        String expectedPrefix = "proofs/" + teamId + "/" + todoId + "/" + userId + "/";
         if (objectKey == null || objectKey.isBlank() || !objectKey.startsWith(expectedPrefix)) {
             throw new BusinessException("본인이 업로드한 인증 사진만 제출할 수 있습니다.", HttpStatus.BAD_REQUEST);
-        }
-        if (objectKey.contains("/thumbs/")) {
-            throw new BusinessException("썸네일 파일은 인증 사진으로 제출할 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
 
         HeadObjectResponse object;
@@ -227,8 +239,33 @@ public class FileService {
             case PROFILE -> userId != null
                     ? "profiles/" + userId + "/" + uuid + suffix
                     : "profiles/temp/" + uuid + suffix;
-            case PROOF -> "proofs/" + userId + "/" + uuid + suffix;
+            case PROOF -> throw new IllegalStateException("PROOF는 buildProofObjectKey로 처리됩니다.");
         };
+    }
+
+    /**
+     * 인증 파일은 팀·투두 단위로 확인하기 쉽도록 {@code proofs/{teamId}/{todoId}/{userId}/}
+     * 아래에 저장한다. teamId는 클라이언트가 보내지 않고 todoId로 서버가 직접 조회한다 —
+     * 클라이언트가 teamId를 조작해서 보낼 여지를 없애고, 이 조회가 팀 멤버 검증도 겸한다.
+     */
+    private String buildProofObjectKey(Long userId, Long todoId, String ext) {
+        if (todoId == null) {
+            throw new BusinessException("인증 파일 업로드에는 투두 ID가 필요합니다.", HttpStatus.BAD_REQUEST);
+        }
+        Long teamId = resolveTodoTeamId(todoId);
+        if (!teamMemberRepository.existsByTeamIdAndUserId(teamId, userId)) {
+            throw new BusinessException("해당 투두가 속한 팀의 멤버만 인증 파일을 업로드할 수 있습니다.", HttpStatus.FORBIDDEN);
+        }
+
+        String suffix = ext.isEmpty() ? "" : "." + ext;
+        String uuid = UUID.randomUUID().toString();
+        return "proofs/" + teamId + "/" + todoId + "/" + userId + "/" + uuid + suffix;
+    }
+
+    private Long resolveTodoTeamId(Long todoId) {
+        Todo todo = todoRepository.findById(todoId)
+                .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.BAD_REQUEST));
+        return todo.getTeam().getId();
     }
 
     private String buildThumbnailKey(String objectKey) {

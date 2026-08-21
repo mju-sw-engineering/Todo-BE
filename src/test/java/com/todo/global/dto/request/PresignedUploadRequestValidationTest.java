@@ -62,6 +62,6 @@ class PresignedUploadRequestValidationTest {
     }
 
     private PresignedUploadRequest request(Long fileSize) {
-        return new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", fileSize, null);
+        return new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", fileSize, null, null);
     }
 }

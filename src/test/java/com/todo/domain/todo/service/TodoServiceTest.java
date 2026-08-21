@@ -316,7 +316,7 @@ class TodoServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 다른 WorkItem에 제출된 인증 사진입니다.")
                 .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
-        then(fileService).should().validateProofImage(1L, "used-proof");
+        then(fileService).should().validateProofImage(1L, TODO_ID, "used-proof");
         then(fileService).shouldHaveNoMoreInteractions();
     }
 

@@ -546,7 +546,7 @@ public class TodoService {
         OperationResult check = transactionTemplate.execute(status -> checkSubmission(todoId, workItemId, user.getId()));
         requireOperationResult(check).throwIfFailed();
 
-        fileService.validateProofImage(user.getId(), proofImageKey);
+        fileService.validateProofImage(user.getId(), todoId, proofImageKey);
         if (todoWorkItemRepository.existsByProofImageKey(proofImageKey)) {
             throw new BusinessException("이미 다른 WorkItem에 제출된 인증 사진입니다.", HttpStatus.BAD_REQUEST);
         }

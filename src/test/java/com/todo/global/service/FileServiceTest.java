@@ -1,5 +1,10 @@
 package com.todo.global.service;
 
+import com.todo.domain.team.entity.Team;
+import com.todo.domain.team.repository.TeamMemberRepository;
+import com.todo.domain.todo.entity.Todo;
+import com.todo.domain.todo.repository.TodoRepository;
+import com.todo.domain.user.entity.User;
 import com.todo.global.config.MinioProperties;
 import com.todo.global.dto.UploadType;
 import com.todo.global.dto.request.PresignedUploadRequest;
@@ -39,6 +44,8 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -58,6 +65,10 @@ class FileServiceTest {
     private S3Client s3Client;
     @Mock
     private S3Presigner s3Presigner;
+    @Mock
+    private TodoRepository todoRepository;
+    @Mock
+    private TeamMemberRepository teamMemberRepository;
 
     @BeforeEach
     void setUp() {
@@ -65,7 +76,15 @@ class FileServiceTest {
         props.setBucket("uploads");
         props.setPresignedUrlExpiration(3600);
         props.setPutPresignedUrlExpiration(600);
-        fileService = new FileService(s3Client, s3Presigner, props);
+        fileService = new FileService(s3Client, s3Presigner, props, todoRepository, teamMemberRepository);
+    }
+
+    private void givenTodoWithTeam(Long todoId, Long teamId) {
+        Team team = Team.create("팀", null, "invite-code");
+        ReflectionTestUtils.setField(team, "id", teamId);
+        User creator = User.create("creator", "pw", "닉네임", null);
+        Todo todo = Todo.create(team, creator, "투두", null, null);
+        given(todoRepository.findById(todoId)).willReturn(Optional.of(todo));
     }
 
     @Test
@@ -81,7 +100,7 @@ class FileServiceTest {
 
         PresignedUploadResponse response = fileService.generatePresignedPutUrl(
                 1L,
-                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", 1024L, null)
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", 1024L, null, null)
         );
 
         assertThat(response.uploadUrl()).isEqualTo("https://storage.example.com/upload");
@@ -101,7 +120,7 @@ class FileServiceTest {
     void 파일_크기_없이는_presigned_url을_발급하지_않는다() {
         assertThatThrownBy(() -> fileService.generatePresignedPutUrl(
                 1L,
-                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", null, null)
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.png", "image/png", null, null, null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("파일 크기는 필수입니다.");
@@ -122,7 +141,7 @@ class FileServiceTest {
 
         PresignedUploadResponse response = fileService.generatePresignedPutUrl(
                 7L,
-                new PresignedUploadRequest(UploadType.TEAM, "team-image", "image/jpeg", 1024L, null)
+                new PresignedUploadRequest(UploadType.TEAM, "team-image", "image/jpeg", 1024L, null, null)
         );
 
         assertThat(response.objectKey()).startsWith("teams/temp/7/");
@@ -130,7 +149,7 @@ class FileServiceTest {
     }
 
     @Test
-    void 인증사진_업로드용_key는_proofs_경로를_사용한다() throws Exception {
+    void 인증사진_업로드용_key는_teamId_todoId_userId_경로를_사용한다() throws Exception {
         given(s3Presigner.presignPutObject(any(PutObjectPresignRequest.class))).willReturn(
                 PresignedPutObjectRequest.builder()
                         .httpRequest(httpRequest("https://storage.example.com/proof", SdkHttpMethod.PUT))
@@ -139,21 +158,63 @@ class FileServiceTest {
                         .signedHeaders(Map.of("host", List.of("storage.example.com")))
                         .build()
         );
+        givenTodoWithTeam(10L, 5L);
+        given(teamMemberRepository.existsByTeamIdAndUserId(5L, 3L)).willReturn(true);
 
         PresignedUploadResponse response = fileService.generatePresignedPutUrl(
                 3L,
-                new PresignedUploadRequest(UploadType.PROOF, "proof.webp", "image/webp", 1024L, null)
+                new PresignedUploadRequest(UploadType.PROOF, "proof.webp", "image/webp", 1024L, null, 10L)
         );
 
-        assertThat(response.objectKey()).startsWith("proofs/3/");
+        assertThat(response.objectKey()).startsWith("proofs/5/10/3/");
         assertThat(response.objectKey()).endsWith(".webp");
+    }
+
+    @Test
+    void PROOF_타입은_todoId가_없으면_400() {
+        assertThatThrownBy(() -> fileService.generatePresignedPutUrl(
+                3L,
+                new PresignedUploadRequest(UploadType.PROOF, "proof.webp", "image/webp", 1024L, null, null)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("인증 파일 업로드에는 투두 ID가 필요합니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+        then(s3Presigner).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 존재하지_않는_투두면_400() {
+        given(todoRepository.findById(10L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> fileService.generatePresignedPutUrl(
+                3L,
+                new PresignedUploadRequest(UploadType.PROOF, "proof.webp", "image/webp", 1024L, null, 10L)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("존재하지 않는 투두입니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void 투두가_속한_팀의_멤버가_아니면_403() {
+        givenTodoWithTeam(10L, 5L);
+        given(teamMemberRepository.existsByTeamIdAndUserId(5L, 3L)).willReturn(false);
+
+        assertThatThrownBy(() -> fileService.generatePresignedPutUrl(
+                3L,
+                new PresignedUploadRequest(UploadType.PROOF, "proof.webp", "image/webp", 1024L, null, 10L)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("해당 투두가 속한 팀의 멤버만 인증 파일을 업로드할 수 있습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+        then(s3Presigner).shouldHaveNoInteractions();
     }
 
     @Test
     void 지원하지_않는_이미지_형식이면_400_예외를_던진다() {
         assertThatThrownBy(() -> fileService.generatePresignedPutUrl(
                 1L,
-                new PresignedUploadRequest(UploadType.PROFILE, "profile.gif", "image/gif", 1024L, null)
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.gif", "image/gif", 1024L, null, null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("지원하지 않는 이미지 형식입니다.")
@@ -190,22 +251,25 @@ class FileServiceTest {
 
     @Test
     void 본인_proofs_경로의_5MB_이하_파일은_인증_사진으로_검증한다() {
+        givenTodoWithTeam(10L, 5L);
         given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
                 .contentType("image/webp")
                 .contentLength(5L * 1024 * 1024)
                 .build());
 
-        fileService.validateProofImage(1L, "proofs/1/a.webp");
+        fileService.validateProofImage(1L, 10L, "proofs/5/10/1/a.webp");
 
         ArgumentCaptor<HeadObjectRequest> captor = ArgumentCaptor.forClass(HeadObjectRequest.class);
         then(s3Client).should().headObject(captor.capture());
         assertThat(captor.getValue().bucket()).isEqualTo("uploads");
-        assertThat(captor.getValue().key()).isEqualTo("proofs/1/a.webp");
+        assertThat(captor.getValue().key()).isEqualTo("proofs/5/10/1/a.webp");
     }
 
     @Test
     void 다른_사용자의_인증_사진_key는_거절한다() {
-        assertThatThrownBy(() -> fileService.validateProofImage(1L, "proofs/2/a.jpg"))
+        givenTodoWithTeam(10L, 5L);
+
+        assertThatThrownBy(() -> fileService.validateProofImage(1L, 10L, "proofs/5/10/2/a.jpg"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("본인이 업로드한 인증 사진만 제출할 수 있습니다.");
 
@@ -262,33 +326,37 @@ class FileServiceTest {
 
     @Test
     void 썸네일_key는_인증_사진으로_거절한다() {
-        assertThatThrownBy(() -> fileService.validateProofImage(1L, "proofs/1/thumbs/a.jpg"))
+        // 썸네일 여부는 DB 조회 없이 바로 판별되므로, teamId 조회(투두 mock)를 아예 안 걸어도 통과해야 한다.
+        assertThatThrownBy(() -> fileService.validateProofImage(1L, 10L, "proofs/5/10/1/thumbs/a.jpg"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("썸네일 파일은 인증 사진으로 제출할 수 없습니다.");
 
         then(s3Client).should(never()).headObject(any(HeadObjectRequest.class));
+        then(todoRepository).should(never()).findById(any());
     }
 
     @Test
     void 크기가_5MB를_초과한_인증_사진은_거절한다() {
+        givenTodoWithTeam(10L, 5L);
         given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
                 .contentType("image/jpeg")
                 .contentLength(5L * 1024 * 1024 + 1)
                 .build());
 
-        assertThatThrownBy(() -> fileService.validateProofImage(1L, "proofs/1/a.jpg"))
+        assertThatThrownBy(() -> fileService.validateProofImage(1L, 10L, "proofs/5/10/1/a.jpg"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("인증 사진은 5MB 이하만 제출할 수 있습니다.");
     }
 
     @Test
     void 허용하지_않는_MIME의_인증_사진은_거절한다() {
+        givenTodoWithTeam(10L, 5L);
         given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
                 .contentType("image/gif")
                 .contentLength(1024L)
                 .build());
 
-        assertThatThrownBy(() -> fileService.validateProofImage(1L, "proofs/1/a.gif"))
+        assertThatThrownBy(() -> fileService.validateProofImage(1L, 10L, "proofs/5/10/1/a.gif"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("지원하지 않는 이미지 형식입니다.");
     }
