@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
@@ -45,9 +46,28 @@ public class FileService {
             "image/png",
             "image/webp"
     );
+    private static final String HWP_CONTENT_TYPE = "application/x-hwp";
+    private static final String OCTET_STREAM_CONTENT_TYPE = "application/octet-stream";
+    private static final String HWP_EXTENSION = "hwp";
+    private static final Set<String> ALLOWED_PROOF_DOCUMENT_CONTENT_TYPES = Set.of(
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "text/csv",
+            HWP_CONTENT_TYPE
+    );
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
+    private static final byte[] PDF_MAGIC = "%PDF-".getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] ZIP_MAGIC = {0x50, 0x4B, 0x03, 0x04};
+    private static final byte[] OLE2_MAGIC = {
+            (byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1
+    };
+    private static final String HWP_MARKER = "HWP Document File";
+    private static final int HWP_MARKER_SCAN_RANGE = 256 * 1024;
     private static final int THUMBNAIL_MAX_SIZE = 480;
     private static final double THUMBNAIL_QUALITY = 0.8;
-    private static final long MAX_PROOF_IMAGE_SIZE = 5L * 1024 * 1024;
+    private static final long MAX_IMAGE_SIZE = 5L * 1024 * 1024;
+    private static final long MAX_PROOF_DOCUMENT_SIZE = 20L * 1024 * 1024;
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
@@ -56,9 +76,9 @@ public class FileService {
     private final TeamMemberRepository teamMemberRepository;
 
     public PresignedUploadResponse generatePresignedPutUrl(Long userId, PresignedUploadRequest request) {
-        validateImageContentType(request.contentType());
-
         String ext = extractExtension(request.fileName());
+        validateContentType(request.type(), request.contentType(), ext);
+
         String key = request.type() == UploadType.PROOF
                 ? buildProofObjectKey(userId, request.todoId(), ext)
                 : buildObjectKey(userId, request.type(), ext);
@@ -68,6 +88,7 @@ public class FileService {
         if (request.fileSize() == null) {
             throw new BusinessException("파일 크기는 필수입니다.", HttpStatus.BAD_REQUEST);
         }
+        validateFileSize(request.type(), request.contentType(), ext, request.fileSize());
 
         // 크기를 함께 서명하면 해당 크기로만 업로드할 수 있어 대용량 업로드 남용을 막는다.
         PutObjectRequest putObjectRequest = PutObjectRequest.builder()
@@ -89,6 +110,9 @@ public class FileService {
 
     public String createProofThumbnail(String objectKey) {
         if (objectKey == null || objectKey.isBlank()) {
+            return null;
+        }
+        if (!IMAGE_EXTENSIONS.contains(extractExtension(objectKey).toLowerCase())) {
             return null;
         }
 
@@ -154,14 +178,16 @@ public class FileService {
     }
 
     /**
-     * Presigned URL로 업로드된 인증 사진을 제출 직전에 다시 검증한다.
+     * Presigned URL로 업로드된 인증 파일을 제출 직전에 다시 검증한다.
      * 서명 시 크기를 강제하지만, 실제 저장된 객체의 크기와 MIME은 HEAD 결과를 기준으로
-     * 한 번 더 확인한다 (서명 정책 변경·수동 업로드 등에 대한 방어).
+     * 한 번 더 확인한다 (서명 정책 변경·수동 업로드 등에 대한 방어). 문서 형식(PDF/OOXML/HWP)은
+     * 여기서 실제 바이트 시그니처까지 확인해, 확장자만 바꿔 올린 파일이 나중에 만들 미리보기
+     * 기능을 오작동시키지 않도록 한다.
      *
      * <p>썸네일 여부는 DB 조회 없이 바로 판별되므로, teamId 조회보다 먼저 확인해 불필요한
      * 조회를 피한다.
      */
-    public void validateProofImage(Long userId, Long todoId, String objectKey) {
+    public void validateProofFile(Long userId, Long todoId, String objectKey) {
         if (objectKey != null && objectKey.contains("/thumbs/")) {
             throw new BusinessException("썸네일 파일은 인증 사진으로 제출할 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
@@ -187,10 +213,12 @@ public class FileService {
             throw new FileStorageException("인증 사진 파일을 확인하는 데 실패했습니다.", e);
         }
 
-        validateImageContentType(object.contentType());
-        if (object.contentLength() != null && object.contentLength() > MAX_PROOF_IMAGE_SIZE) {
-            throw new BusinessException("인증 사진은 5MB 이하만 제출할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        String ext = extractExtension(objectKey);
+        validateContentType(UploadType.PROOF, object.contentType(), ext);
+        if (object.contentLength() != null) {
+            validateFileSize(UploadType.PROOF, object.contentType(), ext, object.contentLength());
         }
+        validateFileSignature(objectKey, object.contentType(), ext);
     }
 
     public String resolveImageUrl(String objectKey) {
@@ -287,9 +315,98 @@ public class FileService {
         return filename.substring(filename.lastIndexOf('.') + 1);
     }
 
-    private void validateImageContentType(String contentType) {
-        if (!ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType)) {
-            throw new BusinessException("지원하지 않는 이미지 형식입니다.", HttpStatus.BAD_REQUEST);
+    /**
+     * PROFILE/TEAM은 이미지만 허용한다. PROOF는 이미지에 더해 문서(PDF/docx/xlsx/csv/HWP)도
+     * 허용하는데, HWP는 IANA 등록 MIME이 없어 브라우저가 {@code application/octet-stream}을
+     * 보낼 수 있다 — 그래서 PROOF에 한해 확장자가 {@code .hwp}일 때만 그 값을 예외적으로
+     * 허용한다(다른 확장자에 octet-stream을 붙여 보내는 건 여전히 거절).
+     */
+    private void validateContentType(UploadType type, String contentType, String ext) {
+        if (type != UploadType.PROOF) {
+            if (!ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType)) {
+                throw new BusinessException("지원하지 않는 이미지 형식입니다.", HttpStatus.BAD_REQUEST);
+            }
+            return;
         }
+
+        boolean allowed = ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType)
+                || ALLOWED_PROOF_DOCUMENT_CONTENT_TYPES.contains(contentType)
+                || (OCTET_STREAM_CONTENT_TYPE.equals(contentType) && HWP_EXTENSION.equalsIgnoreCase(ext));
+        if (!allowed) {
+            throw new BusinessException("지원하지 않는 파일 형식입니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    /** 문서(PDF/docx/xlsx/csv/HWP)는 20MB, 그 외 이미지는 5MB가 상한이다. */
+    private void validateFileSize(UploadType type, String contentType, String ext, long fileSize) {
+        boolean isDocument = type == UploadType.PROOF
+                && (ALLOWED_PROOF_DOCUMENT_CONTENT_TYPES.contains(contentType)
+                        || (OCTET_STREAM_CONTENT_TYPE.equals(contentType) && HWP_EXTENSION.equalsIgnoreCase(ext)));
+        if (isDocument) {
+            if (fileSize > MAX_PROOF_DOCUMENT_SIZE) {
+                throw new BusinessException("인증 파일은 20MB 이하만 업로드할 수 있습니다.", HttpStatus.BAD_REQUEST);
+            }
+            return;
+        }
+        if (fileSize > MAX_IMAGE_SIZE) {
+            throw new BusinessException("이미지는 5MB 이하만 업로드할 수 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    /**
+     * 나중에 만들 미리보기 기능이 확장자만 바꿔치기된 파일 때문에 오작동하지 않도록, 가벼운
+     * 매직바이트 검증을 한다. docx/xlsx를 서로 구분하는 zip 내부 검사는 하지 않고, CSV는
+     * 신뢰할 시그니처가 없어 검증을 건너뛴다.
+     */
+    private void validateFileSignature(String objectKey, String contentType, String ext) {
+        if ("application/pdf".equals(contentType)) {
+            if (!startsWith(readObjectPrefix(objectKey, PDF_MAGIC.length), PDF_MAGIC)) {
+                throw new BusinessException("파일 내용이 형식과 일치하지 않습니다.", HttpStatus.BAD_REQUEST);
+            }
+            return;
+        }
+        if (isOoxmlContentType(contentType)) {
+            if (!startsWith(readObjectPrefix(objectKey, ZIP_MAGIC.length), ZIP_MAGIC)) {
+                throw new BusinessException("파일 내용이 형식과 일치하지 않습니다.", HttpStatus.BAD_REQUEST);
+            }
+            return;
+        }
+        if (HWP_EXTENSION.equalsIgnoreCase(ext)) {
+            byte[] window = readObjectPrefix(objectKey, HWP_MARKER_SCAN_RANGE);
+            boolean valid = startsWith(window, OLE2_MAGIC)
+                    && new String(window, StandardCharsets.US_ASCII).contains(HWP_MARKER);
+            if (!valid) {
+                throw new BusinessException("파일 내용이 형식과 일치하지 않습니다.", HttpStatus.BAD_REQUEST);
+            }
+        }
+    }
+
+    private boolean isOoxmlContentType(String contentType) {
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(contentType)
+                || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".equals(contentType);
+    }
+
+    private byte[] readObjectPrefix(String objectKey, int maxBytes) {
+        try {
+            return s3Client.getObjectAsBytes(GetObjectRequest.builder()
+                    .bucket(props.getBucket())
+                    .key(objectKey)
+                    .range("bytes=0-" + (maxBytes - 1))
+                    .build()).asByteArray();
+        } catch (SdkException e) {
+            throw new FileStorageException("파일 내용을 확인하는 데 실패했습니다.", e);
+        }
+    }
+
+    private boolean startsWith(byte[] data, byte[] prefix) {
+        if (data.length < prefix.length) {
+            return false;
+        }
+        for (int i = 0; i < prefix.length; i++) {
+            if (data[i] != prefix[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 }
