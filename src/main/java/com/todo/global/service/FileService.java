@@ -329,9 +329,7 @@ public class FileService {
             return;
         }
 
-        boolean allowed = ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType)
-                || ALLOWED_PROOF_DOCUMENT_CONTENT_TYPES.contains(contentType)
-                || (OCTET_STREAM_CONTENT_TYPE.equals(contentType) && HWP_EXTENSION.equalsIgnoreCase(ext));
+        boolean allowed = ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType) || isProofDocument(contentType, ext);
         if (!allowed) {
             throw new BusinessException("지원하지 않는 파일 형식입니다.", HttpStatus.BAD_REQUEST);
         }
@@ -339,9 +337,7 @@ public class FileService {
 
     /** 문서(PDF/docx/xlsx/csv/HWP)는 20MB, 그 외 이미지는 5MB가 상한이다. */
     private void validateFileSize(UploadType type, String contentType, String ext, long fileSize) {
-        boolean isDocument = type == UploadType.PROOF
-                && (ALLOWED_PROOF_DOCUMENT_CONTENT_TYPES.contains(contentType)
-                        || (OCTET_STREAM_CONTENT_TYPE.equals(contentType) && HWP_EXTENSION.equalsIgnoreCase(ext)));
+        boolean isDocument = type == UploadType.PROOF && isProofDocument(contentType, ext);
         if (isDocument) {
             if (fileSize > MAX_PROOF_DOCUMENT_SIZE) {
                 throw new BusinessException("인증 파일은 20MB 이하만 업로드할 수 있습니다.", HttpStatus.BAD_REQUEST);
@@ -351,6 +347,16 @@ public class FileService {
         if (fileSize > MAX_IMAGE_SIZE) {
             throw new BusinessException("이미지는 5MB 이하만 업로드할 수 있습니다.", HttpStatus.BAD_REQUEST);
         }
+    }
+
+    /**
+     * PROOF 요청의 contentType·확장자가 문서(PDF/docx/xlsx/csv/HWP) 카테고리에 해당하는지
+     * 판단한다. {@link #validateContentType}과 {@link #validateFileSize}가 같은 기준으로
+     * 문서 여부를 판단해야 해서(특히 HWP의 octet-stream 특례) 하나로 모아둔다.
+     */
+    private boolean isProofDocument(String contentType, String ext) {
+        return ALLOWED_PROOF_DOCUMENT_CONTENT_TYPES.contains(contentType)
+                || (OCTET_STREAM_CONTENT_TYPE.equals(contentType) && HWP_EXTENSION.equalsIgnoreCase(ext));
     }
 
     /**
