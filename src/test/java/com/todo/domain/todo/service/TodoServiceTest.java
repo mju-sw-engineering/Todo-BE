@@ -18,6 +18,7 @@ import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
+import com.todo.domain.todo.entity.ProofKind;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoReaction;
@@ -271,13 +272,13 @@ class TodoServiceTest {
         // 실패한 TASK가 하나 남아 있으므로 재평가는 FAIL 단계에서 끝나고 성공 개수는 보지 않는다.
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(1L);
 
-        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("expired-proof")))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("expired-proof", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("마감 시간이 지났습니다.");
         assertThat(expired.getStatus()).isEqualTo(WorkItemStatus.FAIL);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.FAIL);
 
-        todoService.submitTodoWorkItem(21L, "2", new SubmitTodoRequest("remaining-proof"));
+        todoService.submitTodoWorkItem(21L, "2", new SubmitTodoRequest("remaining-proof", null));
 
         assertThat(remaining.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.FAIL);
@@ -295,7 +296,7 @@ class TodoServiceTest {
         given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
 
-        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "2", new SubmitTodoRequest("proof")))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "2", new SubmitTodoRequest("proof", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("해당 WorkItem의 담당자가 아닙니다.")
                 .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
@@ -313,7 +314,7 @@ class TodoServiceTest {
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
         given(todoWorkItemRepository.existsByProofImageKey("used-proof")).willReturn(true);
 
-        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("used-proof")))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("used-proof", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 다른 WorkItem에 제출된 인증 사진입니다.")
                 .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
@@ -337,17 +338,41 @@ class TodoServiceTest {
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
 
-        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof"));
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof", null));
 
         assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
         then(teamRepository).should().incrementSuccessCount(TEAM_ID);
 
-        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("another-proof")))
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("another-proof", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 제출했거나 종료된 WorkItem입니다.")
                 .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.CONFLICT));
         then(teamRepository).shouldHaveNoMoreInteractions();
+    }
+
+    @Test
+    void 문서_제출은_검증된_contentType과_파일명을_함께_저장한다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(assignee));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+        given(fileService.validateProofFile(1L, TODO_ID, "proof.pdf")).willReturn("application/pdf");
+        given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(1L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.pdf", "발표자료_초안.pdf"));
+
+        // 저장되는 contentType은 클라이언트가 보낸 값이 아니라 제출 검증이 S3 HEAD로 확정한 값이다.
+        assertThat(workItem.getProofContentType()).isEqualTo("application/pdf");
+        assertThat(workItem.getProofFileName()).isEqualTo("발표자료_초안.pdf");
+        assertThat(workItem.getProofKind()).isEqualTo(ProofKind.DOCUMENT);
+        assertThat(workItem.getProofThumbnailKey()).isNull();
+        then(fileService).should().createProofThumbnail("proof.pdf", "application/pdf");
     }
 
     @Test

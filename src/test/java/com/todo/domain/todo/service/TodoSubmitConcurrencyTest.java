@@ -134,7 +134,7 @@ class TodoSubmitConcurrencyTest extends MySqlTestSupport {
                                 submission.workItemId(),
                                 submission.submitter().getLoginId(),
                                 new SubmitTodoRequest("proofs/" + submission.submitter().getId()
-                                        + "/" + workItemIds.todoId() + ".jpg")
+                                        + "/" + workItemIds.todoId() + ".jpg", null)
                         );
                     } catch (Exception e) {
                         failure.compareAndSet(null, e);

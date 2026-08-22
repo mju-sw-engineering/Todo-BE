@@ -301,7 +301,7 @@ public class TodoService {
         TodoWorkItem workItem = todoWorkItemRepository
                 .findDirectByTodoIdAndAssigneeIdWithTodo(todoId, user.getId())
                 .orElseThrow(() -> new BusinessException("해당 투두의 DIRECT 담당자가 아닙니다.", HttpStatus.FORBIDDEN));
-        submitWorkItem(workItem.getId(), workItem.getTodo().getId(), user, request.proofImageKey());
+        submitWorkItem(workItem.getId(), workItem.getTodo().getId(), user, request);
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -309,7 +309,7 @@ public class TodoService {
         User user = findAuthenticatedUser(userId);
         TodoWorkItem workItem = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
-        submitWorkItem(workItemId, workItem.getTodo().getId(), user, request.proofImageKey());
+        submitWorkItem(workItemId, workItem.getTodo().getId(), user, request);
     }
 
     public TodoWorkItemSubmissionResponse getTodoWorkItemSubmission(Long workItemId, String userId) {
@@ -542,7 +542,8 @@ public class TodoService {
         return CreateTodoResponse.from(todo, toKstOffset(todo.getDeadline()), directAssignees, tasks);
     }
 
-    private void submitWorkItem(Long workItemId, Long todoId, User user, String proofImageKey) {
+    private void submitWorkItem(Long workItemId, Long todoId, User user, SubmitTodoRequest request) {
+        String proofImageKey = request.proofImageKey();
         OperationResult check = transactionTemplate.execute(status -> checkSubmission(todoId, workItemId, user.getId()));
         requireOperationResult(check).throwIfFailed();
 
@@ -559,7 +560,9 @@ public class TodoService {
                     workItemId,
                     user.getId(),
                     proofImageKey,
-                    proofThumbnailKey
+                    proofThumbnailKey,
+                    proofContentType,
+                    request.proofFileName()
             ));
         } catch (RuntimeException e) {
             cleanupProofThumbnail(proofThumbnailKey, e);
@@ -588,7 +591,9 @@ public class TodoService {
             Long workItemId,
             Long userId,
             String proofImageKey,
-            String proofThumbnailKey
+            String proofThumbnailKey,
+            String proofContentType,
+            String proofFileName
     ) {
         Todo todo = todoRepository.findByIdWithLock(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
@@ -602,7 +607,7 @@ public class TodoService {
             return OperationResult.failed("이미 다른 WorkItem에 제출된 인증 사진입니다.", HttpStatus.BAD_REQUEST);
         }
 
-        workItem.submit(proofImageKey, proofThumbnailKey);
+        workItem.submit(proofImageKey, proofThumbnailKey, proofContentType, proofFileName);
         todoStatusTransitionService.reevaluate(todo);
         notifyTodoSubmitted(todo, workItem);
         return OperationResult.success();
