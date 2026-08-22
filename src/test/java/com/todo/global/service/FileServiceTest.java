@@ -364,8 +364,9 @@ class FileServiceTest {
                 .contentLength(5L * 1024 * 1024)
                 .build());
 
-        fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.webp");
+        String contentType = fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.webp");
 
+        assertThat(contentType).isEqualTo("image/webp");
         ArgumentCaptor<HeadObjectRequest> captor = ArgumentCaptor.forClass(HeadObjectRequest.class);
         then(s3Client).should().headObject(captor.capture());
         assertThat(captor.getValue().bucket()).isEqualTo("uploads");
@@ -640,6 +641,23 @@ class FileServiceTest {
                 .hasMessage("파일 내용이 형식과 일치하지 않습니다.");
     }
 
+    @Test
+    void HWP_컨텐츠타입이면_확장자가_달라도_시그니처를_검증한다() {
+        // 회귀 방지: 확장자 기준으로 검사하면 x-hwp MIME에 다른 확장자를 붙인 조합이
+        // 어떤 시그니처 검증에도 걸리지 않고 통과한다.
+        givenTodoWithTeam(10L, 5L);
+        given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
+                .contentType("application/x-hwp")
+                .contentLength(1024L)
+                .build());
+        given(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).willReturn(
+                ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), new byte[]{1, 2, 3, 4}));
+
+        assertThatThrownBy(() -> fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.png"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("파일 내용이 형식과 일치하지 않습니다.");
+    }
+
     private byte[] hwpFixtureBytes() {
         byte[] ole2Magic = {(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1};
         byte[] marker = "HWP Document File".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
@@ -680,8 +698,8 @@ class FileServiceTest {
 
     @Test
     void 썸네일은_key가_비어있으면_null을_반환한다() {
-        assertThat(fileService.createProofThumbnail(null)).isNull();
-        assertThat(fileService.createProofThumbnail(" ")).isNull();
+        assertThat(fileService.createProofThumbnail(null, "image/jpeg")).isNull();
+        assertThat(fileService.createProofThumbnail(" ", "image/jpeg")).isNull();
     }
 
     @Test
@@ -689,16 +707,27 @@ class FileServiceTest {
         given(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
                 .willReturn(ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), new byte[]{1, 2, 3}));
 
-        assertThat(fileService.createProofThumbnail("proofs/1/a.png")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/1/a.png", "image/png")).isNull();
     }
 
     @Test
-    void 문서_확장자는_s3_조회_없이_썸네일을_건너뛴다() {
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.pdf")).isNull();
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.docx")).isNull();
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.xlsx")).isNull();
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.csv")).isNull();
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.hwp")).isNull();
+    void 문서_컨텐츠타입은_s3_조회_없이_썸네일을_건너뛴다() {
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.pdf", "application/pdf")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.csv", "text/csv")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.hwp", "application/x-hwp")).isNull();
+
+        then(s3Client).should(never()).getObjectAsBytes(any(GetObjectRequest.class));
+    }
+
+    @Test
+    void 확장자가_이미지여도_문서_컨텐츠타입이면_썸네일을_건너뛴다() {
+        // 확장자는 클라이언트가 붙인 파일명에서 온 값이라 실제 내용과 다를 수 있다.
+        // 판별은 presigned PUT 서명으로 강제된 contentType을 따른다.
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.jpg", "application/pdf")).isNull();
 
         then(s3Client).should(never()).getObjectAsBytes(any(GetObjectRequest.class));
     }
@@ -709,7 +738,7 @@ class FileServiceTest {
         given(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
                 .willReturn(ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), source));
 
-        String thumbnailKey = fileService.createProofThumbnail("proofs/1/a.webp");
+        String thumbnailKey = fileService.createProofThumbnail("proofs/1/a.webp", "image/webp");
 
         assertThat(thumbnailKey).isNotNull();
 

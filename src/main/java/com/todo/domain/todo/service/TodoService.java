@@ -546,11 +546,11 @@ public class TodoService {
         OperationResult check = transactionTemplate.execute(status -> checkSubmission(todoId, workItemId, user.getId()));
         requireOperationResult(check).throwIfFailed();
 
-        fileService.validateProofFile(user.getId(), todoId, proofImageKey);
+        String proofContentType = fileService.validateProofFile(user.getId(), todoId, proofImageKey);
         if (todoWorkItemRepository.existsByProofImageKey(proofImageKey)) {
             throw new BusinessException("이미 다른 WorkItem에 제출된 인증 사진입니다.", HttpStatus.BAD_REQUEST);
         }
-        String proofThumbnailKey = fileService.createProofThumbnail(proofImageKey);
+        String proofThumbnailKey = fileService.createProofThumbnail(proofImageKey, proofContentType);
 
         OperationResult result;
         try {

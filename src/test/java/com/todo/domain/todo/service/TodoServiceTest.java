@@ -265,7 +265,8 @@ class TodoServiceTest {
         given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(expired));
         given(todoWorkItemRepository.findByIdWithLock(21L)).willReturn(Optional.of(remaining));
-        given(fileService.createProofThumbnail("remaining-proof")).willReturn("remaining-thumb");
+        given(fileService.validateProofFile(2L, TODO_ID, "remaining-proof")).willReturn("image/jpeg");
+        given(fileService.createProofThumbnail("remaining-proof", "image/jpeg")).willReturn("remaining-thumb");
         given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(2L);
         // 실패한 TASK가 하나 남아 있으므로 재평가는 FAIL 단계에서 끝나고 성공 개수는 보지 않는다.
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(1L);
@@ -330,7 +331,8 @@ class TodoServiceTest {
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
-        given(fileService.createProofThumbnail("proof")).willReturn("thumb");
+        given(fileService.validateProofFile(1L, TODO_ID, "proof")).willReturn("image/jpeg");
+        given(fileService.createProofThumbnail("proof", "image/jpeg")).willReturn("thumb");
         given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(1L);
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
