@@ -46,19 +46,8 @@ class PresignedUploadRequestValidationTest {
     }
 
     @Test
-    void fileSize가_최대_크기를_넘으면_검증에_걸린다() {
-        PresignedUploadRequest request = request(PresignedUploadRequest.MAX_FILE_SIZE + 1);
-
-        assertThat(validator.validate(request))
-                .extracting(violation -> violation.getPropertyPath().toString())
-                .contains("fileSize");
-    }
-
-    @Test
-    void fileSize가_최대_크기_이하면_검증을_통과한다() {
+    void fileSize가_양수면_검증을_통과한다() {
         assertThat(validator.validate(request(1024L))).isEmpty();
-        // 5MB 정확히는 허용 경계
-        assertThat(validator.validate(request(PresignedUploadRequest.MAX_FILE_SIZE))).isEmpty();
     }
 
     private PresignedUploadRequest request(Long fileSize) {

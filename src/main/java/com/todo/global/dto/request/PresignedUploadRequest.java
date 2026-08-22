@@ -2,7 +2,6 @@ package com.todo.global.dto.request;
 
 import com.todo.global.dto.UploadType;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -23,9 +22,9 @@ public record PresignedUploadRequest(
 
         @NotNull
         @Positive
-        @Max(MAX_FILE_SIZE)
         @Schema(
-                description = "업로드할 파일 크기(byte). 해당 크기로 서명되어 다른 크기로는 업로드할 수 없습니다.",
+                description = "업로드할 파일 크기(byte). 해당 크기로 서명되어 다른 크기로는 업로드할 수 없습니다. "
+                        + "업로드 타입·형식별 상한은 서버가 별도로 검증합니다.",
                 example = "1048576"
         )
         Long fileSize,
@@ -41,5 +40,4 @@ public record PresignedUploadRequest(
         @Schema(description = "PROOF 타입 업로드에만 필수. 인증 파일이 속할 투두 ID", example = "1")
         Long todoId
 ) {
-    public static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
 }
