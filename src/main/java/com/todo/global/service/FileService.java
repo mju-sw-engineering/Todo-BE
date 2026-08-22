@@ -49,14 +49,19 @@ public class FileService {
     private static final String HWP_CONTENT_TYPE = "application/x-hwp";
     private static final String OCTET_STREAM_CONTENT_TYPE = "application/octet-stream";
     private static final String HWP_EXTENSION = "hwp";
+    /** hwpx가 ZIP 안에 담아두는 규격상의 MIME. 일부 클라이언트가 이 값을 그대로 보낸다. */
+    private static final String HWPX_ZIP_CONTENT_TYPE = "application/hwp+zip";
+    private static final String HWPX_CONTENT_TYPE = "application/vnd.hancom.hwpx";
+    private static final String HWPX_EXTENSION = "hwpx";
     private static final Set<String> ALLOWED_PROOF_DOCUMENT_CONTENT_TYPES = Set.of(
             "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "text/csv",
-            HWP_CONTENT_TYPE
+            HWP_CONTENT_TYPE,
+            HWPX_CONTENT_TYPE,
+            HWPX_ZIP_CONTENT_TYPE
     );
-    private static final Set<String> IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
     private static final byte[] PDF_MAGIC = "%PDF-".getBytes(StandardCharsets.US_ASCII);
     private static final byte[] ZIP_MAGIC = {0x50, 0x4B, 0x03, 0x04};
     private static final byte[] OLE2_MAGIC = {
@@ -64,6 +69,7 @@ public class FileService {
     };
     private static final String HWP_MARKER = "HWP Document File";
     private static final int HWP_MARKER_SCAN_RANGE = 256 * 1024;
+    private static final int MAX_EXTENSION_LENGTH = 10;
     private static final int THUMBNAIL_MAX_SIZE = 480;
     private static final double THUMBNAIL_QUALITY = 0.8;
     private static final long MAX_IMAGE_SIZE = 5L * 1024 * 1024;
@@ -108,11 +114,16 @@ public class FileService {
         return new PresignedUploadResponse(uploadUrl, key);
     }
 
-    public String createProofThumbnail(String objectKey) {
+    /**
+     * 이미지 여부는 확장자가 아니라 contentType으로 판단한다. 확장자는 클라이언트가 붙인
+     * 파일명에서 온 것이라 실제 내용과 다를 수 있고(예: PDF를 a.jpg로 업로드),
+     * contentType은 presigned PUT 서명에 포함돼 업로드 시점에 강제된 값이다.
+     */
+    public String createProofThumbnail(String objectKey, String contentType) {
         if (objectKey == null || objectKey.isBlank()) {
             return null;
         }
-        if (!IMAGE_EXTENSIONS.contains(extractExtension(objectKey).toLowerCase())) {
+        if (!ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType)) {
             return null;
         }
 
@@ -186,8 +197,11 @@ public class FileService {
      *
      * <p>썸네일 여부는 DB 조회 없이 바로 판별되므로, teamId 조회보다 먼저 확인해 불필요한
      * 조회를 피한다.
+     *
+     * @return HEAD 결과로 확정된 contentType. 이후 이미지/문서 분기(썸네일 생성 등)는
+     *         확장자 추측이 아니라 이 값을 기준으로 한다.
      */
-    public void validateProofFile(Long userId, Long todoId, String objectKey) {
+    public String validateProofFile(Long userId, Long todoId, String objectKey) {
         if (objectKey != null && objectKey.contains("/thumbs/")) {
             throw new BusinessException("썸네일 파일은 인증 사진으로 제출할 수 없습니다.", HttpStatus.BAD_REQUEST);
         }
@@ -219,6 +233,7 @@ public class FileService {
             validateFileSize(UploadType.PROOF, object.contentType(), ext, object.contentLength());
         }
         validateFileSignature(objectKey, object.contentType(), ext);
+        return object.contentType();
     }
 
     public String resolveImageUrl(String objectKey) {
@@ -308,11 +323,20 @@ public class FileService {
                 : directory + "/thumbs/" + thumbnailFileName;
     }
 
+    /**
+     * 확장자는 클라이언트가 보낸 파일명에서 오고 오브젝트 키의 suffix로 그대로 붙는다.
+     * 영숫자 토큰이 아니면 확장자가 없는 것으로 취급한다 — {@code a.jpg/thumbs/x} 같은
+     * 파일명이 키에 슬래시를 끼워 넣어 이상한 경로를 만드는 걸 막는다.
+     */
     private String extractExtension(String filename) {
         if (filename == null || !filename.contains(".")) {
             return "";
         }
-        return filename.substring(filename.lastIndexOf('.') + 1);
+        String ext = filename.substring(filename.lastIndexOf('.') + 1);
+        if (ext.isEmpty() || ext.length() > MAX_EXTENSION_LENGTH || !ext.chars().allMatch(Character::isLetterOrDigit)) {
+            return "";
+        }
+        return ext;
     }
 
     /**
@@ -324,14 +348,21 @@ public class FileService {
     private void validateContentType(UploadType type, String contentType, String ext) {
         if (type != UploadType.PROOF) {
             if (!ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType)) {
-                throw new BusinessException("지원하지 않는 이미지 형식입니다.", HttpStatus.BAD_REQUEST);
+                throw new BusinessException(
+                        "지원하지 않는 이미지 형식입니다. JPG·PNG·WebP만 업로드할 수 있습니다.",
+                        HttpStatus.BAD_REQUEST);
             }
             return;
         }
 
         boolean allowed = ALLOWED_IMAGE_CONTENT_TYPES.contains(contentType) || isProofDocument(contentType, ext);
         if (!allowed) {
-            throw new BusinessException("지원하지 않는 파일 형식입니다.", HttpStatus.BAD_REQUEST);
+            // 어떤 형식이 되는지까지 알려줘야 사용자가 대처할 수 있다. 목록에 없는 형식(구형
+            // .doc/.xls 등)을 올린 사용자가 무엇으로 바꿔 저장해야 하는지 바로 알 수 있다.
+            throw new BusinessException(
+                    "지원하지 않는 파일 형식입니다. "
+                            + "이미지(JPG·PNG·WebP)와 문서(PDF·DOCX·XLSX·CSV·HWP·HWPX)만 업로드할 수 있습니다.",
+                    HttpStatus.BAD_REQUEST);
         }
     }
 
@@ -356,13 +387,35 @@ public class FileService {
      */
     private boolean isProofDocument(String contentType, String ext) {
         return ALLOWED_PROOF_DOCUMENT_CONTENT_TYPES.contains(contentType)
+                || isHwpUpload(contentType, ext)
+                || isHwpxUpload(contentType, ext);
+    }
+
+    /** HWP 판정도 contentType이 우선이고, octet-stream은 {@code .hwp} 확장자 조합만 인정한다. */
+    private boolean isHwpUpload(String contentType, String ext) {
+        return HWP_CONTENT_TYPE.equals(contentType)
                 || (OCTET_STREAM_CONTENT_TYPE.equals(contentType) && HWP_EXTENSION.equalsIgnoreCase(ext));
+    }
+
+    /**
+     * hwpx는 hwp와 이름만 비슷할 뿐 실제로는 ZIP + XML(OWPML) 컨테이너라, 시그니처 검증도
+     * OLE2가 아니라 docx/xlsx와 같은 ZIP 경로를 탄다. 등록된 MIME이 없어 브라우저가
+     * octet-stream을 보내는 것도 hwp와 같아서 확장자 특례를 동일하게 둔다.
+     */
+    private boolean isHwpxUpload(String contentType, String ext) {
+        return HWPX_CONTENT_TYPE.equals(contentType)
+                || HWPX_ZIP_CONTENT_TYPE.equals(contentType)
+                || (OCTET_STREAM_CONTENT_TYPE.equals(contentType) && HWPX_EXTENSION.equalsIgnoreCase(ext));
     }
 
     /**
      * 나중에 만들 미리보기 기능이 확장자만 바꿔치기된 파일 때문에 오작동하지 않도록, 가벼운
      * 매직바이트 검증을 한다. docx/xlsx를 서로 구분하는 zip 내부 검사는 하지 않고, CSV는
      * 신뢰할 시그니처가 없어 검증을 건너뛴다.
+     *
+     * <p>모든 분기는 contentType 기준이다. 확장자를 기준으로 삼으면 {@code application/x-hwp}에
+     * 다른 확장자를 붙이는 식으로 어떤 시그니처 검증에도 걸리지 않는 조합이 생긴다. 확장자는
+     * HWP의 octet-stream 특례(발급 단계에서 {@code .hwp}로 제한됨)를 다시 확인할 때만 쓴다.
      */
     private void validateFileSignature(String objectKey, String contentType, String ext) {
         if ("application/pdf".equals(contentType)) {
@@ -371,13 +424,13 @@ public class FileService {
             }
             return;
         }
-        if (isOoxmlContentType(contentType)) {
+        if (isOoxmlContentType(contentType) || isHwpxUpload(contentType, ext)) {
             if (!startsWith(readObjectPrefix(objectKey, ZIP_MAGIC.length), ZIP_MAGIC)) {
                 throw new BusinessException("파일 내용이 형식과 일치하지 않습니다.", HttpStatus.BAD_REQUEST);
             }
             return;
         }
-        if (HWP_EXTENSION.equalsIgnoreCase(ext)) {
+        if (isHwpUpload(contentType, ext)) {
             byte[] window = readObjectPrefix(objectKey, HWP_MARKER_SCAN_RANGE);
             boolean valid = startsWith(window, OLE2_MAGIC)
                     && new String(window, StandardCharsets.US_ASCII).contains(HWP_MARKER);

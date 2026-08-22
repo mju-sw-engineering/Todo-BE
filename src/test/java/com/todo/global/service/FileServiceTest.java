@@ -217,7 +217,7 @@ class FileServiceTest {
                 new PresignedUploadRequest(UploadType.PROFILE, "profile.gif", "image/gif", 1024L, null, null)
         ))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("지원하지 않는 이미지 형식입니다.")
+                .hasMessage("지원하지 않는 이미지 형식입니다. JPG·PNG·WebP만 업로드할 수 있습니다.")
                 .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
         then(s3Presigner).should(never()).presignPutObject(any(PutObjectPresignRequest.class));
     }
@@ -229,7 +229,7 @@ class FileServiceTest {
                 new PresignedUploadRequest(UploadType.PROFILE, "proof.pdf", "application/pdf", 1024L, null, null)
         ))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("지원하지 않는 이미지 형식입니다.");
+                .hasMessage("지원하지 않는 이미지 형식입니다. JPG·PNG·WebP만 업로드할 수 있습니다.");
     }
 
     @Test
@@ -283,13 +283,59 @@ class FileServiceTest {
     }
 
     @Test
+    void PROOF는_HWPX_MIME과_octet_stream_HWPX_확장자_조합을_허용한다() throws Exception {
+        given(s3Presigner.presignPutObject(any(PutObjectPresignRequest.class))).willReturn(
+                PresignedPutObjectRequest.builder()
+                        .httpRequest(httpRequest("https://storage.example.com/hwpx", SdkHttpMethod.PUT))
+                        .expiration(Instant.now().plusSeconds(600))
+                        .isBrowserExecutable(false)
+                        .signedHeaders(Map.of("host", List.of("storage.example.com")))
+                        .build()
+        );
+        givenTodoWithTeam(10L, 5L);
+        given(teamMemberRepository.existsByTeamIdAndUserId(5L, 3L)).willReturn(true);
+
+        assertThat(fileService.generatePresignedPutUrl(3L,
+                new PresignedUploadRequest(UploadType.PROOF, "proof.hwpx", "application/vnd.hancom.hwpx", 1024L, null, 10L)
+        ).objectKey()).endsWith(".hwpx");
+        assertThat(fileService.generatePresignedPutUrl(3L,
+                new PresignedUploadRequest(UploadType.PROOF, "proof.hwpx", "application/hwp+zip", 1024L, null, 10L)
+        ).objectKey()).endsWith(".hwpx");
+        assertThat(fileService.generatePresignedPutUrl(3L,
+                new PresignedUploadRequest(UploadType.PROOF, "proof.hwpx", "application/octet-stream", 1024L, null, 10L)
+        ).objectKey()).endsWith(".hwpx");
+    }
+
+    @Test
+    void 영숫자가_아닌_확장자는_key에_붙이지_않는다() throws Exception {
+        given(s3Presigner.presignPutObject(any(PutObjectPresignRequest.class))).willReturn(
+                PresignedPutObjectRequest.builder()
+                        .httpRequest(httpRequest("https://storage.example.com/upload", SdkHttpMethod.PUT))
+                        .expiration(Instant.now().plusSeconds(600))
+                        .isBrowserExecutable(false)
+                        .signedHeaders(Map.of("host", List.of("storage.example.com")))
+                        .build()
+        );
+
+        // 파일명이 키의 suffix가 되므로, 슬래시가 섞이면 의도하지 않은 경로가 만들어진다.
+        String objectKey = fileService.generatePresignedPutUrl(
+                1L,
+                new PresignedUploadRequest(UploadType.PROFILE, "profile.png/thumbs/x", "image/png", 1024L, null, null)
+        ).objectKey();
+
+        assertThat(objectKey).startsWith("profiles/1/");
+        assertThat(objectKey).doesNotContain("/thumbs/");
+        assertThat(objectKey).doesNotEndWith(".");
+    }
+
+    @Test
     void octet_stream은_HWP_확장자가_아니면_발급_단계에서_거절한다() {
         assertThatThrownBy(() -> fileService.generatePresignedPutUrl(
                 3L,
                 new PresignedUploadRequest(UploadType.PROOF, "proof.exe", "application/octet-stream", 1024L, null, 10L)
         ))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("지원하지 않는 파일 형식입니다.");
+                .hasMessage("지원하지 않는 파일 형식입니다. 이미지(JPG·PNG·WebP)와 문서(PDF·DOCX·XLSX·CSV·HWP·HWPX)만 업로드할 수 있습니다.");
         then(s3Presigner).should(never()).presignPutObject(any(PutObjectPresignRequest.class));
     }
 
@@ -300,7 +346,7 @@ class FileServiceTest {
                 new PresignedUploadRequest(UploadType.PROOF, "proof.zip", "application/zip", 1024L, null, 10L)
         ))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("지원하지 않는 파일 형식입니다.");
+                .hasMessage("지원하지 않는 파일 형식입니다. 이미지(JPG·PNG·WebP)와 문서(PDF·DOCX·XLSX·CSV·HWP·HWPX)만 업로드할 수 있습니다.");
     }
 
     @Test
@@ -364,8 +410,9 @@ class FileServiceTest {
                 .contentLength(5L * 1024 * 1024)
                 .build());
 
-        fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.webp");
+        String contentType = fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.webp");
 
+        assertThat(contentType).isEqualTo("image/webp");
         ArgumentCaptor<HeadObjectRequest> captor = ArgumentCaptor.forClass(HeadObjectRequest.class);
         then(s3Client).should().headObject(captor.capture());
         assertThat(captor.getValue().bucket()).isEqualTo("uploads");
@@ -465,7 +512,7 @@ class FileServiceTest {
 
         assertThatThrownBy(() -> fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.gif"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("지원하지 않는 파일 형식입니다.");
+                .hasMessage("지원하지 않는 파일 형식입니다. 이미지(JPG·PNG·WebP)와 문서(PDF·DOCX·XLSX·CSV·HWP·HWPX)만 업로드할 수 있습니다.");
     }
 
     @Test
@@ -604,7 +651,7 @@ class FileServiceTest {
 
         assertThatThrownBy(() -> fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.exe"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("지원하지 않는 파일 형식입니다.");
+                .hasMessage("지원하지 않는 파일 형식입니다. 이미지(JPG·PNG·WebP)와 문서(PDF·DOCX·XLSX·CSV·HWP·HWPX)만 업로드할 수 있습니다.");
     }
 
     @Test
@@ -636,6 +683,58 @@ class FileServiceTest {
                 ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), new byte[]{1, 2, 3, 4}));
 
         assertThatThrownBy(() -> fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.hwp"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("파일 내용이 형식과 일치하지 않습니다.");
+    }
+
+    @Test
+    void HWPX는_OLE2가_아니라_ZIP_시그니처로_검증한다() {
+        givenTodoWithTeam(10L, 5L);
+        given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
+                .contentType("application/vnd.hancom.hwpx")
+                .contentLength(1024L)
+                .build());
+        given(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).willReturn(
+                ResponseBytes.fromByteArray(GetObjectResponse.builder().build(),
+                        new byte[]{0x50, 0x4B, 0x03, 0x04}));
+
+        fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.hwpx");
+
+        // ZIP 매직 4바이트만 읽는다. OLE2 경로(256KB 스캔)를 타면 range가 달라진다.
+        ArgumentCaptor<GetObjectRequest> captor = ArgumentCaptor.forClass(GetObjectRequest.class);
+        then(s3Client).should().getObjectAsBytes(captor.capture());
+        assertThat(captor.getValue().range()).isEqualTo("bytes=0-3");
+    }
+
+    @Test
+    void HWPX인데_ZIP_시그니처가_아니면_거절한다() {
+        givenTodoWithTeam(10L, 5L);
+        given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
+                .contentType("application/octet-stream")
+                .contentLength(1024L)
+                .build());
+        given(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).willReturn(
+                ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), hwpFixtureBytes()));
+
+        // OLE2(구형 hwp) 파일을 .hwpx로 이름만 바꿔 올린 경우
+        assertThatThrownBy(() -> fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.hwpx"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("파일 내용이 형식과 일치하지 않습니다.");
+    }
+
+    @Test
+    void HWP_컨텐츠타입이면_확장자가_달라도_시그니처를_검증한다() {
+        // 회귀 방지: 확장자 기준으로 검사하면 x-hwp MIME에 다른 확장자를 붙인 조합이
+        // 어떤 시그니처 검증에도 걸리지 않고 통과한다.
+        givenTodoWithTeam(10L, 5L);
+        given(s3Client.headObject(any(HeadObjectRequest.class))).willReturn(HeadObjectResponse.builder()
+                .contentType("application/x-hwp")
+                .contentLength(1024L)
+                .build());
+        given(s3Client.getObjectAsBytes(any(GetObjectRequest.class))).willReturn(
+                ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), new byte[]{1, 2, 3, 4}));
+
+        assertThatThrownBy(() -> fileService.validateProofFile(1L, 10L, "proofs/5/10/1/a.png"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("파일 내용이 형식과 일치하지 않습니다.");
     }
@@ -680,8 +779,8 @@ class FileServiceTest {
 
     @Test
     void 썸네일은_key가_비어있으면_null을_반환한다() {
-        assertThat(fileService.createProofThumbnail(null)).isNull();
-        assertThat(fileService.createProofThumbnail(" ")).isNull();
+        assertThat(fileService.createProofThumbnail(null, "image/jpeg")).isNull();
+        assertThat(fileService.createProofThumbnail(" ", "image/jpeg")).isNull();
     }
 
     @Test
@@ -689,16 +788,27 @@ class FileServiceTest {
         given(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
                 .willReturn(ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), new byte[]{1, 2, 3}));
 
-        assertThat(fileService.createProofThumbnail("proofs/1/a.png")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/1/a.png", "image/png")).isNull();
     }
 
     @Test
-    void 문서_확장자는_s3_조회_없이_썸네일을_건너뛴다() {
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.pdf")).isNull();
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.docx")).isNull();
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.xlsx")).isNull();
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.csv")).isNull();
-        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.hwp")).isNull();
+    void 문서_컨텐츠타입은_s3_조회_없이_썸네일을_건너뛴다() {
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.pdf", "application/pdf")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.csv", "text/csv")).isNull();
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.hwp", "application/x-hwp")).isNull();
+
+        then(s3Client).should(never()).getObjectAsBytes(any(GetObjectRequest.class));
+    }
+
+    @Test
+    void 확장자가_이미지여도_문서_컨텐츠타입이면_썸네일을_건너뛴다() {
+        // 확장자는 클라이언트가 붙인 파일명에서 온 값이라 실제 내용과 다를 수 있다.
+        // 판별은 presigned PUT 서명으로 강제된 contentType을 따른다.
+        assertThat(fileService.createProofThumbnail("proofs/5/10/1/a.jpg", "application/pdf")).isNull();
 
         then(s3Client).should(never()).getObjectAsBytes(any(GetObjectRequest.class));
     }
@@ -709,7 +819,7 @@ class FileServiceTest {
         given(s3Client.getObjectAsBytes(any(GetObjectRequest.class)))
                 .willReturn(ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), source));
 
-        String thumbnailKey = fileService.createProofThumbnail("proofs/1/a.webp");
+        String thumbnailKey = fileService.createProofThumbnail("proofs/1/a.webp", "image/webp");
 
         assertThat(thumbnailKey).isNotNull();
 
