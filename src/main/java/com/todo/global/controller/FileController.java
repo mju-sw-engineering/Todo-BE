@@ -38,7 +38,9 @@ public class FileController {
     private static final int SIGNUP_TOKEN_ISSUE_LIMIT = 5;
     /** 토큰조차 없는 요청. 공용 IP 뒤에 여러 명이 있을 수 있어 조금 더 여유를 둔다. */
     private static final int ANONYMOUS_ISSUE_LIMIT = 10;
-    private static final Duration ANONYMOUS_ISSUE_WINDOW = Duration.ofMinutes(1);
+    /** 로그인 사용자. PROFILE/TEAM/PROOF 전체를 한 버킷으로 공유한다. */
+    private static final int AUTHENTICATED_ISSUE_LIMIT = 20;
+    private static final Duration ISSUE_WINDOW = Duration.ofMinutes(1);
 
     private final FileService fileService;
     private final UserRepository userRepository;
@@ -63,12 +65,15 @@ public class FileController {
         if (request.type() != UploadType.PROFILE) {
             User user = resolveAuthenticatedUser(authentication)
                     .orElseThrow(() -> new BusinessException("이미지 업로드는 로그인이 필요합니다.", HttpStatus.UNAUTHORIZED));
+            requireAuthenticatedIssueQuota(user.getId());
             return ResponseEntity.ok(ApiResponse.success(fileService.generatePresignedPutUrl(user.getId(), request)));
         }
 
         Long userId = resolveAuthenticatedUser(authentication).map(User::getId).orElse(null);
         if (userId == null) {
             requireAnonymousIssueQuota(request.signupToken(), httpRequest);
+        } else {
+            requireAuthenticatedIssueQuota(userId);
         }
         return ResponseEntity.ok(ApiResponse.success(fileService.generatePresignedPutUrl(userId, request)));
     }
@@ -101,8 +106,13 @@ public class FileController {
         requireQuota("presigned-upload:ip:" + clientIpResolver.resolve(httpRequest), ANONYMOUS_ISSUE_LIMIT);
     }
 
+    /** 로그인 사용자는 PROFILE/TEAM/PROOF 요청을 사용자 단위 버킷 하나로 공유해서 제한한다. */
+    private void requireAuthenticatedIssueQuota(Long userId) {
+        requireQuota("presigned-upload:user:" + userId, AUTHENTICATED_ISSUE_LIMIT);
+    }
+
     private void requireQuota(String key, int limit) {
-        if (!rateLimiter.tryAcquire(key, limit, ANONYMOUS_ISSUE_WINDOW)) {
+        if (!rateLimiter.tryAcquire(key, limit, ISSUE_WINDOW)) {
             throw new BusinessException("요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.", HttpStatus.TOO_MANY_REQUESTS);
         }
     }

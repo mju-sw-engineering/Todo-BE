@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
@@ -208,18 +209,51 @@ class FileControllerTest {
     }
 
     @Test
-    void 로그인_프로필_업로드는_rate_limit을_적용하지_않는다() {
+    void 로그인_프로필_업로드도_사용자_단위_rate_limit을_적용한다() {
         FileController controller = controller();
         PresignedUploadRequest request = profileRequest();
         PresignedUploadResponse serviceResponse = new PresignedUploadResponse("https://upload", "profiles/1/a.png");
         User user = userWithId(1L);
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        givenRateLimitAllowed();
         given(fileService.generatePresignedPutUrl(1L, request)).willReturn(serviceResponse);
 
         ResponseEntity<ApiResponse<PresignedUploadResponse>> response =
                 controller.generatePresignedUploadUrl(request, auth(), httpRequest("1.2.3.4"));
 
         assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
+        then(rateLimiter).should().tryAcquire(eq("presigned-upload:user:1"), anyInt(), any(Duration.class));
+    }
+
+    @Test
+    void 로그인_사용자가_한도를_넘으면_429_예외를_던진다() {
+        FileController controller = controller();
+        PresignedUploadRequest request = profileRequest();
+        User user = userWithId(1L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(rateLimiter.tryAcquire(eq("presigned-upload:user:1"), anyInt(), any(Duration.class)))
+                .willReturn(false);
+
+        assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, auth(), httpRequest("1.2.3.4")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus())
+                        .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+    }
+
+    @Test
+    void 팀_업로드도_로그인_사용자_한도를_적용한다() {
+        FileController controller = controller();
+        PresignedUploadRequest request = new PresignedUploadRequest(UploadType.TEAM, "team.png", "image/png", 1024L, null, null);
+        User user = userWithId(1L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(rateLimiter.tryAcquire(eq("presigned-upload:user:1"), anyInt(), any(Duration.class)))
+                .willReturn(false);
+
+        assertThatThrownBy(() -> controller.generatePresignedUploadUrl(request, auth(), httpRequest("1.2.3.4")))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus())
+                        .isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
     }
 
     @Test
@@ -240,6 +274,7 @@ class FileControllerTest {
         PresignedUploadResponse serviceResponse = new PresignedUploadResponse("https://upload", "teams/temp/1/a.png");
         User user = userWithId(1L);
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        givenRateLimitAllowed();
         given(fileService.generatePresignedPutUrl(1L, request)).willReturn(serviceResponse);
 
         ResponseEntity<ApiResponse<PresignedUploadResponse>> response =
@@ -290,6 +325,7 @@ class FileControllerTest {
         PresignedUploadResponse serviceResponse = new PresignedUploadResponse("https://upload", "proofs/1/a.png");
         User user = userWithId(1L);
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        givenRateLimitAllowed();
         given(fileService.generatePresignedPutUrl(1L, request)).willReturn(serviceResponse);
 
         ResponseEntity<ApiResponse<PresignedUploadResponse>> response =
