@@ -16,6 +16,7 @@ import com.todo.domain.todo.dto.response.TodoTaskResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
 import com.todo.domain.todo.entity.TodoMode;
+import com.todo.domain.todo.entity.ProofKind;
 import com.todo.domain.todo.entity.TodoReactionType;
 import com.todo.domain.todo.entity.TodoStatus;
 import com.todo.domain.todo.entity.WorkItemStatus;
@@ -197,22 +198,22 @@ class TodoControllerTest {
     @Test
     void DIRECT_투두_제출_별칭을_서비스에_전달한다() {
         TodoController controller = new TodoController(todoService);
-        SubmitTodoRequest request = new SubmitTodoRequest("proofs/1/a.png");
+        SubmitTodoRequest request = new SubmitTodoRequest("proofs/1/a.png", null);
 
         ResponseEntity<ApiResponse<Void>> response = controller.submitTodo(1L, request, auth());
 
-        assertThat(response.getBody().getMessage()).isEqualTo("인증 사진이 제출되었습니다.");
+        assertThat(response.getBody().getMessage()).isEqualTo("인증 파일이 제출되었습니다.");
         then(todoService).should().submitTodo(1L, "user1", request);
     }
 
     @Test
     void TASK_WorkItem_제출_경로를_서비스에_전달한다() {
         TodoController controller = new TodoController(todoService);
-        SubmitTodoRequest request = new SubmitTodoRequest("proofs/1/a.png");
+        SubmitTodoRequest request = new SubmitTodoRequest("proofs/1/a.png", null);
 
         ResponseEntity<ApiResponse<Void>> response = controller.submitTodoWorkItem(11L, request, auth());
 
-        assertThat(response.getBody().getMessage()).isEqualTo("인증 사진이 제출되었습니다.");
+        assertThat(response.getBody().getMessage()).isEqualTo("인증 파일이 제출되었습니다.");
         then(todoService).should().submitTodoWorkItem(11L, "user1", request);
     }
 
@@ -221,7 +222,8 @@ class TodoControllerTest {
         TodoController controller = new TodoController(todoService);
         TodoWorkItemSubmissionResponse serviceResponse = new TodoWorkItemSubmissionResponse(
                 11L, 2L, OffsetDateTime.parse("2026-06-04T12:00:00+09:00"),
-                "https://original", "https://thumbnail", OffsetDateTime.parse("2026-06-04T13:00:00+09:00")
+                ProofKind.DOCUMENT, "발표자료.pdf", "application/pdf",
+                "https://original", null, OffsetDateTime.parse("2026-06-04T13:00:00+09:00")
         );
         given(todoService.getTodoWorkItemSubmission(11L, "user1")).willReturn(serviceResponse);
 
@@ -294,6 +296,8 @@ class TodoControllerTest {
                 OffsetDateTime.parse("2026-06-04T12:00:00+09:00"),
                 0,
                 WorkItemStatus.IN_PROGRESS,
+                null,
+                null,
                 null,
                 null,
                 null,
