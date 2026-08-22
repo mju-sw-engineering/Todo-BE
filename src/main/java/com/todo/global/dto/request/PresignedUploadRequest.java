@@ -36,7 +36,10 @@ public record PresignedUploadRequest(
                         + "전달하면 발급 한도를 IP가 아닌 가입자 단위로 적용해, 같은 공용 IP(학교 등)를 쓰는 "
                         + "다른 사용자와 한도를 나눠 쓰지 않습니다. 미전달 시 IP 기준으로 제한됩니다."
         )
-        String signupToken
+        String signupToken,
+
+        @Schema(description = "PROOF 타입 업로드에만 필수. 인증 파일이 속할 투두 ID", example = "1")
+        Long todoId
 ) {
     public static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
 }
