@@ -54,12 +54,15 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class TeamActivityDigestBuilder {
 
-    /** 완료+실패가 이보다 적으면 패턴이라 부르기 어렵다. 근거 있는 값이 아니라 감이다 — 2~5 어디든 된다. */
-    static final int STARTER_THRESHOLD = 3;
     static final int LOOKBACK_DAYS = 28;
     static final int HOLIDAY_LOOKAHEAD_DAYS = 14;
     static final int LIST_CAP = 20;
     static final int CHECK_IN_CAP = 5;
+    /**
+     * 요일 패턴을 모델에 보여주기 위한 최소 표본. 완료·실패 항목이 이보다 적으면 섹션을 아예
+     * 생략한다 — "화 1/1"을 보여주면 모델이 한 건을 "화요일에 강한 팀"으로 일반화한다.
+     */
+    static final int WEEKDAY_PATTERN_MIN_SAMPLES = 5;
 
     /** 모델이 데이터와 지시를 헷갈리지 않게 감싸는 구분자. 프롬프트가 이 태그를 언급한다. */
     static final String DATA_OPEN = "<team_data>";
@@ -135,16 +138,17 @@ public class TeamActivityDigestBuilder {
     }
 
     /**
-     * 모델에 줄 재료가 하나도 없을 때만 NONE이다. 투두는 없어도 팀 설명이 있으면 첫 할 일을
-     * 제안할 수 있고, 설명은 없어도 진행 중 투두가 있으면 다음 단계를 제안할 수 있다.
+     * 기준은 "기록의 양"이 아니라 "재료의 존재"다. 투두가 하나라도 있으면 FULL — 진행 중 10개인
+     * 팀은 실패 기록이 없어도 부하·미배정 분석(REBALANCE)이 가능하다. 완료 개수 문턱을 두지
+     * 않는 대신, 없는 신호는 요약에서 섹션째 빠지고 프롬프트가 "근거 없으면 빈 배열"을 강제하며,
+     * 한 건짜리 기록의 과잉 일반화는 프롬프트 규칙과 {@link #WEEKDAY_PATTERN_MIN_SAMPLES}가 막는다.
      */
     private RecommendationMode decideMode(Team team, List<Todo> allTodos) {
-        boolean hasDescription = team.getDescription() != null && !team.getDescription().isBlank();
-        if (allTodos.isEmpty() && !hasDescription) {
-            return RecommendationMode.NONE;
+        if (!allTodos.isEmpty()) {
+            return RecommendationMode.FULL;
         }
-        long finished = allTodos.stream().filter(t -> t.getStatus() != TodoStatus.IN_PROGRESS).count();
-        return finished < STARTER_THRESHOLD ? RecommendationMode.STARTER : RecommendationMode.FULL;
+        boolean hasDescription = team.getDescription() != null && !team.getDescription().isBlank();
+        return hasDescription ? RecommendationMode.STARTER : RecommendationMode.NONE;
     }
 
     private List<Todo> recent(List<Todo> allTodos, TodoStatus status, LocalDateTime since) {
@@ -263,7 +267,8 @@ public class TeamActivityDigestBuilder {
                 }
             }
         }
-        if (byDay.isEmpty()) {
+        int samples = byDay.values().stream().mapToInt(c -> c[1]).sum();
+        if (samples < WEEKDAY_PATTERN_MIN_SAMPLES) {
             return;
         }
         text.append("[마감 요일별 성공/전체] ");

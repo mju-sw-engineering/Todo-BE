@@ -106,20 +106,19 @@ class TeamActivityDigestBuilderTest {
     }
 
     @Test
-    void 완료_실패가_3개_미만이면_STARTER_이상이면_FULL() {
-        List<Todo> twoFinished = List.of(
-                todo("a", TodoStatus.SUCCESS, TODAY.minusDays(3)),
-                todo("b", TodoStatus.FAIL, TODAY.minusDays(2)),
-                todo("c", TodoStatus.IN_PROGRESS, TODAY.plusDays(2)));
-        given(todoRepository.findByTeamIdWithCreator(TEAM_ID)).willReturn(twoFinished);
+    void 투두가_하나라도_있으면_진행_중뿐이어도_FULL이다() {
+        given(todoRepository.findByTeamIdWithCreator(TEAM_ID))
+                .willReturn(List.of(todo("진행 중 하나", TodoStatus.IN_PROGRESS, TODAY.plusDays(2))));
         given(todoWorkItemRepository.findByTodoIdInOrderByTodoIdAndPosition(anyList())).willReturn(List.of());
-        assertThat(builder.build(TEAM_ID, TODAY).mode()).isEqualTo(RecommendationMode.STARTER);
-
-        List<Todo> threeFinished = new ArrayList<>(twoFinished);
-        threeFinished.add(todo("d", TodoStatus.SUCCESS, TODAY.minusDays(1)));
-        given(todoRepository.findByTeamIdWithCreator(TEAM_ID)).willReturn(threeFinished);
         given(workItemCheckInRepository.findActivityByTeamId(any(), any())).willReturn(List.of());
-        assertThat(builder.build(TEAM_ID, TODAY).mode()).isEqualTo(RecommendationMode.FULL);
+
+        TeamActivityDigest digest = builder.build(TEAM_ID, TODAY);
+
+        assertThat(digest.mode()).isEqualTo(RecommendationMode.FULL);
+        assertThat(digest.text())
+                .contains("[최근 4주 성공] 없음")
+                .contains("[최근 4주 실패] 없음")
+                .doesNotContain("[마감 요일별 성공/전체]");
     }
 
     @Test
@@ -157,6 +156,20 @@ class TeamActivityDigestBuilderTest {
                 .contains("[최근 4주 체크인 많은 투두] #" + current.getId() + " 데모 준비 2회");
         assertThat(digest.todoIds()).containsExactlyInAnyOrder(
                 slides1.getId(), slides2.getId(), meeting.getId(), current.getId());
+    }
+
+    @Test
+    void 완료_실패_항목이_5개_미만이면_요일_패턴을_보내지_않는다() {
+        Todo one = todo("한 번 성공", TodoStatus.SUCCESS, TODAY.minusDays(5)); // 화
+        given(todoRepository.findByTeamIdWithCreator(TEAM_ID)).willReturn(List.of(one));
+        given(todoWorkItemRepository.findByTodoIdInOrderByTodoIdAndPosition(anyList()))
+                .willReturn(List.of(succeeded(one, minsu)));
+        given(workItemCheckInRepository.findActivityByTeamId(any(), any())).willReturn(List.of());
+
+        TeamActivityDigest digest = builder.build(TEAM_ID, TODAY);
+
+        // "화 1/1"을 보여주면 모델이 한 건을 요일 패턴으로 일반화한다
+        assertThat(digest.text()).doesNotContain("[마감 요일별 성공/전체]");
     }
 
     @Test
