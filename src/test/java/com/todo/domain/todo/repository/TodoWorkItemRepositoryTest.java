@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 
 @DataJpaTest
 @ActiveProfiles("test")
@@ -121,5 +122,39 @@ class TodoWorkItemRepositoryTest {
             assertThat(info.getWorkItemId()).isEqualTo(workItem.getId());
             assertThat(info.getTeamId()).isEqualTo(team.getId());
         });
+    }
+
+    @Test
+    void 팀현황_집계는_진행중인_투두의_WorkItem만_상태별로_센다() {
+        LocalDateTime now = LocalDateTime.now();
+        Team team = entityManager.persist(Team.create("팀", null, "INVITE5"));
+        Team otherTeam = entityManager.persist(Team.create("다른팀", null, "INVITE6"));
+        User member = entityManager.persist(User.create("loginE", "pw", "닉E", null));
+
+        Todo inProgressTodo = entityManager.persist(Todo.create(
+                team, member, "진행중", null, now.plusDays(1), TodoMode.DIRECT));
+        TodoWorkItem doneItem = TodoWorkItem.createTask(inProgressTodo, member, "완료됨", null, now.plusDays(1), 0);
+        doneItem.submit("proofs/a.png");
+        entityManager.persist(doneItem);
+        entityManager.persist(TodoWorkItem.createTask(inProgressTodo, member, "진행중", null, now.plusDays(1), 1));
+
+        Todo finishedTodo = Todo.create(team, member, "이미_종료", null, now.plusDays(1), TodoMode.DIRECT);
+        finishedTodo.markAsSuccess();
+        entityManager.persist(finishedTodo);
+        entityManager.persist(TodoWorkItem.createDirect(finishedTodo, member));
+
+        Todo otherTeamTodo = entityManager.persist(Todo.create(
+                otherTeam, member, "다른팀_투두", null, now.plusDays(1), TodoMode.DIRECT));
+        entityManager.persist(TodoWorkItem.createDirect(otherTeamTodo, member));
+        entityManager.flush();
+
+        List<WorkItemStatusCount> result = todoWorkItemRepository.countByTeamIdAndTodoInProgressGroupByStatus(team.getId());
+
+        assertThat(result)
+                .extracting(WorkItemStatusCount::getStatus, WorkItemStatusCount::getCount)
+                .containsExactlyInAnyOrder(
+                        tuple(WorkItemStatus.SUCCESS, 1L),
+                        tuple(WorkItemStatus.IN_PROGRESS, 1L)
+                );
     }
 }
