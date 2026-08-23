@@ -5,6 +5,7 @@ import com.todo.domain.team.entity.TeamMember;
 import com.todo.domain.team.entity.TeamMemberRole;
 import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
+import com.todo.domain.notification.repository.NotificationRepository;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoStatus;
@@ -63,6 +64,9 @@ class TodoSubmitConcurrencyTest extends MySqlTestSupport {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private NotificationRepository notificationRepository;
+
     @MockitoBean
     private FileService fileService;
 
@@ -81,6 +85,9 @@ class TodoSubmitConcurrencyTest extends MySqlTestSupport {
 
     @AfterEach
     void tearDown() {
+        // 제출이 팀원에게 알림을 남기고, 알림은 actor_id로 users를 참조한다.
+        // 먼저 지우지 않으면 users 삭제가 FK에 막힌다.
+        notificationRepository.deleteAll();
         todoWorkItemRepository.deleteAll();
         todoRepository.deleteAll();
         teamMemberRepository.deleteAll();
@@ -132,7 +139,7 @@ class TodoSubmitConcurrencyTest extends MySqlTestSupport {
                         start.await();
                         todoService.submitTodoWorkItem(
                                 submission.workItemId(),
-                                submission.submitter().getLoginId(),
+                                String.valueOf(submission.submitter().getId()),
                                 new SubmitTodoRequest("proofs/" + submission.submitter().getId()
                                         + "/" + workItemIds.todoId() + ".jpg", null)
                         );
