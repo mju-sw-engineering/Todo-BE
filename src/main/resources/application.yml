@@ -74,6 +74,21 @@ ai:
     connect-timeout: 3s
     read-timeout: 15s
 
+openai:
+  # 키는 커밋하지 않는다. 로컬은 application-local.yml, 배포는 환경변수로 주입한다.
+  api-key: ${OPENAI_API_KEY:}
+  base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  model: ${OPENAI_MODEL:gpt-5.6-luna}
+  # 비용의 지배 변수. none|low|medium|high|xhigh|max 중 low를 기본으로 둔다.
+  # 판정·요약에는 추론이 거의 필요 없는데, 기본값 medium이면 reasoning 토큰이
+  # 입력 단가의 6배인 출력 단가로 붙어 본문 입력비를 역전한다.
+  reasoning-effort: ${OPENAI_REASONING_EFFORT:low}
+  max-output-tokens: ${OPENAI_MAX_OUTPUT_TOKENS:400}
+  connect-timeout: 3s
+  # 모델 추론 시간을 감안해 다른 외부 호출보다 길게 둔다. 호출부가 폴러라
+  # 타임아웃이 없으면 스레드가 물려 분석 큐 전체가 밀린다.
+  read-timeout: 30s
+
 chat:
   cleanup:
     # 보관 기간 정책은 팀 논의에 따라 재배포 없이 조정할 수 있도록 설정값으로 둔다.
