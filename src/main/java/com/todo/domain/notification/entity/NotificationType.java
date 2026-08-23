@@ -16,7 +16,8 @@ public enum NotificationType {
     TEAM_LEADER_CHANGED(ReferenceType.TEAM),
     NEW_DEVICE_LOGIN(ReferenceType.NONE),
     PASSWORD_CHANGED(ReferenceType.NONE),
-    AVAILABILITY_POLL_CREATED(ReferenceType.AVAILABILITY_POLL);
+    AVAILABILITY_POLL_CREATED(ReferenceType.AVAILABILITY_POLL),
+    SLASH_COMMAND_RESULT(ReferenceType.CHAT);
 
     private final ReferenceType referenceType;
 

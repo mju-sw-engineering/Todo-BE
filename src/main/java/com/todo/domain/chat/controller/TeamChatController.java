@@ -1,5 +1,6 @@
 package com.todo.domain.chat.controller;
 
+import com.todo.domain.chat.command.dto.response.SlashCommandResultResponse;
 import com.todo.domain.chat.dto.request.ChatMessageRequest;
 import com.todo.domain.chat.dto.request.MarkAsReadRequest;
 import com.todo.domain.chat.dto.request.TypingStatusRequest;
@@ -91,5 +92,16 @@ public class TeamChatController implements TeamChatControllerDocs {
     ) {
         ChatUnreadCountResponse response = teamChatService.getUnreadCount(teamId, authentication.getName());
         return ResponseEntity.ok(ApiResponse.success(response, "미읽음 메시지 수를 조회했습니다"));
+    }
+
+    @GetMapping("/{teamId}/chat/messages/{messageId}/command-result")
+    public ResponseEntity<ApiResponse<SlashCommandResultResponse>> getCommandResult(
+            @PathVariable Long teamId,
+            @PathVariable Long messageId,
+            Authentication authentication
+    ) {
+        SlashCommandResultResponse response =
+                teamChatService.getCommandResult(teamId, authentication.getName(), messageId);
+        return ResponseEntity.ok(ApiResponse.success(response, "명령어 실행 결과를 조회했습니다"));
     }
 }

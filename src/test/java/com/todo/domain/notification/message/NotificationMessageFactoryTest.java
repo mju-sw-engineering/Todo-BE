@@ -187,4 +187,12 @@ class NotificationMessageFactoryTest {
         assertThat(message.content()).contains("주간 회의 시간 조율");
         assertThat(message.content()).contains(NotificationActorText.PLACEHOLDER);
     }
+
+    @Test
+    void 슬래시_명령어_결과_문구는_명령어_텍스트를_채운다() {
+        NotificationMessage message = factory.slashCommandResult("/내할일");
+
+        assertThat(message.type()).isEqualTo(NotificationType.SLASH_COMMAND_RESULT);
+        assertThat(message.title()).isEqualTo("/내할일 결과가 준비되었습니다.");
+    }
 }

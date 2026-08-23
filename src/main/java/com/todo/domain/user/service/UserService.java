@@ -7,6 +7,7 @@ import com.todo.domain.auth.repository.PasswordResetTokenRepository;
 import com.todo.domain.auth.repository.ReauthTokenRepository;
 import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
+import com.todo.domain.chat.command.repository.SlashCommandExecutionRepository;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.notification.message.NotificationMessageFactory;
@@ -62,6 +63,7 @@ public class UserService {
     private final TodoReactionRepository todoReactionRepository;
     private final TodoWorkItemLifecycleService todoWorkItemLifecycleService;
     private final TeamChatMessageRepository teamChatMessageRepository;
+    private final SlashCommandExecutionRepository slashCommandExecutionRepository;
     private final TeamChatReadStatusRepository teamChatReadStatusRepository;
     private final TodoRepository todoRepository;
     private final NotificationRepository notificationRepository;
@@ -211,6 +213,7 @@ public class UserService {
 
         // 4. 공동 기록 익명화 — 삭제하지 않고 작성자 관계만 끊는다.
         teamChatMessageRepository.clearSenderByUserId(id);
+        slashCommandExecutionRepository.clearExecutorByUserId(id);
         todoRepository.clearCreatorByUserId(id);
         // 방금 생성한 미배정 알림까지 포함해 actor를 익명화한다.
         notificationRepository.clearActorByUserId(id);

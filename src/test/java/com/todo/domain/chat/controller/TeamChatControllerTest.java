@@ -1,5 +1,6 @@
 package com.todo.domain.chat.controller;
 
+import com.todo.domain.chat.command.dto.response.SlashCommandResultResponse;
 import com.todo.domain.chat.dto.request.ChatMessageRequest;
 import com.todo.domain.chat.dto.request.MarkAsReadRequest;
 import com.todo.domain.chat.dto.response.TeamChatMessagePageResponse;
@@ -76,6 +77,19 @@ class TeamChatControllerTest {
 
         ResponseEntity<ApiResponse<TeamChatMessagePageResponse>> response =
                 controller.getMessages(100L, 99L, 20, new TestingAuthenticationToken("user1", null));
+
+        assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
+    }
+
+    @Test
+    void 명령어_결과_조회는_서비스에_위임한다() {
+        TeamChatController controller = new TeamChatController(teamChatService);
+        SlashCommandResultResponse serviceResponse =
+                new SlashCommandResultResponse(1000L, "MY_TODOS", "DONE", null, null);
+        given(teamChatService.getCommandResult(100L, "user1", 1000L)).willReturn(serviceResponse);
+
+        ResponseEntity<ApiResponse<SlashCommandResultResponse>> response =
+                controller.getCommandResult(100L, 1000L, new TestingAuthenticationToken("user1", null));
 
         assertThat(response.getBody().getData()).isEqualTo(serviceResponse);
     }
