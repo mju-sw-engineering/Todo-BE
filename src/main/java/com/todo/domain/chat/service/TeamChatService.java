@@ -86,7 +86,7 @@ public class TeamChatService {
         User user = findUser(userId);
         checkTeamMember(teamId, user.getId());
 
-        SlashCommandExecution execution = slashCommandExecutionRepository.findByChatMessageId(messageId)
+        SlashCommandExecution execution = slashCommandExecutionRepository.findByChatMessageIdAndTeamId(messageId, teamId)
                 .orElseThrow(() -> new BusinessException("명령어 실행 결과가 없습니다.", HttpStatus.NOT_FOUND));
 
         if (execution.getCommand().scope() == SlashCommandScope.PERSONAL
