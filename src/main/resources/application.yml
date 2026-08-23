@@ -68,12 +68,6 @@ cookie:
   # 운영은 application-prod.yml에서 true로 고정돼 이 값의 영향을 받지 않는다.
   secure: ${COOKIE_SECURE:true}
 
-ai:
-  server:
-    base-url: https://ai.swe.bluerack.org
-    connect-timeout: 3s
-    read-timeout: 15s
-
 openai:
   # 키는 커밋하지 않는다. 로컬은 application-local.yml, 배포는 환경변수로 주입한다.
   api-key: ${OPENAI_API_KEY:}

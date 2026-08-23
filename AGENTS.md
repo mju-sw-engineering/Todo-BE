@@ -13,38 +13,52 @@
 | 프레임워크 | Spring Boot 3.4.5 |
 | Java | 17 |
 | 빌드 도구 | Gradle 8.13 (Groovy DSL) |
-| 데이터베이스 | MySQL |
-| 인증 | JWT (jjwt 0.12.3) + Spring Security |
+| 데이터베이스 | MySQL, 스키마는 Flyway 마이그레이션으로 관리 |
+| 인증 | JWT (jjwt 0.12.3) + Spring Security, Apple 로그인(Sign in with Apple) |
 | 파일 스토리지 | S3 호환 오브젝트 스토리지 (AWS SDK v2) |
 | 실시간 통신 | Spring WebSocket/STOMP |
+| AI | OpenAI Responses API (인증 파일 판정·요약). 별도 AI 서버 없음 |
 | 모듈 구조 | 단일 모듈 |
 
 **주요 의존성**
 - `spring-boot-starter-web` — REST API
 - `spring-boot-starter-data-jpa` — JPA/Hibernate
+- `flyway-core` / `flyway-mysql` — 스키마 마이그레이션
 - `spring-boot-starter-security` — 인증/인가
 - `spring-boot-starter-validation` — 입력 검증
 - `spring-boot-starter-websocket` — 채팅 및 실시간 상태 전달
-- `spring-boot-starter-mail` — 이메일 인증 및 팀 초대 메일
+- `spring-boot-starter-mail` — 이메일 인증, 비밀번호 재설정, 팀 초대 메일
+- `spring-boot-starter-actuator` — health/readiness probe
 - `springdoc-openapi-starter-webmvc-ui:2.7.0` — Swagger UI
-- `software.amazon.awssdk:s3` — S3 파일 업로드/조회
-- `thumbnailator` — 인증 사진 썸네일 생성
+- `software.amazon.awssdk:s3` — S3 파일 업로드/조회/presigned URL
+- `thumbnailator` + `imageio-webp` — 인증 사진 썸네일 생성 (WebP 포함)
+- `pdfbox` / `poi-ooxml` / `commons-csv` — 인증 문서(PDF/DOCX/XLSX/CSV) 텍스트 추출 후 AI 요약
 - `lombok` — 보일러플레이트 코드 제거
 - `mysql-connector-j` — MySQL 드라이버
+- 테스트: `spring-boot-starter-test`, H2(기본), Testcontainers MySQL(`mysql` 태그)
 
 ---
 
 ## 빌드 / 테스트 / 실행 명령어
 
 ```bash
-# 전체 빌드
+# 전체 빌드 (test + 전체 커버리지 게이트 포함)
 ./gradlew build
 
 # 컴파일만 (빠른 확인)
 ./gradlew compileJava
 
-# 테스트 실행
+# 테스트 실행 (H2 기반, Docker 불필요)
 ./gradlew test
+
+# MySQL Testcontainers 테스트 (Flyway 실제 적용·MySQL 전용 제약·동시성, Docker 필요)
+./gradlew mysqlTest
+
+# 전체 커버리지 하한선 검사 (CI와 동일)
+./gradlew test jacocoTestCoverageVerification
+
+# Flyway 마이그레이션 버전 검사 (중복·역순, CI와 동일)
+BASE_REF=main bash scripts/check-migrations.sh
 
 # 로컬 실행 (application-local.yml 필요)
 ./gradlew bootRun
@@ -70,16 +84,20 @@ bash scripts/setup-hooks.sh
 |---|---|
 | `spring.datasource.url` / `username` / `password` | |
 | `jwt.secret` | HS256이라 32바이트(영문 32자) 이상 |
-| `spring.mail.*` | 이메일 인증·팀 초대 메일 발송 |
-| `minio.endpoint` / `access-key` / `secret-key` / `bucket` | 프로필·인증사진 업로드 |
+| `spring.mail.*` | 이메일 인증·비밀번호 재설정·팀 초대 메일 발송 |
+| `minio.endpoint` / `access-key` / `secret-key` / `region` / `bucket` | 프로필·인증 파일 업로드 |
 | `swagger.auth.username` / `password` | **`application.yml`이 환경변수를 참조하는데 기본값이 없다.** 환경변수도 로컬 설정도 없으면 기동이 실패한다 |
+| `apple.team-id` / `web-client-id` / `ios-client-id` / `key-id` / `private-key` | **`AppleProperties`가 `@NotBlank`로 검증한다.** 값이 없으면 기동이 실패한다. 로컬에서 Apple 로그인을 쓰지 않아도 placeholder 문자열은 넣어야 한다 (`src/test/resources/application-test.yml` 참고) |
+| `openai.api-key` | **선택.** 없어도 기동되며 인증 파일 AI 판정만 영구 실패(`FAILED`)로 처리된다. AI 판정을 로컬에서 확인할 때만 넣는다 |
 | `spring.jpa.hibernate.ddl-auto` | 아래 참조 |
 
-기본값이 있어 생략 가능한 것: `app.frontend-base-url`, `todo.scheduling.enabled`, `chat.cleanup.*`, `mail.async.*`, `file-deletion.*`, `cookie.secure`
+기본값이 있어 생략 가능한 것: `app.*`(frontend-base-url, api-server-url, team-invite-path 등), `todo.scheduling.*`, `proof-analysis.*`, `openai.model`/`reasoning-effort`/`max-output-tokens`, `chat.cleanup.*`, `mail.async.*`, `file-deletion.*`, `cookie.secure`
 
 **`cookie.secure`는 기본값이 `true`다.** 리프레시 토큰 쿠키에 `Secure`가 붙어 HTTPS에서만 오간다. 백엔드를 `http://localhost`로 직접 띄우고 브라우저에서 로그인·갱신·로그아웃을 확인하려면 `application-local.yml`에 `cookie.secure: false`를 넣는다. Chrome과 Firefox는 `localhost`를 신뢰 가능한 출처로 취급해 `true`인 채로도 대체로 동작하지만 Safari는 쿠키를 거부한다. 운영은 `application-prod.yml`에서 `true`로 고정돼 있어 환경변수로도 내려가지 않는다.
 
 **`ddl-auto`는 운영과 같은 `validate`를 쓴다.** 스키마는 Flyway가 만들고 Hibernate는 대조만 한다. `update`로 두면 엔티티와 마이그레이션이 어긋나도 Hibernate가 조용히 `ALTER`로 고쳐버려, 로컬에서는 멀쩡한데 운영 배포에서 기동이 막힌다. 실제로 `availability_polls.end_hour`가 `TINYINT`로 생성된 문제가 그렇게 드러났고, 로컬에서 재현하려 했을 때도 `update` 때문에 그냥 통과했다.
+
+**AI 판정 폴러 끄기.** OpenAI 장애가 길어지면 `proof-analysis.enabled=false`(또는 `PROOF_ANALYSIS_ENABLED`)로 폴러만 내린다. 스케줄러 전체를 끄는 `todo.scheduling.enabled`와는 다르다. 다시 켜면 큐에 쌓인 건이 그대로 처리된다.
 
 ---
 
@@ -89,58 +107,65 @@ bash scripts/setup-hooks.sh
 com.todo
 ├── TodoApplication.java
 ├── domain/                         # 비즈니스 도메인
-│   ├── auth/                       # 로그인, 회원가입, 이메일 인증
+│   ├── auth/                       # 로그인, 회원가입, 이메일 인증, Apple 로그인, 세션(리프레시 토큰), 재인증, 비밀번호 재설정, 약관 동의 기록
 │   ├── user/                       # 마이페이지, 닉네임 수정, 회원 탈퇴
-│   ├── team/                       # 팀 생성/초대/가입, AI 페르소나
-│   ├── todo/                       # 할 일 생성/제출/반응/리포트
+│   ├── team/                       # 팀 생성/초대(메일·링크)/가입, 벌집 성장
+│   ├── todo/                       # 할 일 생성/제출/반응/리포트, 작업 항목·체크인, 인증 파일 AI 판정
+│   ├── availability/               # 팀 일정 조율 투표
+│   ├── feed/                       # 활동 피드 집계, 뱃지
 │   ├── chat/                       # 팀 채팅, 읽음 상태, 타이핑 상태
 │   ├── notification/               # 사용자 알림과 미읽음 개수
-│   └── evaluation/                 # 일일 평가 생성 및 AI 서버 연동
+│   └── terms/                      # 약관 본문 조회, 버전 확인, 동의 저장
 └── global/                         # 공통/인프라
-    ├── config/                     # Security, CORS, Swagger, S3, WebSocket 설정
-    ├── exception/                  # 전역 예외 처리
+    ├── ai/                         # OpenAI Responses API 클라이언트 (도메인을 모르는 배관)
+    ├── config/                     # Security, CORS, Swagger, S3, WebSocket, Apple, 스케줄링 설정
+    ├── controller/                 # 파일 presigned URL, Apple Universal Links(.well-known)
+    ├── dto/                        # 공통 요청/응답 DTO (파일 업로드 등)
+    ├── entity/                     # BaseTimeEntity
+    ├── exception/                  # BusinessException, FileStorageException, 전역 예외 처리
+    ├── file/                       # 파일 삭제 outbox, 인증 문서 텍스트 추출(PDF/DOCX/XLSX/CSV)
     ├── jwt/                        # JWT 유틸리티, 필터
-    ├── websocket/                  # STOMP CONNECT 인증 인터셉터
+    ├── mail/                       # 메일 outbox, 비동기 발송
+    ├── ratelimit/                  # in-memory 슬라이딩 윈도우 rate limiter, 클라이언트 IP 해석
     ├── response/                   # 공통 응답 형식 (ApiResponse)
-    └── service/                    # 파일 업로드/썸네일 등 공통 서비스
+    ├── service/                    # 파일 업로드/썸네일 (FileService)
+    └── websocket/                  # STOMP CONNECT 인증 인터셉터, 팀 구독 검증, 세션 레지스트리
 ```
 
 **도메인 책임 경계**
 
 | 도메인 | 책임 |
 |---|---|
-| `auth` | 로그인, 회원가입, 토큰 발급/검증 |
+| `auth` | 로그인, 회원가입, 토큰 발급/검증, Apple 로그인·탈퇴(revoke outbox), 세션 관리, 재인증, 비밀번호 재설정, 약관 동의 기록 |
 | `user` | 사용자 조회/수정/탈퇴 |
-| `team` | 팀과 팀원, 초대, AI 페르소나 관리 |
-| `todo` | 팀 할 일, 참가자 제출, 반응, 기간별 리포트 |
+| `team` | 팀과 팀원, 초대, 벌집 성장 |
+| `todo` | 팀 할 일, 참가자 제출, 반응, 기간별 리포트, 작업 항목·체크인, 인증 파일 AI 판정 파이프라인 |
+| `availability` | 팀 일정 조율 투표 생성/응답/집계 |
+| `feed` | 활동 기록(투두 생성·제출·체크인) 집계와 뱃지 |
 | `chat` | WebSocket 채팅과 읽음/타이핑 상태 |
 | `notification` | 도메인 이벤트에 따른 사용자 알림 |
-| `evaluation` | Todo 통계 기반 AI 일일 평가 |
-| `global` | 설정, 공통 응답, 예외, JWT, WebSocket, 파일 인프라 |
+| `terms` | 약관 본문과 버전, 동의 조회/저장 |
+| `global` | 설정, 공통 응답, 예외, JWT, WebSocket, 파일/메일 outbox, OpenAI 클라이언트, rate limit |
+
+**외부 호출은 요청 경로에서 동기로 부르지 않는다 (outbox + 폴러 패턴).**
+메일(`MailOutbox`), 파일 삭제(`FileDeletionOutbox`), Apple revoke(`AppleRevokeOutbox`), 인증 파일 AI 판정(`ProofAiAnalysis`)은 모두
+트랜잭션 안에서 큐 행만 남기고, 스케줄러 폴러가 건별로 처리한다. 외부 장애가 사용자 요청 응답에 번지지 않게 하기 위한 구조이며,
+새 외부 연동을 추가할 때도 같은 구조를 따른다.
 
 ---
 
 ## 코딩 컨벤션
 
-### 현재 코드베이스 상태 vs. 신규 코드 기준
-
-아래 표는 현재 코드에 불일치가 있는 항목과 앞으로 지켜야 할 표준을 명시합니다.
-신규 코드는 반드시 신규 기준을 따릅니다.
-기존 코드는 기능 수정 시 함께 마이그레이션합니다.
+아래 기준은 코드베이스 전반에 적용이 끝난 상태다. 신규 코드는 반드시 따르고, 기존 코드에서 어긋난 곳을 발견하면 기능 수정 시 함께 고친다.
 
 ---
 
 #### 1. Request DTO
 
-| | 현재 코드 | 신규 기준 |
-|---|---|---|
-| `LoginRequest` | `record` (기준 충족) | `record` |
-| `SignupRequest` | `class + @Getter/@Setter` (마이그레이션 대상) | 점진적 마이그레이션 |
-
 **규칙**
-- 신규 Request DTO는 무조건 `record`로 작성
-- `@ModelAttribute` 바인딩이 있는 기존 class DTO는 record 전환 전 반드시 동작 검증 후 마이그레이션
+- Request DTO는 무조건 `record`로 작성
 - DTO는 불변으로 유지 (setter 추가 금지)
+- `@ConfigurationProperties`도 `record`를 우선한다 (`AppleProperties`, `OpenAiProperties` 패턴). `MinioProperties`만 남아 있는 `@Getter/@Setter` class 형태이며 손댈 일이 있을 때 record로 옮긴다
 
 ```java
 // 올바른 예
@@ -164,15 +189,11 @@ public class CreateTaskRequest {
 
 #### 2. Response DTO
 
-| | 현재 코드 | 신규 기준 |
-|---|---|---|
-| `SignupResponse` | `record` + `from(User)` (기준 충족) | `record` + `from(Entity)` |
-| `LoginResponse` | `record`, `from()` 없음 (마이그레이션 대상) | 마이그레이션 대상 |
-
 **규칙**
 - 모든 Response DTO는 `record`
-- Entity를 받아 DTO를 생성하는 `from(Entity entity)` static factory method 필수
+- Entity를 받아 DTO를 생성하는 경우 `from(Entity entity)` static factory method 필수
 - 서비스 레이어에서 `new ResponseDto(field1, field2)` 직접 생성 금지
+- Entity에서 파생되지 않는 응답(`LoginResponse`처럼 토큰만 담는 경우)은 `from()`이 없어도 된다
 
 ```java
 // 올바른 예
@@ -217,20 +238,17 @@ public record LoginRequest(
 
 #### 4. 예외 처리
 
-| | 현재 코드 | 신규 기준 |
-|---|---|---|
-| `AuthService` | `IllegalArgumentException` 직접 throw (마이그레이션 대상) | `BusinessException` 사용 |
-| `FileService` | `RuntimeException` 직접 throw (마이그레이션 대상) | 커스텀 예외 사용 |
-| `GlobalExceptionHandler` | `IllegalArgumentException`, `MethodArgumentNotValidException`만 처리 (마이그레이션 대상) | 모든 예외를 `ApiResponse` 형식으로 처리 |
-
 **규칙**
 - `IllegalArgumentException`, `RuntimeException` 직접 throw 금지
-- 최소 예외 계층:
+- 예외 계층:
   ```
   BusinessException(message, HttpStatus)  <- 비즈니스 규칙 위반
   FileStorageException                    <- 파일 저장/읽기 실패
+  AiClientException                       <- OpenAI 호출 실패 (global/ai)
+  DocumentExtractionException             <- 인증 문서 텍스트 추출 실패 (global/file/extract)
   ```
-- `GlobalExceptionHandler`는 `BusinessException` + 미처리 예외(`Exception`) 모두 `ApiResponse` 형식으로 응답
+- `GlobalExceptionHandler`가 `BusinessException`, 검증 실패, 업로드 크기 초과, 미지원 메서드, 미처리 예외(`Exception`)를 모두 `ApiResponse` 형식으로 응답한다
+- 외부 호출 실패(`AiClientException` 등)는 호출한 도메인 서비스가 잡아 상태(`FAILED`/재시도)로 바꾼다. 폴러 밖으로 던지지 않는다
 
 ```java
 // 올바른 예
@@ -268,13 +286,13 @@ ResponseEntity<com.todo.global.response.ApiResponse<TaskResponse>> getTask(...);
 - `@NoArgsConstructor(access = AccessLevel.PROTECTED)` 필수 (JPA 요구 + 외부 직접 생성 방지)
 - setter 금지, 상태 변경은 의미 있는 메서드로 표현
 - 생성은 `static factory method` (`create(...)`) 패턴 사용
-- `@CreatedDate`, `@LastModifiedDate` JPA Auditing 사용
+- 생성/수정 시각은 `BaseTimeEntity`(`global/entity`) 상속으로 JPA Auditing 적용
 
 ```java
 // 현재 User 엔티티 패턴 — 표준
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Task {
+public class Task extends BaseTimeEntity {
     public static Task create(String title, User user) { ... }
     public void updateTitle(String title) { ... }  // setter 대신 의미 있는 메서드
 }
@@ -287,7 +305,8 @@ public class Task {
 - `@RestController` + `@RequiredArgsConstructor`
 - Swagger 문서는 별도 `*ControllerDocs` 인터페이스로 분리
 - 반환 타입: `ResponseEntity<ApiResponse<T>>`
-- `@RequestMapping`으로 기본 경로 지정
+- `@RequestMapping`으로 기본 경로 지정 (`/api/...`)
+- 인프라 경로(`/.well-known/...`)처럼 클라이언트 API가 아닌 것은 Swagger 문서화에서 제외한다
 
 ---
 
@@ -315,6 +334,8 @@ bash scripts/new-migration.sh add_user_index
 - 기존 순번 파일(V1~V19)은 리네임하지 않는다
 - 머지가 늦어져 base에 더 새로운 마이그레이션이 먼저 들어가면 CI 역순 검사에 걸린다.
   이때는 타임스탬프를 현재 시각으로 갱신해 리네임한다
+- 엔티티를 바꾸면 마이그레이션도 같이 쓴다. H2 테스트(`ddl-auto: create-drop`)는 drift를 못 잡으므로
+  컬럼 타입·제약이 걸린 변경은 `./gradlew mysqlTest`로 `validate`를 통과하는지 확인한다
 
 ---
 
@@ -324,7 +345,9 @@ bash scripts/new-migration.sh add_user_index
   - `UserDetailsService` 구현은 현재 허용
   - 사용자 조회/수정/탈퇴 기능은 `UserService`가 담당
 - 사용자 CRUD를 `AuthService`에 추가하지 않는다
-- 외부 AI 호출은 `evaluation/client` 경계를 통해 수행한다
+- 외부 AI 호출은 `global/ai`의 `OpenAiClient`를 통해서만 한다. 클라이언트는 도메인을 모르는 배관이고,
+  프롬프트(`src/main/resources/prompts/`)와 판정 해석은 호출하는 도메인 서비스(`todo/ProofAnalysisService`)가 담당한다
+- AI 응답은 strict JSON 스키마(`AiStructuredRequest`)로만 받는다. 자유 텍스트 응답을 파싱하지 않는다
 - 실시간 인증 변경 시 REST Security와 WebSocket CONNECT 인증을 함께 검토한다
 
 ---
@@ -338,17 +361,20 @@ bash scripts/new-migration.sh add_user_index
 |---|---|
 | Entity | 상태 전이와 불변식 단위 테스트 |
 | Service | JUnit 5 + Mockito 단위 테스트 |
-| Repository | 쿼리 동작이 중요할 때 `@DataJpaTest` |
+| Repository | 쿼리 동작이 중요할 때 `@DataJpaTest` (H2, `MODE=MySQL`) |
 | Controller | 요청 검증·인증·응답 계약 중심 테스트 |
 | Security/WebSocket | 필터·인터셉터의 허용/거부 경계 테스트 |
+| 마이그레이션/동시성 | `@Tag("mysql")` + Testcontainers. Flyway 실제 적용, MySQL 전용 제약, REPEATABLE READ 동시성만 여기에 둔다 |
 
 **작성 규칙**
 - 현재 코드 스타일에 맞춰 동작과 기대 결과가 드러나는 한글 테스트 이름을 사용한다
 - 정상 케이스와 주요 예외/경계 케이스를 각각 검증한다
 - assertion 없는 테스트나 커버리지 수치만 올리는 getter/setter 테스트는 금지한다
-- 외부 AI, 메일, S3 의존성은 단위 테스트에서 mock으로 격리한다
-- PR 변경 코드의 patch line coverage 80% 이상을 유지한다
-- 전체 line coverage 85%, branch coverage 74%를 하한선으로 유지한다
+- OpenAI, Apple, 메일, S3 의존성은 단위 테스트에서 mock으로 격리한다
+- `mysql` 태그 테스트는 `./gradlew test`에서 제외되고 `./gradlew mysqlTest`로만 돈다. Docker 없이도 기본 빌드가 돌아야 한다
+- 테스트 프로파일(`src/test/resources/application-test.yml`)은 `todo.scheduling.enabled=false`로 스케줄러를 끈다. 폴러는 메서드를 직접 호출해 테스트한다
+- PR 변경 코드의 patch line coverage 80% 이상을 유지한다 (CI `diff-cover`)
+- 전체 line coverage 85%, branch coverage 74%를 하한선으로 유지한다 (`jacocoTestCoverageVerification`)
 
 ---
 
@@ -365,6 +391,13 @@ bash scripts/new-migration.sh add_user_index
 - 커밋 작성자 이름과 이메일은 각 개발자의 Git 설정을 사용하며 저장소에서 공통 identity를 강제하지 않는다
 - 커밋, PR, merge commit에는 `Co-authored-by`, `Generated-by`, 에이전트 이름·이메일, AI 도구 라벨 등 작업 도구를 식별하는 metadata를 자동으로 남기지 않는다
 - 공동 작성자 또는 별도 라벨은 사용자가 명시적으로 요청한 경우에만 추가한다
+
+**CI (`.github/workflows/ci.yml`)가 PR마다 검사하는 것**
+- `test` + 전체 커버리지 게이트, `diff-cover` patch coverage 80%
+- gitleaks secret-scan
+- `scripts/verify-agent-harness.sh` — 커맨드 심링크, `CLAUDE.md`의 `@AGENTS.md` import, Git hook 동작
+- `scripts/check-migrations.sh` — 마이그레이션 중복·역순
+- Docker 이미지 빌드 (push 없음)
 
 ---
 
@@ -402,10 +435,11 @@ AI는 Git 작업을 자동화할 수 있지만, 아래 게이트마다 사용자
 1. **승인 없는 push 금지** — AI는 사용자 승인 후에만 `git push` 실행 가능
 2. **force push 금지** — `git push --force` 절대 실행 금지
 3. **main 직접 커밋 금지** — main 브랜치에 직접 commit 금지
-4. **민감정보 커밋 금지** — API 키, 비밀번호, JWT 시크릿, DB 접속 정보 등 파일에 직접 작성 및 커밋 금지
-5. **보안 변경 사람 리뷰 필수** — `SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter`, `WebSocketAuthChannelInterceptor` 등 보안 관련 파일 수정 시 반드시 사람이 리뷰한 후 병합
+4. **민감정보 커밋 금지** — API 키(OpenAI 포함), 비밀번호, JWT 시크릿, Apple private key, DB 접속 정보 등 파일에 직접 작성 및 커밋 금지
+5. **보안 변경 사람 리뷰 필수** — `SecurityConfig`, `JwtUtil`, `JwtAuthenticationFilter`, `WebSocketAuthChannelInterceptor`, `AppleIdentityTokenService` 등 보안 관련 파일 수정 시 반드시 사람이 리뷰한 후 병합
 6. **커밋 전 사용자 승인 필수** — AI가 자동으로 커밋 메시지를 확정하고 커밋 실행 금지. 항상 메시지 제안 후 승인 대기
 7. **AI 작업 metadata 자동 추가 금지** — 커밋, PR, merge commit에 공동 작성자 trailer, 에이전트 이름·이메일, AI 라벨을 자동으로 추가하지 않는다
+8. **`application-local.yml` 읽기 금지** — `.claude/settings.json`의 deny 목록에 있다. 로컬 설정 내용이 필요하면 사용자에게 묻는다
 
 ---
 
