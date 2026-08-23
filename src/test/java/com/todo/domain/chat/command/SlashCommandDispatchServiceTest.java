@@ -10,6 +10,9 @@ import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.entity.NotificationType;
 import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
+import com.todo.domain.team.entity.TeamMember;
+import com.todo.domain.team.entity.TeamMemberRole;
+import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
@@ -26,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -41,6 +45,7 @@ class SlashCommandDispatchServiceTest {
     @Mock private SlashCommandRegistry registry;
     @Mock private SlashCommandExecutionRepository executionRepository;
     @Mock private TeamRepository teamRepository;
+    @Mock private TeamMemberRepository teamMemberRepository;
     @Mock private UserRepository userRepository;
     @Mock private NotificationService notificationService;
     @Mock private NotificationMessageFactory notificationMessageFactory;
@@ -50,7 +55,10 @@ class SlashCommandDispatchServiceTest {
     @Test
     void 명령어_텍스트와_일치하면_매칭된다() {
         assertThat(dispatchService.match("/내할일")).contains(SlashCommand.MY_TODOS);
+        assertThat(dispatchService.match("/내할일 ")).contains(SlashCommand.MY_TODOS);
+        assertThat(dispatchService.match("  /내할일")).contains(SlashCommand.MY_TODOS);
         assertThat(dispatchService.match("/내할일요")).isEmpty();
+        assertThat(dispatchService.match(null)).isEmpty();
         assertThat(dispatchService.match("안녕")).isEmpty();
     }
 
@@ -100,30 +108,37 @@ class SlashCommandDispatchServiceTest {
         NotificationMessage message = new NotificationMessage(NotificationType.SLASH_COMMAND_RESULT, "제목", "본문");
         given(notificationMessageFactory.slashCommandResult("/내할일")).willReturn(message);
 
-        dispatchService.completeExecution(event);
+        dispatchService.executeAndComplete(event);
 
         assertThat(execution.getStatus()).isEqualTo(SlashCommandExecutionStatus.DONE);
         assertThat(execution.getResultJson()).isEqualTo("{\"count\":1}");
         then(notificationService).should().pushAll(eq(List.of(executor)), eq(message), eq(1000L), eq(100L));
+        then(teamMemberRepository).should(never()).findByTeamIdWithUser(any());
     }
 
     @Test
-    void 팀용_명령어_완료시_알림을_보내지_않는다() throws Exception {
+    void 팀용_명령어_완료시_팀원_전원에게_알림을_보낸다() throws Exception {
         SlashCommandExecution execution = pendingExecution();
         SlashCommandDispatchEvent event =
                 new SlashCommandDispatchEvent(5000L, 100L, 1L, 1000L, SlashCommand.TEAM_STATUS);
         Team team = teamWithId(100L);
         User executor = userWithId(1L);
+        User other = userWithId(2L);
         given(registry.findHandler(SlashCommand.TEAM_STATUS)).willReturn(Optional.of(stubHandler()));
         given(executionRepository.findById(5000L)).willReturn(Optional.of(execution));
         given(teamRepository.getReferenceById(100L)).willReturn(team);
         given(userRepository.getReferenceById(1L)).willReturn(executor);
         given(objectMapper.writeValueAsString(any())).willReturn("{}");
+        given(teamMemberRepository.findByTeamIdWithUser(100L)).willReturn(List.of(
+                TeamMember.create(team, executor, TeamMemberRole.LEADER),
+                TeamMember.create(team, other, TeamMemberRole.MEMBER)));
+        NotificationMessage message = new NotificationMessage(NotificationType.SLASH_COMMAND_RESULT, "제목", "본문");
+        given(notificationMessageFactory.slashCommandResult("/팀현황")).willReturn(message);
 
-        dispatchService.completeExecution(event);
+        dispatchService.executeAndComplete(event);
 
         assertThat(execution.getStatus()).isEqualTo(SlashCommandExecutionStatus.DONE);
-        then(notificationService).should(never()).pushAll(any(), any(), any(), any());
+        then(notificationService).should().pushAll(eq(List.of(executor, other)), eq(message), eq(1000L), eq(100L));
     }
 
     @Test
@@ -131,13 +146,14 @@ class SlashCommandDispatchServiceTest {
         SlashCommandDispatchEvent event = new SlashCommandDispatchEvent(5000L, 100L, 1L, 1000L, SlashCommand.MY_TODOS);
         given(registry.findHandler(SlashCommand.MY_TODOS)).willReturn(Optional.empty());
 
-        dispatchService.completeExecution(event);
+        dispatchService.executeAndComplete(event);
 
         then(executionRepository).should(never()).findById(any());
+        then(notificationService).should(never()).pushAll(any(), any(), any(), any());
     }
 
     @Test
-    void 핸들러_실행중_예외가_나면_로깅만_하고_PENDING으로_남는다() {
+    void 핸들러_실행중_예외가_나면_그대로_전파하고_상태를_바꾸지_않는다() {
         SlashCommandExecution execution = pendingExecution();
         SlashCommandDispatchEvent event = new SlashCommandDispatchEvent(5000L, 100L, 1L, 1000L, SlashCommand.MY_TODOS);
         given(registry.findHandler(SlashCommand.MY_TODOS)).willReturn(Optional.of(failingHandler()));
@@ -145,9 +161,37 @@ class SlashCommandDispatchServiceTest {
         given(teamRepository.getReferenceById(100L)).willReturn(teamWithId(100L));
         given(userRepository.getReferenceById(1L)).willReturn(userWithId(1L));
 
-        dispatchService.completeExecution(event);
+        assertThatThrownBy(() -> dispatchService.executeAndComplete(event))
+                .isInstanceOf(IllegalStateException.class);
 
         assertThat(execution.getStatus()).isEqualTo(SlashCommandExecutionStatus.PENDING);
+        then(notificationService).should(never()).pushAll(any(), any(), any(), any());
+    }
+
+    @Test
+    void markFailed는_FAILED로_확정하고_알림을_보낸다() {
+        SlashCommandExecution execution = pendingExecution();
+        SlashCommandDispatchEvent event = new SlashCommandDispatchEvent(5000L, 100L, 1L, 1000L, SlashCommand.MY_TODOS);
+        User executor = userWithId(1L);
+        given(executionRepository.findById(5000L)).willReturn(Optional.of(execution));
+        given(userRepository.getReferenceById(1L)).willReturn(executor);
+        NotificationMessage message = new NotificationMessage(NotificationType.SLASH_COMMAND_RESULT, "제목", "본문");
+        given(notificationMessageFactory.slashCommandResult("/내할일")).willReturn(message);
+
+        dispatchService.markFailed(event);
+
+        assertThat(execution.getStatus()).isEqualTo(SlashCommandExecutionStatus.FAILED);
+        assertThat(execution.getExecutedAt()).isNotNull();
+        then(notificationService).should().pushAll(eq(List.of(executor)), eq(message), eq(1000L), eq(100L));
+    }
+
+    @Test
+    void markFailed는_실행_행이_없으면_조용히_넘어간다() {
+        SlashCommandDispatchEvent event = new SlashCommandDispatchEvent(5000L, 100L, 1L, 1000L, SlashCommand.MY_TODOS);
+        given(executionRepository.findById(5000L)).willReturn(Optional.empty());
+
+        dispatchService.markFailed(event);
+
         then(notificationService).should(never()).pushAll(any(), any(), any(), any());
     }
 
