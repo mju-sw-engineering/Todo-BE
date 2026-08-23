@@ -15,7 +15,12 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class TeamSubscriptionValidator {
 
-    private static final Pattern TEAM_PATTERN = Pattern.compile("^/topic/teams/(\\d+)(?:/typing)?$");
+    /**
+     * 팀 채널 목록. 접미사를 추가할 때는 반드시 이 패턴에 등록해야 하며, 등록하지 않으면
+     * 구독이 거부된다. 어느 접미사든 아래의 팀 멤버 검증을 똑같이 거친다.
+     */
+    private static final Pattern TEAM_PATTERN =
+            Pattern.compile("^/topic/teams/(\\d+)(?:/typing|/proof-analyses)?$");
     private static final Set<String> ALLOWED_USER_DESTINATIONS = Set.of(
             "/user/queue/notifications",
             "/user/queue/errors"

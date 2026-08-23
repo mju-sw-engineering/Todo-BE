@@ -59,6 +59,40 @@ class TeamSubscriptionValidatorTest {
     }
 
     @Test
+    void 판정_채널은_팀원이면_구독을_허용한다() {
+        User user = userWithId(1L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+
+        assertThatCode(() -> validator.validate("/topic/teams/100/proof-analyses", "1"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 판정_채널도_팀원이_아니면_구독을_거부한다() {
+        // 새 접미사가 멤버 검증을 우회하지 않는지 확인한다. 판정 결과에는 제출물 요약이
+        // 담기므로 남의 팀 채널을 구독할 수 있으면 팀 내용이 새어나간다.
+        User user = userWithId(1L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(false);
+
+        assertThatThrownBy(() -> validator.validate("/topic/teams/100/proof-analyses", "1"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("해당 채널을 구독할 권한이 없습니다.");
+    }
+
+    @Test
+    void 등록하지_않은_접미사는_거부한다() {
+        // 패턴이 느슨해져 임의 접미사가 통과하면 인가되지 않은 채널이 열린다.
+        assertThatThrownBy(() -> validator.validate("/topic/teams/100/proof-analyses/secret", "1"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("허용되지 않은 구독 채널입니다.");
+        assertThatThrownBy(() -> validator.validate("/topic/teams/100/anything", "1"))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasMessage("허용되지 않은 구독 채널입니다.");
+    }
+
+    @Test
     void 팀원이_아니면_구독을_거부한다() {
         User user = userWithId(1L);
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
