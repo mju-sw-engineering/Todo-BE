@@ -83,6 +83,17 @@ openai:
   # 타임아웃이 없으면 스레드가 물려 분석 큐 전체가 밀린다.
   read-timeout: 30s
 
+holiday:
+  api:
+    # 공공데이터포털 한국천문연구원 특일정보(getRestDeInfo). 키는 커밋하지 않는다 — 로컬은
+    # application-local.yml, 배포는 환경변수. 키가 없으면 공휴일 없이 추천이 동작한다.
+    # 포털이 주는 두 키 중 "Decoding" 키를 넣는다. Encoding 키는 URI 빌더가 한 번 더 인코딩해
+    # SERVICE_KEY_IS_NOT_REGISTERED(returnReasonCode 30)로 거절된다. 키 활성화 전에도 같은 오류가 난다.
+    service-key: ${HOLIDAY_API_SERVICE_KEY:}
+    base-url: ${HOLIDAY_API_BASE_URL:https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService}
+    connect-timeout: 3s
+    read-timeout: 5s
+
 proof-analysis:
   # 스케줄러 전체가 아니라 AI 폴러만 끄는 스위치. OpenAI 장애가 길어지면 false로 내리고,
   # 복구 후 다시 켜면 큐에 쌓인 건이 그대로 처리된다.
