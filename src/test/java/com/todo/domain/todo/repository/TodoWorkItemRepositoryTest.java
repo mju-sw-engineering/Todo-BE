@@ -72,11 +72,11 @@ class TodoWorkItemRepositoryTest {
         Todo other = entityManager.persist(Todo.create(
                 team, member, "다른 투두", null, LocalDateTime.now().plusHours(1), TodoMode.DIRECT));
         TodoWorkItem withFiles = TodoWorkItem.createDirect(target, member);
-        withFiles.submit("proofs/original.png", "proofs/thumb.jpg");
+        withFiles.submit("proofs/original.png", "proofs/thumb.jpg", "image/png", null);
         entityManager.persist(withFiles);
         entityManager.persist(TodoWorkItem.createDirect(target, memberWithoutFiles));
         TodoWorkItem otherFiles = TodoWorkItem.createDirect(other, member);
-        otherFiles.submit("proofs/other.png", "proofs/other-thumb.jpg");
+        otherFiles.submit("proofs/other.png", "proofs/other-thumb.jpg", "image/png", null);
         entityManager.persist(otherFiles);
         entityManager.flush();
 
