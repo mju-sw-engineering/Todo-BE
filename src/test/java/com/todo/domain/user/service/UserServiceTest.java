@@ -8,6 +8,7 @@ import com.todo.domain.auth.repository.RefreshTokenRepository;
 import com.todo.domain.auth.repository.UserConsentRepository;
 import com.todo.domain.auth.event.AppleAccountRevokeRequestedEvent;
 import com.todo.domain.auth.service.ReauthService;
+import com.todo.domain.chat.command.repository.SlashCommandExecutionRepository;
 import com.todo.domain.chat.repository.TeamChatMessageRepository;
 import com.todo.domain.chat.repository.TeamChatReadStatusRepository;
 import com.todo.domain.notification.repository.NotificationRepository;
@@ -82,6 +83,8 @@ class UserServiceTest {
     private TodoWorkItemLifecycleService todoWorkItemLifecycleService;
     @Mock
     private TeamChatMessageRepository teamChatMessageRepository;
+    @Mock
+    private SlashCommandExecutionRepository slashCommandExecutionRepository;
     @Mock
     private TeamChatReadStatusRepository teamChatReadStatusRepository;
     @Mock
@@ -301,6 +304,7 @@ class UserServiceTest {
 
         verify(todoRepository).clearCreatorByUserId(1L);
         verify(teamChatMessageRepository).clearSenderByUserId(1L);
+        verify(slashCommandExecutionRepository).clearExecutorByUserId(1L);
         verify(todoWorkItemLifecycleService).anonymizeFinishedForWithdrawal(1L);
         verify(todoRepository, never()).deleteByIdIn(anyList());
     }
@@ -359,11 +363,13 @@ class UserServiceTest {
         userService.deleteUser("1", new DeleteUserRequest(REAUTH_TOKEN));
 
         InOrder order = inOrder(notificationRepository, userConsentRepository, teamChatMessageRepository,
-                todoRepository, todoWorkItemLifecycleService, teamMemberRepository, userRepository);
+                slashCommandExecutionRepository, todoRepository, todoWorkItemLifecycleService,
+                teamMemberRepository, userRepository);
         order.verify(notificationRepository).deleteByReceiverId(1L);
         order.verify(userConsentRepository).deleteByUserId(1L);
         order.verify(todoWorkItemLifecycleService).anonymizeFinishedForWithdrawal(1L);
         order.verify(teamChatMessageRepository).clearSenderByUserId(1L);
+        order.verify(slashCommandExecutionRepository).clearExecutorByUserId(1L);
         order.verify(todoRepository).clearCreatorByUserId(1L);
         order.verify(notificationRepository).clearActorByUserId(1L);
         order.verify(teamMemberRepository).deleteByUserId(1L);

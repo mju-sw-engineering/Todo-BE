@@ -1,5 +1,6 @@
 package com.todo.domain.chat.controller;
 
+import com.todo.domain.chat.command.dto.response.SlashCommandResultResponse;
 import com.todo.domain.chat.dto.request.MarkAsReadRequest;
 import com.todo.domain.chat.dto.response.ChatUnreadCountResponse;
 import com.todo.domain.chat.dto.response.TeamChatMessagePageResponse;
@@ -41,6 +42,17 @@ public interface TeamChatControllerDocs {
     )
     ResponseEntity<ApiResponse<ChatUnreadCountResponse>> getUnreadCount(
             @Parameter(description = "팀 ID") Long teamId,
+            Authentication authentication
+    );
+
+    @Operation(
+            summary = "슬래시 명령어 실행 결과 조회",
+            description = "채팅 메시지 하나에 달린 슬래시 명령어 실행 결과를 조회합니다. " +
+                    "개인용(PERSONAL) 명령어는 실행자 본인만 조회할 수 있습니다."
+    )
+    ResponseEntity<ApiResponse<SlashCommandResultResponse>> getCommandResult(
+            @Parameter(description = "팀 ID") Long teamId,
+            @Parameter(description = "명령어를 촉발한 채팅 메시지 ID") Long messageId,
             Authentication authentication
     );
 }

@@ -1,5 +1,12 @@
 package com.todo.domain.chat.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.todo.domain.chat.command.SlashCommand;
+import com.todo.domain.chat.command.SlashCommandDispatchService;
+import com.todo.domain.chat.command.SlashCommandScope;
+import com.todo.domain.chat.command.dto.response.SlashCommandResultResponse;
+import com.todo.domain.chat.command.entity.SlashCommandExecution;
+import com.todo.domain.chat.command.repository.SlashCommandExecutionRepository;
 import com.todo.domain.chat.dto.request.ChatMessageRequest;
 import com.todo.domain.chat.dto.request.MarkAsReadRequest;
 import com.todo.domain.chat.dto.request.TypingStatusRequest;
@@ -27,6 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +48,9 @@ public class TeamChatService {
     private final TeamMemberRepository teamMemberRepository;
     private final NotificationService notificationService;
     private final NotificationMessageFactory notificationMessageFactory;
+    private final SlashCommandDispatchService slashCommandDispatchService;
+    private final SlashCommandExecutionRepository slashCommandExecutionRepository;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public TeamChatMessageResponse saveMessage(Long teamId, String userId, ChatMessageRequest request) {
@@ -51,9 +62,39 @@ public class TeamChatService {
                 TeamChatMessage.create(team, sender, request.content())
         );
 
+        dispatchSlashCommandIfMatched(team, sender, message, request.content());
         pushChatNotifications(teamId, sender, request.content());
 
         return TeamChatMessageResponse.from(message);
+    }
+
+    /**
+     * 명령어 텍스트와 정확히 일치하고 등록된 핸들러가 있을 때만 디스패치한다. 실제 실행은
+     * 이 트랜잭션이 커밋된 뒤로 미뤄진다 — {@link SlashCommandDispatchService#dispatchIfHandled}
+     * 참조.
+     */
+    private void dispatchSlashCommandIfMatched(Team team, User sender, TeamChatMessage message, String content) {
+        Optional<SlashCommand> command = slashCommandDispatchService.match(content);
+        command.ifPresent(value -> slashCommandDispatchService.dispatchIfHandled(team, sender, message, value));
+    }
+
+    /**
+     * 채팅 메시지 하나에 달린 슬래시 명령어 실행 결과를 조회한다. 개인용(PERSONAL) 명령어는
+     * 실행자 본인만 조회할 수 있다.
+     */
+    public SlashCommandResultResponse getCommandResult(Long teamId, String userId, Long messageId) {
+        User user = findUser(userId);
+        checkTeamMember(teamId, user.getId());
+
+        SlashCommandExecution execution = slashCommandExecutionRepository.findByChatMessageId(messageId)
+                .orElseThrow(() -> new BusinessException("명령어 실행 결과가 없습니다.", HttpStatus.NOT_FOUND));
+
+        if (execution.getCommand().scope() == SlashCommandScope.PERSONAL
+                && (execution.getExecutor() == null || !execution.getExecutor().getId().equals(user.getId()))) {
+            throw new BusinessException("본인이 실행한 명령어만 조회할 수 있습니다.", HttpStatus.FORBIDDEN);
+        }
+
+        return SlashCommandResultResponse.from(execution, objectMapper);
     }
 
     public TeamChatMessagePageResponse getMessages(Long teamId, String userId, Long cursorId, int size) {

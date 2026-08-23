@@ -151,6 +151,14 @@ public class NotificationMessageFactory {
         return build(NotificationType.AVAILABILITY_POLL_CREATED, Map.of("pollTitle", pollTitle));
     }
 
+    /**
+     * 슬래시 명령어 실행 결과가 준비됨. 본인(실행자)에게만 발송한다. push 전용이라 실제 결과
+     * 데이터는 담지 않고 "준비됐다"는 신호만 보낸다 — 실제 데이터는 결과 조회 API로 가져온다.
+     */
+    public NotificationMessage slashCommandResult(String commandText) {
+        return build(NotificationType.SLASH_COMMAND_RESULT, Map.of("commandText", commandText));
+    }
+
     private NotificationMessage build(NotificationType type, Map<String, String> args) {
         return properties.getMessages().get(type).toMessage(type, args);
     }

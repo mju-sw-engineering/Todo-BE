@@ -1,5 +1,12 @@
 package com.todo.domain.chat.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.todo.domain.chat.command.SlashCommand;
+import com.todo.domain.chat.command.SlashCommandDispatchService;
+import com.todo.domain.chat.command.dto.response.SlashCommandResultResponse;
+import com.todo.domain.chat.command.entity.SlashCommandExecution;
+import com.todo.domain.chat.command.repository.SlashCommandExecutionRepository;
 import com.todo.domain.chat.dto.request.ChatMessageRequest;
 import com.todo.domain.chat.dto.request.MarkAsReadRequest;
 import com.todo.domain.chat.dto.request.TypingStatusRequest;
@@ -57,6 +64,9 @@ class TeamChatServiceTest {
     @Mock private TeamMemberRepository teamMemberRepository;
     @Mock private NotificationService notificationService;
     @Mock private NotificationMessageFactory notificationMessageFactory;
+    @Mock private SlashCommandDispatchService slashCommandDispatchService;
+    @Mock private SlashCommandExecutionRepository slashCommandExecutionRepository;
+    @Mock private ObjectMapper objectMapper;
 
     @Test
     void 메시지_저장_성공() {
@@ -130,6 +140,117 @@ class TeamChatServiceTest {
 
         then(notificationService).should().pushAll(eq(List.of(receiver)), eq(message), eq(100L), eq(100L));
         then(notificationService).should(never()).sendAll(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 슬래시_명령어와_일치하는_메시지는_디스패치를_호출한다() {
+        User sender = userWithId(1L);
+        Team team = teamWithId(100L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(sender));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(teamRepository.getReferenceById(100L)).willReturn(team);
+        given(teamChatMessageRepository.save(any(TeamChatMessage.class))).willAnswer(invocation -> {
+            TeamChatMessage message = invocation.getArgument(0);
+            ReflectionTestUtils.setField(message, "id", 1000L);
+            ReflectionTestUtils.setField(message, "createdAt", LocalDateTime.of(2026, 6, 4, 12, 0));
+            return message;
+        });
+        given(slashCommandDispatchService.match("/내할일")).willReturn(Optional.of(SlashCommand.MY_TODOS));
+
+        teamChatService.saveMessage(100L, "1", new ChatMessageRequest("/내할일"));
+
+        then(slashCommandDispatchService).should().dispatchIfHandled(
+                eq(team), eq(sender), any(TeamChatMessage.class), eq(SlashCommand.MY_TODOS));
+    }
+
+    @Test
+    void 일반_메시지는_디스패치를_호출하지_않는다() {
+        User sender = userWithId(1L);
+        Team team = teamWithId(100L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(sender));
+        given(teamMemberRepository.existsByTeamIdAndUserId(100L, 1L)).willReturn(true);
+        given(teamRepository.getReferenceById(100L)).willReturn(team);
+        given(teamChatMessageRepository.save(any(TeamChatMessage.class))).willAnswer(invocation -> {
+            TeamChatMessage message = invocation.getArgument(0);
+            ReflectionTestUtils.setField(message, "id", 1000L);
+            ReflectionTestUtils.setField(message, "createdAt", LocalDateTime.of(2026, 6, 4, 12, 0));
+            return message;
+        });
+
+        teamChatService.saveMessage(100L, "1", new ChatMessageRequest("안녕"));
+
+        then(slashCommandDispatchService).should(never())
+                .dispatchIfHandled(any(), any(), any(), any());
+    }
+
+    @Test
+    void 명령어_결과_조회는_DONE_상태의_결과를_반환한다() throws Exception {
+        User user = userWithId(1L);
+        givenTeamMember(user, 100L);
+        SlashCommandExecution execution = doneExecution(SlashCommand.MY_TODOS, user);
+        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.of(execution));
+        given(objectMapper.readTree("{\"count\":1}")).willReturn(TextNode.valueOf("stub"));
+
+        SlashCommandResultResponse response = teamChatService.getCommandResult(100L, "1", 1000L);
+
+        assertThat(response.command()).isEqualTo("MY_TODOS");
+        assertThat(response.status()).isEqualTo("DONE");
+    }
+
+    @Test
+    void 명령어_결과_조회는_처리중이면_PENDING을_반환한다() {
+        User user = userWithId(1L);
+        Team team = teamWithId(100L);
+        givenTeamMember(user, 100L);
+        TeamChatMessage triggerMessage = messageWithId(1000L, team, user, "/내할일");
+        SlashCommandExecution execution = SlashCommandExecution.createPending(team, user, triggerMessage, SlashCommand.MY_TODOS);
+        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.of(execution));
+
+        SlashCommandResultResponse response = teamChatService.getCommandResult(100L, "1", 1000L);
+
+        assertThat(response.status()).isEqualTo("PENDING");
+        assertThat(response.result()).isNull();
+        assertThat(response.executedAt()).isNull();
+    }
+
+    @Test
+    void 개인용_명령어는_실행자_본인_아니면_403() {
+        User executor = userWithId(1L);
+        User other = userWithId(2L);
+        givenTeamMember(other, 100L);
+        SlashCommandExecution execution = doneExecution(SlashCommand.MY_TODOS, executor);
+        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.of(execution));
+
+        assertThatThrownBy(() -> teamChatService.getCommandResult(100L, "2", 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("본인이 실행한 명령어만 조회할 수 있습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void 팀용_명령어는_팀원이면_누구나_조회한다() throws Exception {
+        User executor = userWithId(1L);
+        User other = userWithId(2L);
+        givenTeamMember(other, 100L);
+        SlashCommandExecution execution = doneExecution(SlashCommand.TEAM_STATUS, executor);
+        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.of(execution));
+        given(objectMapper.readTree("{\"count\":1}")).willReturn(TextNode.valueOf("stub"));
+
+        SlashCommandResultResponse response = teamChatService.getCommandResult(100L, "2", 1000L);
+
+        assertThat(response.status()).isEqualTo("DONE");
+    }
+
+    @Test
+    void 명령어_실행_결과가_없으면_404() {
+        User user = userWithId(1L);
+        givenTeamMember(user, 100L);
+        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamChatService.getCommandResult(100L, "1", 1000L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("명령어 실행 결과가 없습니다.")
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
@@ -311,14 +432,23 @@ class TeamChatServiceTest {
     }
 
     private void givenTeamMember(User user, Long teamId) {
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findById(user.getId())).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(teamId, user.getId())).willReturn(true);
     }
 
     private void givenTeamMemberWithTeam(User user, Team team) {
-        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userRepository.findById(user.getId())).willReturn(Optional.of(user));
         given(teamMemberRepository.existsByTeamIdAndUserId(team.getId(), user.getId())).willReturn(true);
         given(teamRepository.getReferenceById(team.getId())).willReturn(team);
+    }
+
+    private SlashCommandExecution doneExecution(SlashCommand command, User executor) {
+        Team team = teamWithId(100L);
+        TeamChatMessage triggerMessage = messageWithId(1000L, team, executor, command.commandText());
+        SlashCommandExecution execution =
+                SlashCommandExecution.createPending(team, executor, triggerMessage, command);
+        execution.complete("{\"count\":1}", LocalDateTime.of(2026, 6, 4, 12, 5));
+        return execution;
     }
 
     private User userWithId(Long id) {

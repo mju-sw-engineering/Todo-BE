@@ -99,3 +99,9 @@ notification:
     CHAT_MESSAGE:
       title: "{senderNickname}님이 메시지를 보냈습니다."
       content: "{content}"
+
+    # ── 슬래시 명령어 ───────────────────────────────────────────────
+    # push 전용. 실행자 본인에게만 발송하며 결과 데이터는 담지 않고 준비됐다는 신호만 보낸다.
+    SLASH_COMMAND_RESULT:
+      title: "{commandText} 결과가 준비되었습니다."
+      content: "채팅에서 확인해보세요."
