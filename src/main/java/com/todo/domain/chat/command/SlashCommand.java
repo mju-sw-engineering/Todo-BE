@@ -33,9 +33,17 @@ public enum SlashCommand {
         return scope;
     }
 
+    /**
+     * 앞뒤 공백만 무시한다. 모바일 키보드가 자동으로 붙이는 뒤 공백 때문에 명령어가 일반
+     * 메시지로 빠지는 것을 막기 위해서다. 가운데 공백은 명령어 텍스트의 일부다.
+     */
     public static Optional<SlashCommand> fromText(String text) {
+        if (text == null) {
+            return Optional.empty();
+        }
+        String normalized = text.strip();
         return Arrays.stream(values())
-                .filter(command -> command.commandText.equals(text))
+                .filter(command -> command.commandText.equals(normalized))
                 .findFirst();
     }
 }
