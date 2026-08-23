@@ -9,6 +9,8 @@ import com.todo.global.ai.AiClientException;
 import com.todo.global.ai.AiStructuredRequest;
 import com.todo.global.ai.OpenAiClient;
 import com.todo.global.ai.OpenAiProperties;
+import com.todo.global.file.extract.DocumentExtractionException;
+import com.todo.global.file.extract.DocumentTextExtractor;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 인증 파일 판정 파이프라인. 폴러가 건별로 호출하며, 한 건이 실패해도 다른 건에 영향을 주지 않는다.
@@ -71,6 +74,7 @@ public class ProofAnalysisService {
     private final OpenAiProperties openAiProperties;
     private final ProofPromptProvider promptProvider;
     private final FileService fileService;
+    private final DocumentTextExtractor documentTextExtractor;
     private final ProofAnalysisNotifier notifier;
 
     /**
@@ -97,6 +101,9 @@ public class ProofAnalysisService {
         }
 
         LocalDateTime now = LocalDateTime.now(KST);
+        // 클라이언트가 남기는 시간은 OpenAI 호출 구간뿐이다. 여기서는 S3 조회와 텍스트 추출까지
+        // 포함한 전체 처리 시간을 남긴다. 폴러가 순차 처리라 이 값이 곧 큐 소화 속도다.
+        long startedAt = System.nanoTime();
         try {
             VerdictResponse response = openAiClient.generateStructured(
                     buildRequest(analysis),
@@ -104,8 +111,9 @@ public class ProofAnalysisService {
                     "proof-analysis-" + analysisId
             );
             ProofVerdict verdict = parseVerdict(response.verdict());
-            log.debug("인증 파일 판정. analysisId={}, verdict={}, observed={}",
-                    analysisId, verdict, response.observed());
+            log.info("인증 파일 판정 완료. analysisId={}, kind={}, verdict={}, elapsedMs={}",
+                    analysisId, analysis.getInputKind(), verdict, elapsedMillis(startedAt));
+            log.debug("판정 근거. analysisId={}, observed={}", analysisId, response.observed());
             analysis.complete(verdict, response.summary(), response.mismatch_reason(), openAiProperties.model());
             notifier.afterAnalyzed(analysis);
         } catch (AiClientException e) {
@@ -118,12 +126,21 @@ public class ProofAnalysisService {
                 // 영구 실패는 사람이 봐야 하는 경우가 많다(키 만료, 스키마 불일치).
                 log.error("인증 파일 판정 실패. analysisId={}, reason={}", analysisId, e.getMessage(), e);
             }
+        } catch (DocumentExtractionException e) {
+            // 깨진 파일이나 암호가 걸린 PDF다. 다시 시도해도 같은 결과가 나온다.
+            analysis.failPermanently();
+            log.warn("인증 문서에서 텍스트를 추출하지 못했습니다. analysisId={}, reason={}",
+                    analysisId, e.getMessage());
         } catch (RuntimeException e) {
             // 파일을 읽지 못하는 등 클라이언트 밖의 실패. 일시적일 수 있으므로 재시도한다.
             analysis.recordRetryableFailure(now);
             log.warn("인증 파일 판정 중 예외. analysisId={}, attempt={}",
                     analysisId, analysis.getAttemptCount(), e);
         }
+    }
+
+    private long elapsedMillis(long startedAtNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos);
     }
 
     private AiStructuredRequest buildRequest(ProofAiAnalysis analysis) {
@@ -139,8 +156,18 @@ public class ProofAnalysisService {
                     VERDICT_SCHEMA
             );
         }
-        // 문서 텍스트 추출은 WP4에서 붙인다. 그때까지 DOCUMENT는 큐에 적재되지 않는다.
-        throw new IllegalStateException("문서 판정은 아직 지원하지 않습니다. inputKind=" + analysis.getInputKind());
+
+        // 문서는 파일을 통째로 보내지 않고 서버에서 텍스트를 뽑아 넘긴다. 페이지를 이미지로
+        // 렌더해 보내는 것보다 토큰이 2~3배 적게 들고 OCR 오차가 없어 요약도 정확하다.
+        String documentText = documentTextExtractor.extract(
+                workItem.getProofContentType(),
+                fileService.readObject(workItem.getProofImageKey()));
+        return AiStructuredRequest.ofText(
+                systemInstruction,
+                "<task>\n" + describeTask(workItem) + "\n</task>\n\n<document>\n" + documentText + "\n</document>",
+                SCHEMA_NAME,
+                VERDICT_SCHEMA
+        );
     }
 
     /**

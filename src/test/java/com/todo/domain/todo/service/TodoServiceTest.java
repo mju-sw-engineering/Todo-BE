@@ -39,6 +39,7 @@ import com.todo.domain.todo.repository.TodoWorkItemSummary;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.file.extract.DocumentTextExtractor;
 import com.todo.global.service.FileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -99,6 +100,8 @@ class TodoServiceTest {
     private TodoReactionRepository todoReactionRepository;
     @Mock
     private ProofAiAnalysisRepository proofAiAnalysisRepository;
+    @Mock
+    private DocumentTextExtractor documentTextExtractor;
     @Mock
     private TransactionTemplate transactionTemplate;
     @Mock
@@ -399,13 +402,32 @@ class TodoServiceTest {
     }
 
     @Test
-    void 문서_제출은_아직_판정_대상이_아니라_건너뛴_상태로_남긴다() {
+    void 요약_가능한_문서_제출은_분석_대기로_큐에_적재한다() {
         User assignee = user(1L);
         Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
         TodoWorkItem workItem = direct(todo, assignee, 20L);
         givenSubmittable(assignee, todo, workItem, "proof.pdf", "application/pdf");
+        given(documentTextExtractor.supports("application/pdf")).willReturn(true);
 
         todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.pdf", "발표자료.pdf"));
+
+        ArgumentCaptor<ProofAiAnalysis> captor = ArgumentCaptor.forClass(ProofAiAnalysis.class);
+        then(proofAiAnalysisRepository).should().save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(ProofAnalysisStatus.PENDING);
+        assertThat(captor.getValue().getInputKind()).isEqualTo(ProofKind.DOCUMENT);
+    }
+
+    @Test
+    void 요약할_수_없는_문서는_건너뛴_상태로_남긴다() {
+        // HWP는 업로드는 되지만 파서가 없어 요약 대상이 아니다. PENDING으로 두면
+        // 처리되지 않을 건이 영영 대기 중인 것처럼 보인다.
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        givenSubmittable(assignee, todo, workItem, "proof.hwp", "application/x-hwp");
+        given(documentTextExtractor.supports("application/x-hwp")).willReturn(false);
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.hwp", "보고서.hwp"));
 
         ArgumentCaptor<ProofAiAnalysis> captor = ArgumentCaptor.forClass(ProofAiAnalysis.class);
         then(proofAiAnalysisRepository).should().save(captor.capture());
