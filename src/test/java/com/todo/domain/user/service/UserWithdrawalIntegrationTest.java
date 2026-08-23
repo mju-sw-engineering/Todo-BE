@@ -119,7 +119,7 @@ class UserWithdrawalIntegrationTest {
         teamMemberRepository.save(TeamMember.create(soloTeam, withdrawing, TeamMemberRole.LEADER));
         Todo soloTodo = todoRepository.save(todo(soloTeam, TodoMode.DIRECT, "인증 투두"));
         TodoWorkItem completed = TodoWorkItem.createDirect(soloTodo, withdrawing);
-        completed.submit("proofs/original.png", "proofs/thumb.jpg");
+        completed.submit("proofs/original.png", "proofs/thumb.jpg", "image/png", null);
         todoWorkItemRepository.save(completed);
         entityManager.flush();
 
@@ -177,7 +177,7 @@ class UserWithdrawalIntegrationTest {
     void 완료_WorkItem은_익명화되고_사진키는_null이며_타인의_반응은_보존된다() {
         Todo todo = todoRepository.save(todo(team, TodoMode.DIRECT, "투두"));
         TodoWorkItem completed = TodoWorkItem.createDirect(todo, withdrawing);
-        completed.submit("proofs/original.png", "proofs/thumb.png");
+        completed.submit("proofs/original.png", "proofs/thumb.png", "image/png", null);
         todoWorkItemRepository.save(completed);
         TodoReaction othersReaction = todoReactionRepository.save(
                 TodoReaction.create(completed, staying, TodoReactionType.LIKE));
@@ -252,7 +252,7 @@ class UserWithdrawalIntegrationTest {
     void 탈퇴자가_남긴_반응과_읽음상태는_삭제된다() {
         Todo todo = todoRepository.save(todo(team, TodoMode.DIRECT, "투두"));
         TodoWorkItem others = TodoWorkItem.createDirect(todo, staying);
-        others.submit("proofs/other.png", "proofs/other-thumb.png");
+        others.submit("proofs/other.png", "proofs/other-thumb.png", "image/png", null);
         todoWorkItemRepository.save(others);
         TodoReaction myReaction = todoReactionRepository.save(
                 TodoReaction.create(others, withdrawing, TodoReactionType.HEART));

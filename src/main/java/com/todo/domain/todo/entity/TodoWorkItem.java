@@ -28,6 +28,8 @@ import java.time.ZoneId;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TodoWorkItem extends BaseTimeEntity {
 
+    private static final int MAX_PROOF_FILE_NAME_LENGTH = 255;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -62,10 +64,19 @@ public class TodoWorkItem extends BaseTimeEntity {
     @Column(nullable = false)
     private WorkItemStatus status;
 
+    /** 이미지뿐 아니라 문서(PDF·DOCX·XLSX·CSV·HWP·HWPX)도 담는다. 컬럼명은 하위호환으로 유지한다. */
     @Column(unique = true)
     private String proofImageKey;
 
+    /** 이미지 제출에만 채워진다. 문서는 썸네일을 만들지 않는다. */
     private String proofThumbnailKey;
+
+    /** 제출 검증 때 S3 HEAD로 확정한 값. 미리보기·요약 분기는 확장자가 아니라 이 값을 따른다. */
+    @Column(length = 100)
+    private String proofContentType;
+
+    /** 카드에 보여줄 원본 파일명. 오브젝트 키는 UUID라 사람이 알아볼 수 없다. */
+    private String proofFileName;
 
     private LocalDateTime submittedAt;
 
@@ -108,17 +119,45 @@ public class TodoWorkItem extends BaseTimeEntity {
     }
 
     public void submit(String proofImageKey) {
-        submit(proofImageKey, null);
+        submit(proofImageKey, null, null, null);
     }
 
-    public void submit(String proofImageKey, String proofThumbnailKey) {
+    public void submit(
+            String proofImageKey,
+            String proofThumbnailKey,
+            String proofContentType,
+            String proofFileName
+    ) {
         if (this.status != WorkItemStatus.IN_PROGRESS) {
             throw new BusinessException("이미 제출되었거나 완료된 투두입니다.", HttpStatus.CONFLICT);
         }
         this.proofImageKey = proofImageKey;
         this.proofThumbnailKey = proofThumbnailKey;
+        this.proofContentType = proofContentType;
+        this.proofFileName = sanitizeFileName(proofFileName);
         this.status = WorkItemStatus.SUCCESS;
         this.submittedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+    }
+
+    public ProofKind getProofKind() {
+        return ProofKind.from(proofContentType);
+    }
+
+    /**
+     * 파일명은 클라이언트가 보낸 값이라 그대로 저장하지 않는다. 경로 구분자를 지우고
+     * 컬럼 길이에 맞춰 자른다 — 화면 표시 용도이므로 잘려도 기능에는 지장이 없다.
+     */
+    private static String sanitizeFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return null;
+        }
+        String sanitized = fileName.strip().replaceAll("[/\\\\]", "");
+        if (sanitized.isBlank()) {
+            return null;
+        }
+        return sanitized.length() > MAX_PROOF_FILE_NAME_LENGTH
+                ? sanitized.substring(0, MAX_PROOF_FILE_NAME_LENGTH)
+                : sanitized;
     }
 
     public void markAsFail() {

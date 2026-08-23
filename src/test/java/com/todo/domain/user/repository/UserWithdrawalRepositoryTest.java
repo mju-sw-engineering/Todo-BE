@@ -92,7 +92,7 @@ class UserWithdrawalRepositoryTest {
         setUpTeam();
         Todo todo = entityManager.persist(todo(staying, "투두", TodoMode.DIRECT));
         TodoWorkItem finished = TodoWorkItem.createDirect(todo, withdrawing);
-        finished.submit("proofs/original.png", "proofs/thumb.png");
+        finished.submit("proofs/original.png", "proofs/thumb.png", "image/png", null);
         entityManager.persist(finished);
         entityManager.flush();
         LocalDateTime submittedAt = finished.getSubmittedAt();
