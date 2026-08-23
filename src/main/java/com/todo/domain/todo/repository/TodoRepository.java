@@ -171,4 +171,8 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
             @Param("from") LocalDateTime from
     );
 
+    /** /팀현황 명령어용 — 팀 전체 투두 개수를 상태별로 집계한다. */
+    @Query("SELECT t.status AS status, COUNT(t) AS count FROM Todo t WHERE t.team.id = :teamId GROUP BY t.status")
+    List<TodoStatusCount> countByTeamIdGroupByStatus(@Param("teamId") Long teamId);
+
 }

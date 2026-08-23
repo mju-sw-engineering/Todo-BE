@@ -310,4 +310,14 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
             @Param("userId") Long userId,
             @Param("from") LocalDateTime from
     );
+
+    /** /팀현황 명령어용 — 진행 중인 투두에 속한 WorkItem만 상태별로 집계한다. */
+    @Query("""
+            SELECT wi.status AS status, COUNT(wi) AS count
+            FROM TodoWorkItem wi
+            WHERE wi.todo.team.id = :teamId
+              AND wi.todo.status = com.todo.domain.todo.entity.TodoStatus.IN_PROGRESS
+            GROUP BY wi.status
+            """)
+    List<WorkItemStatusCount> countByTeamIdAndTodoInProgressGroupByStatus(@Param("teamId") Long teamId);
 }
