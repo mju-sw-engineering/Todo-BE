@@ -259,6 +259,53 @@ class ProofAnalysisServiceTest {
     }
 
     @Test
+    void 롤백된_건의_재시도_횟수를_새_트랜잭션에서_올린다() {
+        // analyze()의 catch가 올린 횟수는 트랜잭션이 rollback-only면 함께 사라진다.
+        // 여기서 전진시키지 않으면 MAX_ATTEMPTS에 닿지 못해 유료 호출이 무한 반복된다.
+        ProofAiAnalysis analysis = pendingAnalysis();
+        given(proofAiAnalysisRepository.findById(ANALYSIS_ID)).willReturn(Optional.of(analysis));
+
+        proofAnalysisService.recordDispatchFailure(ANALYSIS_ID);
+
+        assertThat(analysis.getAttemptCount()).isEqualTo(1);
+        assertThat(analysis.getStatus()).isEqualTo(ProofAnalysisStatus.PENDING);
+    }
+
+    @Test
+    void 횟수를_다_쓰면_FAILED로_확정해_반복을_멈춘다() {
+        ProofAiAnalysis analysis = pendingAnalysis();
+        ReflectionTestUtils.setField(analysis, "attemptCount", 4);
+        given(proofAiAnalysisRepository.findById(ANALYSIS_ID)).willReturn(Optional.of(analysis));
+
+        proofAnalysisService.recordDispatchFailure(ANALYSIS_ID);
+
+        assertThat(analysis.getAttemptCount()).isEqualTo(5);
+        assertThat(analysis.getStatus()).isEqualTo(ProofAnalysisStatus.FAILED);
+    }
+
+    @Test
+    void 이미_확정된_건은_횟수를_올리지_않는다() {
+        // 판정은 커밋됐는데 그 뒤 다른 이유로 예외가 난 경우다. 여기서 횟수를 올리면
+        // 멀쩡히 끝난 건이 재시도 대상처럼 보인다.
+        ProofAiAnalysis analysis = pendingAnalysis();
+        analysis.complete(ProofVerdict.VERIFIED, "요약", null, "gpt-5.6-luna");
+        given(proofAiAnalysisRepository.findById(ANALYSIS_ID)).willReturn(Optional.of(analysis));
+
+        proofAnalysisService.recordDispatchFailure(ANALYSIS_ID);
+
+        assertThat(analysis.getAttemptCount()).isZero();
+        assertThat(analysis.getStatus()).isEqualTo(ProofAnalysisStatus.DONE);
+    }
+
+    @Test
+    void 사라진_건이면_아무것도_하지_않는다() {
+        // 제출 취소로 행이 지워졌을 수 있다.
+        given(proofAiAnalysisRepository.findById(ANALYSIS_ID)).willReturn(Optional.empty());
+
+        proofAnalysisService.recordDispatchFailure(ANALYSIS_ID);
+    }
+
+    @Test
     void 설정된_타임아웃은_클라이언트가_관리한다() {
         // 이 서비스는 타임아웃을 직접 다루지 않는다. 폴러 스레드를 지키는 책임은
         // openAiRestClient 빈에 있고, 여기서는 설정이 존재한다는 것만 확인한다.

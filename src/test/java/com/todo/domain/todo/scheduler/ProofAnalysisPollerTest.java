@@ -88,4 +88,30 @@ class ProofAnalysisPollerTest {
         then(proofAiAnalysisRepository).shouldHaveNoInteractions();
         then(proofAnalysisService).should(never()).analyze(anyLong());
     }
+
+    @Test
+    void 분석이_통째로_롤백되면_재시도_횟수를_별도로_올린다() {
+        // 판정 트랜잭션이 rollback-only가 되면 catch에서 올린 attempt_count까지 사라진다.
+        // 그러면 MAX_ATTEMPTS에 영원히 닿지 못해 폴링 주기마다 유료 호출이 반복된다.
+        given(proofAiAnalysisRepository.findDispatchableIds(any(LocalDateTime.class), any(Pageable.class)))
+                .willReturn(List.of(7L));
+        willThrow(new IllegalStateException("Transaction silently rolled back"))
+                .given(proofAnalysisService).analyze(7L);
+
+        poller.analyzePending();
+
+        then(proofAnalysisService).should().recordDispatchFailure(7L);
+    }
+
+    @Test
+    void 횟수_기록까지_실패해도_배치가_멈추지_않는다() {
+        given(proofAiAnalysisRepository.findDispatchableIds(any(LocalDateTime.class), any(Pageable.class)))
+                .willReturn(List.of(7L, 8L));
+        willThrow(new IllegalStateException("롤백")).given(proofAnalysisService).analyze(7L);
+        willThrow(new IllegalStateException("DB 장애")).given(proofAnalysisService).recordDispatchFailure(7L);
+
+        poller.analyzePending();
+
+        then(proofAnalysisService).should().analyze(8L);
+    }
 }
