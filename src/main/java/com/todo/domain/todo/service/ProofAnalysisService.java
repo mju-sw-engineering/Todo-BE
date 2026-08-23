@@ -9,6 +9,8 @@ import com.todo.global.ai.AiClientException;
 import com.todo.global.ai.AiStructuredRequest;
 import com.todo.global.ai.OpenAiClient;
 import com.todo.global.ai.OpenAiProperties;
+import com.todo.global.file.extract.DocumentExtractionException;
+import com.todo.global.file.extract.DocumentTextExtractor;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -71,6 +73,7 @@ public class ProofAnalysisService {
     private final OpenAiProperties openAiProperties;
     private final ProofPromptProvider promptProvider;
     private final FileService fileService;
+    private final DocumentTextExtractor documentTextExtractor;
     private final ProofAnalysisNotifier notifier;
 
     /**
@@ -118,6 +121,11 @@ public class ProofAnalysisService {
                 // 영구 실패는 사람이 봐야 하는 경우가 많다(키 만료, 스키마 불일치).
                 log.error("인증 파일 판정 실패. analysisId={}, reason={}", analysisId, e.getMessage(), e);
             }
+        } catch (DocumentExtractionException e) {
+            // 깨진 파일이나 암호가 걸린 PDF다. 다시 시도해도 같은 결과가 나온다.
+            analysis.failPermanently();
+            log.warn("인증 문서에서 텍스트를 추출하지 못했습니다. analysisId={}, reason={}",
+                    analysisId, e.getMessage());
         } catch (RuntimeException e) {
             // 파일을 읽지 못하는 등 클라이언트 밖의 실패. 일시적일 수 있으므로 재시도한다.
             analysis.recordRetryableFailure(now);
@@ -139,8 +147,18 @@ public class ProofAnalysisService {
                     VERDICT_SCHEMA
             );
         }
-        // 문서 텍스트 추출은 WP4에서 붙인다. 그때까지 DOCUMENT는 큐에 적재되지 않는다.
-        throw new IllegalStateException("문서 판정은 아직 지원하지 않습니다. inputKind=" + analysis.getInputKind());
+
+        // 문서는 파일을 통째로 보내지 않고 서버에서 텍스트를 뽑아 넘긴다. 페이지를 이미지로
+        // 렌더해 보내는 것보다 토큰이 2~3배 적게 들고 OCR 오차가 없어 요약도 정확하다.
+        String documentText = documentTextExtractor.extract(
+                workItem.getProofContentType(),
+                fileService.readObject(workItem.getProofImageKey()));
+        return AiStructuredRequest.ofText(
+                systemInstruction,
+                "<task>\n" + describeTask(workItem) + "\n</task>\n\n<document>\n" + documentText + "\n</document>",
+                SCHEMA_NAME,
+                VERDICT_SCHEMA
+        );
     }
 
     /**

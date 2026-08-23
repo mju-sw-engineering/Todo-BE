@@ -210,6 +210,29 @@ class ProofPromptSmokeTest {
     }
 
     @Test
+    void 마크다운_표로_옮긴_스프레드시트도_요약한다() {
+        // 엑셀·CSV는 표 구조를 유지해 넘긴다. 셀을 이어붙이면 어느 값이 어느 열인지 사라진다.
+        var result = judgeDocument(
+                "팀 작업 진행현황 정리하기",
+                """
+                ## 진행현황
+
+                | 담당 | 작업 | 상태 |
+                | --- | --- | --- |
+                | 심유진 | 프론트엔드 화면 구현 | 진행중 |
+                | 김윤진 | 백엔드 API 구현 | 완료 |
+                | 이종혁 | 백엔드 테스트 작성 | 완료 |
+                | 라혜준 | 회의록 정리 | 완료 |
+                """);
+
+        System.out.println("[PROMPT:table] verdict=" + result.verdict()
+                + "\n  summary=" + result.summary());
+        assertThat(result.verdict()).isEqualTo("VERIFIED");
+        // 표가 제대로 전달됐다면 담당자와 상태가 요약에 드러난다.
+        assertThat(result.summary()).isNotBlank();
+    }
+
+    @Test
     void 무관한_문서는_불일치로_판정하고_안내조_사유를_준다() {
         var result = judgeDocument(
                 "발표자료 초안 만들기",

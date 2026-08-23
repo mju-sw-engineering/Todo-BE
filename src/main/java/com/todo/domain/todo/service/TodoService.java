@@ -47,6 +47,7 @@ import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.domain.user.support.WithdrawnUserDisplay;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.file.extract.DocumentTextExtractor;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -97,6 +98,7 @@ public class TodoService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final FileService fileService;
+    private final DocumentTextExtractor documentTextExtractor;
     private final TodoReactionRepository todoReactionRepository;
     private final ProofAiAnalysisRepository proofAiAnalysisRepository;
     private final TransactionTemplate transactionTemplate;
@@ -630,16 +632,19 @@ public class TodoService {
      * 제출 트랜잭션에서는 분석 대기 행 한 줄만 남긴다. 실제 OpenAI 호출은 폴러가 별도
      * 트랜잭션으로 처리하므로, OpenAI가 느리거나 죽어도 제출 응답에는 영향이 없다.
      *
-     * <p>이미지가 아닌 제출은 아직 판정 대상이 아니라 SKIPPED로 남긴다. "분석하지 않기로 한 건"과
-     * "아직 분석 전인 건"을 구분해야 조회 쪽에서 대기 중인 것처럼 보이지 않는다.
+     * <p>판정할 수 없는 제출은 SKIPPED로 남긴다. HWP·HWPX가 여기 해당한다 — 업로드는 되지만
+     * 신뢰할 만한 자바 파서가 없어 텍스트를 뽑을 수 없다. "분석하지 않기로 한 건"과 "아직 분석
+     * 전인 건"을 구분해야 조회 쪽에서 영영 대기 중인 것처럼 보이지 않는다.
      */
     private void enqueueProofAnalysis(TodoWorkItem workItem) {
         ProofKind kind = workItem.getProofKind();
         if (kind == null) {
             return;
         }
+        boolean analyzable = kind == ProofKind.IMAGE
+                || documentTextExtractor.supports(workItem.getProofContentType());
         LocalDateTime now = LocalDateTime.now(KST);
-        proofAiAnalysisRepository.save(kind == ProofKind.IMAGE
+        proofAiAnalysisRepository.save(analyzable
                 ? ProofAiAnalysis.pending(workItem, kind, now)
                 : ProofAiAnalysis.skipped(workItem, kind, now));
     }

@@ -13,6 +13,8 @@ import com.todo.global.ai.AiClientException;
 import com.todo.global.ai.AiStructuredRequest;
 import com.todo.global.ai.OpenAiClient;
 import com.todo.global.ai.OpenAiProperties;
+import com.todo.global.file.extract.DocumentExtractionException;
+import com.todo.global.file.extract.DocumentTextExtractor;
 import com.todo.global.service.FileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,6 +58,8 @@ class ProofAnalysisServiceTest {
     private FileService fileService;
     @Mock
     private ProofAnalysisNotifier notifier;
+    @Mock
+    private DocumentTextExtractor documentTextExtractor;
 
     @BeforeEach
     void setUp() {
@@ -121,6 +125,39 @@ class ProofAnalysisServiceTest {
     }
 
     @Test
+    void 문서는_추출한_텍스트를_구분자로_감싸_전달한다() {
+        ProofAiAnalysis analysis = givenPendingDocumentAnalysis();
+        given(documentTextExtractor.extract(eq("application/pdf"), any()))
+                .willReturn("회의록 본문");
+        givenModelResponse("VERIFIED", "회의록입니다.", "");
+
+        proofAnalysisService.analyze(ANALYSIS_ID);
+
+        ArgumentCaptor<AiStructuredRequest> captor = ArgumentCaptor.forClass(AiStructuredRequest.class);
+        then(openAiClient).should().generateStructured(captor.capture(), any(), anyString());
+        AiStructuredRequest request = captor.getValue();
+        // 파일을 통째로 보내지 않는다. 문서 본문은 신뢰할 수 없는 입력이라 구분자로 감싼다.
+        assertThat(request.hasImage()).isFalse();
+        assertThat(request.userText()).contains("<document>\n회의록 본문\n</document>");
+        assertThat(analysis.getVerdict()).isEqualTo(ProofVerdict.VERIFIED);
+    }
+
+    @Test
+    void 문서_추출_실패는_재시도하지_않고_즉시_확정한다() {
+        // 깨진 파일이나 암호가 걸린 PDF는 다시 시도해도 같은 결과다.
+        ProofAiAnalysis analysis = givenPendingDocumentAnalysis();
+        given(documentTextExtractor.extract(anyString(), any()))
+                .willThrow(new DocumentExtractionException("암호가 걸린 PDF"));
+
+        proofAnalysisService.analyze(ANALYSIS_ID);
+
+        assertThat(analysis.getStatus()).isEqualTo(ProofAnalysisStatus.FAILED);
+        assertThat(analysis.getAttemptCount()).isZero();
+        then(openAiClient).shouldHaveNoInteractions();
+        then(notifier).should(never()).afterAnalyzed(any());
+    }
+
+    @Test
     void 일시적_실패는_백오프_후_재시도로_남긴다() {
         ProofAiAnalysis analysis = givenPendingImageAnalysis();
         given(openAiClient.generateStructured(any(), any(), anyString()))
@@ -176,6 +213,23 @@ class ProofAnalysisServiceTest {
         proofAnalysisService.analyze(ANALYSIS_ID);
 
         then(openAiClient).shouldHaveNoInteractions();
+    }
+
+    private ProofAiAnalysis givenPendingDocumentAnalysis() {
+        Team team = Team.create("팀", null, "ABCDEFGH");
+        ReflectionTestUtils.setField(team, "id", 1L);
+        com.todo.domain.user.entity.User user = com.todo.domain.user.entity.User.create(
+                "user1", "encoded", "닉네임", null);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        Todo todo = Todo.create(team, user, "회의록 정리하기", null,
+                LocalDateTime.now().plusDays(1), TodoMode.DIRECT);
+        ReflectionTestUtils.setField(todo, "id", 10L);
+        TodoWorkItem workItem = TodoWorkItem.createDirect(todo, user);
+        ReflectionTestUtils.setField(workItem, "id", 20L);
+        workItem.submit("proofs/1/10/1/a.pdf", null, "application/pdf", "회의록.pdf");
+        ProofAiAnalysis analysis = ProofAiAnalysis.pending(workItem, ProofKind.DOCUMENT, LocalDateTime.now());
+        given(proofAiAnalysisRepository.findByIdForUpdate(ANALYSIS_ID)).willReturn(Optional.of(analysis));
+        return analysis;
     }
 
     private ProofAiAnalysis givenPendingImageAnalysis() {
