@@ -1,5 +1,6 @@
 package com.todo.domain.todo.dto.response;
 
+import com.todo.domain.todo.entity.ProofKind;
 import com.todo.domain.todo.entity.TodoReactionType;
 import com.todo.domain.todo.entity.TodoWorkItem;
 import com.todo.domain.todo.entity.WorkItemStatus;
@@ -21,7 +22,9 @@ public record TodoTaskResponse(
         @Schema(description = "요청 배열 기준 정렬 순서") int position,
         @Schema(description = "WorkItem 상태") WorkItemStatus status,
         @Schema(description = "제출 시각") OffsetDateTime submittedAt,
-        @Schema(description = "인증 사진 썸네일 URL") String thumbnailUrl,
+        @Schema(description = "인증 사진 썸네일 URL. 문서 제출이면 null입니다.") String thumbnailUrl,
+        @Schema(description = "인증 파일 종류. 미제출이거나 메타데이터 이전 제출이면 null입니다.") ProofKind proofKind,
+        @Schema(description = "인증 파일 원본 파일명") String proofFileName,
         @Schema(description = "이모지 반응 수") Map<TodoReactionType, Long> reactions,
         @Schema(description = "내 이모지 반응") TodoReactionType myReaction,
         @Schema(description = "진행 중 미배정 여부") boolean unassigned
@@ -48,6 +51,8 @@ public record TodoTaskResponse(
                 workItem.getStatus(),
                 submittedAt,
                 thumbnailUrl,
+                workItem.getProofKind(),
+                workItem.getProofFileName(),
                 reactions,
                 myReaction,
                 unassigned

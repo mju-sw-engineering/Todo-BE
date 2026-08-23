@@ -132,7 +132,7 @@ public class TodoController implements TodoControllerDocs {
     ) {
         String userId = authentication.getName();
         todoService.submitTodo(todoId, userId, request);
-        return ResponseEntity.ok(ApiResponse.success(null, "인증 사진이 제출되었습니다."));
+        return ResponseEntity.ok(ApiResponse.success(null, "인증 파일이 제출되었습니다."));
     }
 
     @PostMapping("/todo-work-items/{workItemId}/submission")
@@ -143,7 +143,7 @@ public class TodoController implements TodoControllerDocs {
     ) {
         String userId = authentication.getName();
         todoService.submitTodoWorkItem(workItemId, userId, request);
-        return ResponseEntity.ok(ApiResponse.success(null, "인증 사진이 제출되었습니다."));
+        return ResponseEntity.ok(ApiResponse.success(null, "인증 파일이 제출되었습니다."));
     }
 
     @GetMapping("/todo-work-items/{workItemId}/submission")

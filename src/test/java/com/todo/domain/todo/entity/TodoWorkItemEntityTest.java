@@ -78,13 +78,67 @@ class TodoWorkItemEntityTest {
     void WorkItem은_제출_후_중복_제출할_수_없다() {
         TodoWorkItem workItem = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
 
-        workItem.submit("proof-key", "thumb-key");
+        workItem.submit("proof-key", "thumb-key", "image/png", null);
 
         assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
         assertThat(workItem.getProofThumbnailKey()).isEqualTo("thumb-key");
         assertThatThrownBy(() -> workItem.submit("another-proof-key"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 제출되었거나 완료된 투두입니다.");
+    }
+
+    @Test
+    void 제출_파일의_종류는_contentType으로_판단한다() {
+        TodoWorkItem image = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
+        image.submit("proof.jpg", "thumb.jpg", "image/jpeg", "인증사진.jpg");
+        assertThat(image.getProofKind()).isEqualTo(ProofKind.IMAGE);
+
+        TodoWorkItem document = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
+        document.submit("proof.pdf", null, "application/pdf", "발표자료.pdf");
+        assertThat(document.getProofKind()).isEqualTo(ProofKind.DOCUMENT);
+        assertThat(document.getProofFileName()).isEqualTo("발표자료.pdf");
+    }
+
+    @Test
+    void 확장자가_이미지여도_contentType이_문서면_문서로_본다() {
+        TodoWorkItem workItem = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
+
+        // 확장자는 클라이언트가 붙인 파일명에서 오지만 contentType은 업로드 시점에 강제된 값이다.
+        workItem.submit("proof.jpg", null, "application/pdf", "위장.jpg");
+
+        assertThat(workItem.getProofKind()).isEqualTo(ProofKind.DOCUMENT);
+    }
+
+    @Test
+    void contentType이_없는_기존_제출은_종류를_단정하지_않는다() {
+        TodoWorkItem workItem = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
+
+        workItem.submit("proof-key");
+
+        assertThat(workItem.getProofKind()).isNull();
+    }
+
+    @Test
+    void 파일명은_경로_구분자를_제거하고_길이를_제한한다() {
+        TodoWorkItem workItem = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
+
+        workItem.submit("proof.pdf", null, "application/pdf", "../../etc/passwd.pdf");
+
+        assertThat(workItem.getProofFileName()).isEqualTo("....etcpasswd.pdf");
+
+        TodoWorkItem longName = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
+        longName.submit("proof.pdf", null, "application/pdf", "가".repeat(300) + ".pdf");
+
+        assertThat(longName.getProofFileName()).hasSize(255);
+    }
+
+    @Test
+    void 빈_파일명은_null로_저장한다() {
+        TodoWorkItem workItem = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
+
+        workItem.submit("proof.pdf", null, "application/pdf", "   ");
+
+        assertThat(workItem.getProofFileName()).isNull();
     }
 
     @Test
