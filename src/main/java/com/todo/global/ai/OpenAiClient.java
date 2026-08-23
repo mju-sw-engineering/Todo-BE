@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * OpenAI Responses API 호출만 담당하는 인프라 부품. 프롬프트 문구와 결과 해석은 알지 못한다.
@@ -105,6 +106,9 @@ public class OpenAiClient {
             throw AiClientException.permanent("OpenAI API 키가 설정되지 않았습니다. OPENAI_API_KEY를 확인하세요.", null);
         }
 
+        // 폴러가 단일 스레드로 순차 처리하므로 호출 하나가 느리면 큐 전체가 그만큼 밀린다.
+        // 소요 시간을 남겨야 read-timeout(30s)이 적절한지, 큐가 밀리는 원인이 무엇인지 판단할 수 있다.
+        long startedAt = System.nanoTime();
         String rawResponse;
         try {
             rawResponse = restClient.post()
@@ -120,23 +124,28 @@ public class OpenAiClient {
                     .retrieve()
                     .body(String.class);
         } catch (RestClientResponseException e) {
-            throw toStatusException(e, clientRequestId);
+            throw toStatusException(e, clientRequestId, elapsedMillis(startedAt));
         } catch (ResourceAccessException e) {
             // 연결 실패·타임아웃. 응답 자체가 없으므로 본문에 남길 게 없다.
-            throw AiClientException.retryable("OpenAI 호출이 타임아웃되었거나 연결에 실패했습니다.", e);
+            // 소요 시간이 read-timeout에 근접했는지로 타임아웃과 연결 실패를 구분할 수 있다.
+            throw AiClientException.retryable(
+                    "OpenAI 호출이 타임아웃되었거나 연결에 실패했습니다. elapsedMs=" + elapsedMillis(startedAt), e);
         }
 
+        long elapsedMs = elapsedMillis(startedAt);
         if (rawResponse == null || rawResponse.isBlank()) {
-            throw AiClientException.retryable("OpenAI 응답이 비어 있습니다.", null);
+            throw AiClientException.retryable("OpenAI 응답이 비어 있습니다. elapsedMs=" + elapsedMs, null);
         }
-        return extractOutputText(rawResponse, clientRequestId);
+        return extractOutputText(rawResponse, clientRequestId, elapsedMs);
     }
 
-    private AiClientException toStatusException(RestClientResponseException e, String clientRequestId) {
+    private AiClientException toStatusException(
+            RestClientResponseException e, String clientRequestId, long elapsedMs) {
         HttpStatusCode status = e.getStatusCode();
         // 응답 본문에 키 값이 실릴 일은 없지만, 프롬프트 일부가 에코될 수 있어 본문 전체를
         // 남기지 않고 상태 코드와 추적 id만 남긴다.
-        log.warn("OpenAI 호출 실패. status={}, clientRequestId={}", status.value(), clientRequestId);
+        log.warn("OpenAI 호출 실패. status={}, elapsedMs={}, clientRequestId={}",
+                status.value(), elapsedMs, clientRequestId);
 
         if (status.value() == 429 || status.value() == 408 || status.is5xxServerError()) {
             return AiClientException.retryable("OpenAI가 일시적으로 응답하지 못했습니다. status=" + status.value(), e);
@@ -149,7 +158,7 @@ public class OpenAiClient {
      * Responses API는 결과를 {@code output} 배열로 준다. reasoning 항목이 앞에 오고 그 뒤에
      * assistant 메시지가 오므로, 배열 첫 번째가 아니라 타입으로 찾아야 한다.
      */
-    private String extractOutputText(String rawResponse, String clientRequestId) {
+    private String extractOutputText(String rawResponse, String clientRequestId, long elapsedMs) {
         JsonNode root;
         try {
             root = objectMapper.readTree(rawResponse);
@@ -157,7 +166,7 @@ public class OpenAiClient {
             throw AiClientException.retryable("OpenAI 응답을 JSON으로 읽지 못했습니다.", e);
         }
 
-        logUsage(root, clientRequestId);
+        logUsage(root, clientRequestId, elapsedMs);
 
         String status = root.path("status").asText("");
         if ("incomplete".equals(status)) {
@@ -183,18 +192,26 @@ public class OpenAiClient {
         throw AiClientException.permanent("모델 응답에서 결과 텍스트를 찾지 못했습니다.", null);
     }
 
-    private void logUsage(JsonNode root, String clientRequestId) {
+    private void logUsage(JsonNode root, String clientRequestId, long elapsedMs) {
         JsonNode usage = root.path("usage");
         if (usage.isMissingNode()) {
+            log.info("OpenAI 호출 완료. model={}, elapsedMs={}, clientRequestId={}",
+                    properties.model(), elapsedMs, clientRequestId);
             return;
         }
         // 비용은 reasoning 토큰이 좌우한다. 출력 단가가 입력의 6배라, effort 설정이 잘못
         // 배포됐을 때 청구서보다 먼저 알아차릴 수 있는 곳이 이 로그다.
-        log.info("OpenAI 사용량. model={}, input={}, output={}, reasoning={}, clientRequestId={}",
+        // 소요 시간은 큐가 밀릴 때 원인이 호출 지연인지 적재량인지 가른다.
+        log.info("OpenAI 사용량. model={}, input={}, output={}, reasoning={}, elapsedMs={}, clientRequestId={}",
                 properties.model(),
                 usage.path("input_tokens").asInt(),
                 usage.path("output_tokens").asInt(),
                 usage.path("output_tokens_details").path("reasoning_tokens").asInt(),
+                elapsedMs,
                 clientRequestId);
+    }
+
+    private long elapsedMillis(long startedAtNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos);
     }
 }

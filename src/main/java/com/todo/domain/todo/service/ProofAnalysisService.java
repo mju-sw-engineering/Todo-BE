@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 인증 파일 판정 파이프라인. 폴러가 건별로 호출하며, 한 건이 실패해도 다른 건에 영향을 주지 않는다.
@@ -100,6 +101,9 @@ public class ProofAnalysisService {
         }
 
         LocalDateTime now = LocalDateTime.now(KST);
+        // 클라이언트가 남기는 시간은 OpenAI 호출 구간뿐이다. 여기서는 S3 조회와 텍스트 추출까지
+        // 포함한 전체 처리 시간을 남긴다. 폴러가 순차 처리라 이 값이 곧 큐 소화 속도다.
+        long startedAt = System.nanoTime();
         try {
             VerdictResponse response = openAiClient.generateStructured(
                     buildRequest(analysis),
@@ -107,8 +111,9 @@ public class ProofAnalysisService {
                     "proof-analysis-" + analysisId
             );
             ProofVerdict verdict = parseVerdict(response.verdict());
-            log.debug("인증 파일 판정. analysisId={}, verdict={}, observed={}",
-                    analysisId, verdict, response.observed());
+            log.info("인증 파일 판정 완료. analysisId={}, kind={}, verdict={}, elapsedMs={}",
+                    analysisId, analysis.getInputKind(), verdict, elapsedMillis(startedAt));
+            log.debug("판정 근거. analysisId={}, observed={}", analysisId, response.observed());
             analysis.complete(verdict, response.summary(), response.mismatch_reason(), openAiProperties.model());
             notifier.afterAnalyzed(analysis);
         } catch (AiClientException e) {
@@ -132,6 +137,10 @@ public class ProofAnalysisService {
             log.warn("인증 파일 판정 중 예외. analysisId={}, attempt={}",
                     analysisId, analysis.getAttemptCount(), e);
         }
+    }
+
+    private long elapsedMillis(long startedAtNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos);
     }
 
     private AiStructuredRequest buildRequest(ProofAiAnalysis analysis) {
