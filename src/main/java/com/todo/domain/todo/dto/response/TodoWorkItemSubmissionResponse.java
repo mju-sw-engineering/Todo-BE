@@ -21,14 +21,16 @@ public record TodoWorkItemSubmissionResponse(
         @Schema(description = "파일 MIME 타입", example = "application/pdf") String contentType,
         @Schema(description = "원본 파일 Presigned URL (미리보기·다운로드 공용)") String originalUrl,
         @Schema(description = "썸네일 Presigned URL. 이미지 제출에만 존재합니다.") String thumbnailUrl,
-        @Schema(description = "URL 만료 시각") OffsetDateTime expiresAt
+        @Schema(description = "URL 만료 시각") OffsetDateTime expiresAt,
+        @Schema(description = "AI 판정 결과. 판정 대상이 아니면 null입니다.") ProofAiAnalysisResponse aiAnalysis
 ) {
     public static TodoWorkItemSubmissionResponse from(
             TodoWorkItem workItem,
             OffsetDateTime submittedAt,
             String originalUrl,
             String thumbnailUrl,
-            OffsetDateTime expiresAt
+            OffsetDateTime expiresAt,
+            ProofAiAnalysisResponse aiAnalysis
     ) {
         return new TodoWorkItemSubmissionResponse(
                 workItem.getId(),
@@ -39,7 +41,8 @@ public record TodoWorkItemSubmissionResponse(
                 workItem.getProofContentType(),
                 originalUrl,
                 thumbnailUrl,
-                expiresAt
+                expiresAt,
+                aiAnalysis
         );
     }
 }

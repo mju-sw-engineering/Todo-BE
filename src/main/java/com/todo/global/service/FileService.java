@@ -236,6 +236,27 @@ public class FileService {
         return object.contentType();
     }
 
+    /**
+     * 저장된 객체를 통째로 읽는다. AI 판정처럼 서버가 파일 내용을 직접 다뤄야 할 때 쓴다.
+     * presigned URL을 외부 서비스에 넘기면 그 URL이 어디까지 흘러가는지 통제할 수 없어,
+     * 서버가 바이트를 받아 필요한 형태로 변환해 전달한다.
+     *
+     * <p>PROOF 업로드는 이미지 5MB·문서 20MB로 제한돼 있어 통째로 메모리에 올려도 안전하다.
+     */
+    public byte[] readObject(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            throw new BusinessException("파일 키가 비어 있습니다.", HttpStatus.BAD_REQUEST);
+        }
+        try {
+            return s3Client.getObjectAsBytes(GetObjectRequest.builder()
+                    .bucket(props.getBucket())
+                    .key(objectKey)
+                    .build()).asByteArray();
+        } catch (SdkException e) {
+            throw new FileStorageException("파일을 읽는 데 실패했습니다.", e);
+        }
+    }
+
     public String resolveImageUrl(String objectKey) {
         if (objectKey == null || objectKey.isBlank()) {
             return null;

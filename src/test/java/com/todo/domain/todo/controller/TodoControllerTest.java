@@ -223,7 +223,8 @@ class TodoControllerTest {
         TodoWorkItemSubmissionResponse serviceResponse = new TodoWorkItemSubmissionResponse(
                 11L, 2L, OffsetDateTime.parse("2026-06-04T12:00:00+09:00"),
                 ProofKind.DOCUMENT, "발표자료.pdf", "application/pdf",
-                "https://original", null, OffsetDateTime.parse("2026-06-04T13:00:00+09:00")
+                "https://original", null, OffsetDateTime.parse("2026-06-04T13:00:00+09:00"),
+                null
         );
         given(todoService.getTodoWorkItemSubmission(11L, "user1")).willReturn(serviceResponse);
 
@@ -296,6 +297,7 @@ class TodoControllerTest {
                 OffsetDateTime.parse("2026-06-04T12:00:00+09:00"),
                 0,
                 WorkItemStatus.IN_PROGRESS,
+                null,
                 null,
                 null,
                 null,

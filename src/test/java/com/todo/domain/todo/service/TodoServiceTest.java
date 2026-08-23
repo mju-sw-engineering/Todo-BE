@@ -11,6 +11,7 @@ import com.todo.domain.todo.dto.request.CreateTodoTaskRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
+import com.todo.domain.todo.dto.response.ProofAiAnalysisResponse;
 import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
@@ -18,7 +19,10 @@ import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
+import com.todo.domain.todo.entity.ProofAiAnalysis;
+import com.todo.domain.todo.entity.ProofAnalysisStatus;
 import com.todo.domain.todo.entity.ProofKind;
+import com.todo.domain.todo.entity.ProofVerdict;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoReaction;
@@ -27,6 +31,7 @@ import com.todo.domain.todo.entity.TodoStatus;
 import com.todo.domain.todo.entity.TodoWorkItem;
 import com.todo.domain.todo.entity.WorkItemStatus;
 import com.todo.domain.todo.entity.WorkItemType;
+import com.todo.domain.todo.repository.ProofAiAnalysisRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
@@ -57,6 +62,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -91,6 +97,8 @@ class TodoServiceTest {
     private FileService fileService;
     @Mock
     private TodoReactionRepository todoReactionRepository;
+    @Mock
+    private ProofAiAnalysisRepository proofAiAnalysisRepository;
     @Mock
     private TransactionTemplate transactionTemplate;
     @Mock
@@ -376,6 +384,60 @@ class TodoServiceTest {
     }
 
     @Test
+    void 이미지_제출은_분석_대기로_큐에_적재한다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        givenSubmittable(assignee, todo, workItem, "proof.jpg", "image/jpeg");
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.jpg", "인증.jpg"));
+
+        ArgumentCaptor<ProofAiAnalysis> captor = ArgumentCaptor.forClass(ProofAiAnalysis.class);
+        then(proofAiAnalysisRepository).should().save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(ProofAnalysisStatus.PENDING);
+        assertThat(captor.getValue().getInputKind()).isEqualTo(ProofKind.IMAGE);
+    }
+
+    @Test
+    void 문서_제출은_아직_판정_대상이_아니라_건너뛴_상태로_남긴다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        givenSubmittable(assignee, todo, workItem, "proof.pdf", "application/pdf");
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.pdf", "발표자료.pdf"));
+
+        ArgumentCaptor<ProofAiAnalysis> captor = ArgumentCaptor.forClass(ProofAiAnalysis.class);
+        then(proofAiAnalysisRepository).should().save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(ProofAnalysisStatus.SKIPPED);
+    }
+
+    @Test
+    void 제출_응답은_AI_판정을_기다리지_않는다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        givenSubmittable(assignee, todo, workItem, "proof.jpg", "image/jpeg");
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.jpg", null));
+
+        // 제출 경로에서 OpenAI를 부르면 외부 장애가 제출 자체를 막는다. 큐 적재까지만 한다.
+        assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
+        then(proofAiAnalysisRepository).should().save(any(ProofAiAnalysis.class));
+    }
+
+    private void givenSubmittable(User assignee, Todo todo, TodoWorkItem workItem, String key, String contentType) {
+        given(userRepository.findById(1L)).willReturn(Optional.of(assignee));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+        given(fileService.validateProofFile(1L, TODO_ID, key)).willReturn(contentType);
+        given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(1L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
+    }
+
+    @Test
     void 미배정_TASK는_팀원이_재배정할_수_있다() {
         User requester = user(1L);
         User newAssignee = user(2L);
@@ -500,6 +562,41 @@ class TodoServiceTest {
         assertThat(response.mode()).isEqualTo(TodoMode.DIRECT);
         assertThat(response.directAssignees()).hasSize(1);
         assertThat(response.tasks()).isEmpty();
+    }
+
+    @Test
+    void 상세_조회는_AI_판정을_싣되_불일치_사유는_제출자에게만_내려준다() {
+        User submitter = user(1L);
+        User teammate = user(2L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, submitter, 20L);
+        workItem.submit("proofs/100/10/1/a.jpg", null, "image/jpeg", "a.jpg");
+        ProofAiAnalysis analysis = ProofAiAnalysis.pending(workItem, ProofKind.IMAGE, LocalDateTime.now());
+        analysis.complete(ProofVerdict.MISMATCH, "칫솔 사진입니다.", "할 일과 다른 사진으로 보여요.", "gpt-5.6-luna");
+        given(proofAiAnalysisRepository.findMapByWorkItemIds(List.of(20L))).willReturn(Map.of(20L, analysis));
+        given(todoWorkItemRepository.findByTodoIdOrderByPositionAsc(TODO_ID)).willReturn(List.of(workItem));
+        given(todoReactionRepository.countByTodoWorkItemIds(List.of(20L))).willReturn(List.of());
+
+        // 같은 투두를 두 사람이 각각 조회한다. 헬퍼는 viewer 1명만 스텁하므로 직접 둘 다 건다.
+        given(todoRepository.findByIdWithCreatorAndTeam(TODO_ID)).willReturn(Optional.of(todo));
+        given(userRepository.findById(1L)).willReturn(Optional.of(submitter));
+        given(userRepository.findById(2L)).willReturn(Optional.of(teammate));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
+        given(todoReactionRepository.findByTodoWorkItemIdInAndUserId(List.of(20L), 1L)).willReturn(List.of());
+        given(todoReactionRepository.findByTodoWorkItemIdInAndUserId(List.of(20L), 2L)).willReturn(List.of());
+
+        ProofAiAnalysisResponse forSubmitter = todoService.getTodoDetail(TODO_ID, "1")
+                .directAssignees().get(0).aiAnalysis();
+        ProofAiAnalysisResponse forTeammate = todoService.getTodoDetail(TODO_ID, "2")
+                .directAssignees().get(0).aiAnalysis();
+
+        assertThat(forSubmitter.verdict()).isEqualTo(ProofVerdict.MISMATCH);
+        assertThat(forSubmitter.mismatchReason()).isEqualTo("할 일과 다른 사진으로 보여요.");
+        // 같은 카드를 팀원이 보면 판정과 요약은 보이지만 사유는 없다.
+        assertThat(forTeammate.verdict()).isEqualTo(ProofVerdict.MISMATCH);
+        assertThat(forTeammate.summary()).isEqualTo("칫솔 사진입니다.");
+        assertThat(forTeammate.mismatchReason()).isNull();
     }
 
     @Test

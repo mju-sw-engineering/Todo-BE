@@ -13,6 +13,7 @@ import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.MyWorkSummaryResponse;
+import com.todo.domain.todo.dto.response.ProofAiAnalysisResponse;
 import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoDirectAssigneeResponse;
@@ -26,6 +27,8 @@ import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.dto.response.TodoTaskResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
+import com.todo.domain.todo.entity.ProofAiAnalysis;
+import com.todo.domain.todo.entity.ProofKind;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoReaction;
@@ -34,6 +37,7 @@ import com.todo.domain.todo.entity.TodoStatus;
 import com.todo.domain.todo.entity.TodoWorkItem;
 import com.todo.domain.todo.entity.WorkItemStatus;
 import com.todo.domain.todo.entity.WorkItemType;
+import com.todo.domain.todo.repository.ProofAiAnalysisRepository;
 import com.todo.domain.todo.repository.TodoReactionCount;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
@@ -94,6 +98,7 @@ public class TodoService {
     private final UserRepository userRepository;
     private final FileService fileService;
     private final TodoReactionRepository todoReactionRepository;
+    private final ProofAiAnalysisRepository proofAiAnalysisRepository;
     private final TransactionTemplate transactionTemplate;
     private final NotificationService notificationService;
     private final NotificationMessageFactory notificationMessageFactory;
@@ -262,6 +267,8 @@ public class TodoService {
         List<TodoWorkItem> workItems = todoWorkItemRepository.findByTodoIdOrderByPositionAsc(todoId);
         Map<Long, Map<TodoReactionType, Long>> reactionCounts = getReactionCountsByWorkItemId(workItems);
         Map<Long, TodoReactionType> myReactions = getMyReactionsByWorkItemId(workItems, user.getId());
+        Map<Long, ProofAiAnalysis> analyses = proofAiAnalysisRepository.findMapByWorkItemIds(
+                workItems.stream().map(TodoWorkItem::getId).toList());
 
         List<TodoDirectAssigneeResponse> directAssignees = workItems.stream()
                 .filter(workItem -> workItem.getType() == WorkItemType.DIRECT)
@@ -270,7 +277,8 @@ public class TodoService {
                         toKstOffset(workItem.getSubmittedAt()),
                         resolveThumbnailUrl(workItem),
                         reactionCounts.getOrDefault(workItem.getId(), Map.of()),
-                        myReactions.get(workItem.getId())
+                        myReactions.get(workItem.getId()),
+                        ProofAiAnalysisResponse.from(analyses.get(workItem.getId()), user.getId())
                 ))
                 .toList();
         List<TodoTaskResponse> tasks = workItems.stream()
@@ -281,7 +289,8 @@ public class TodoService {
                         toKstOffset(workItem.getSubmittedAt()),
                         resolveThumbnailUrl(workItem),
                         reactionCounts.getOrDefault(workItem.getId(), Map.of()),
-                        myReactions.get(workItem.getId())
+                        myReactions.get(workItem.getId()),
+                        ProofAiAnalysisResponse.from(analyses.get(workItem.getId()), user.getId())
                 ))
                 .toList();
 
@@ -326,12 +335,14 @@ public class TodoService {
                 ? originalUrl
                 : fileService.resolveImageUrl(workItem.getProofThumbnailKey());
         OffsetDateTime expiresAt = OffsetDateTime.now(KST_OFFSET).plus(fileService.getPresignedUrlExpiration());
+        ProofAiAnalysis analysis = proofAiAnalysisRepository.findByWorkItemId(workItemId).orElse(null);
         return TodoWorkItemSubmissionResponse.from(
                 workItem,
                 toKstOffset(workItem.getSubmittedAt()),
                 originalUrl,
                 thumbnailUrl,
-                expiresAt
+                expiresAt,
+                ProofAiAnalysisResponse.from(analysis, user.getId())
         );
     }
 
@@ -526,7 +537,7 @@ public class TodoService {
     private CreateTodoResponse toCreateResponse(Todo todo, List<TodoWorkItem> workItems) {
         List<TodoDirectAssigneeResponse> directAssignees = workItems.stream()
                 .filter(workItem -> workItem.getType() == WorkItemType.DIRECT)
-                .map(workItem -> TodoDirectAssigneeResponse.from(workItem, null, null, Map.of(), null))
+                .map(workItem -> TodoDirectAssigneeResponse.from(workItem, null, null, Map.of(), null, null))
                 .toList();
         List<TodoTaskResponse> tasks = workItems.stream()
                 .filter(workItem -> workItem.getType() == WorkItemType.TASK)
@@ -536,6 +547,7 @@ public class TodoService {
                         null,
                         null,
                         Map.of(),
+                        null,
                         null
                 ))
                 .toList();
@@ -608,9 +620,28 @@ public class TodoService {
         }
 
         workItem.submit(proofImageKey, proofThumbnailKey, proofContentType, proofFileName);
+        enqueueProofAnalysis(workItem);
         todoStatusTransitionService.reevaluate(todo);
         notifyTodoSubmitted(todo, workItem);
         return OperationResult.success();
+    }
+
+    /**
+     * 제출 트랜잭션에서는 분석 대기 행 한 줄만 남긴다. 실제 OpenAI 호출은 폴러가 별도
+     * 트랜잭션으로 처리하므로, OpenAI가 느리거나 죽어도 제출 응답에는 영향이 없다.
+     *
+     * <p>이미지가 아닌 제출은 아직 판정 대상이 아니라 SKIPPED로 남긴다. "분석하지 않기로 한 건"과
+     * "아직 분석 전인 건"을 구분해야 조회 쪽에서 대기 중인 것처럼 보이지 않는다.
+     */
+    private void enqueueProofAnalysis(TodoWorkItem workItem) {
+        ProofKind kind = workItem.getProofKind();
+        if (kind == null) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now(KST);
+        proofAiAnalysisRepository.save(kind == ProofKind.IMAGE
+                ? ProofAiAnalysis.pending(workItem, kind, now)
+                : ProofAiAnalysis.skipped(workItem, kind, now));
     }
 
     private void notifyTodoSubmitted(Todo todo, TodoWorkItem workItem) {
