@@ -18,6 +18,8 @@ import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
+import com.todo.domain.todo.entity.ProofAiAnalysis;
+import com.todo.domain.todo.entity.ProofAnalysisStatus;
 import com.todo.domain.todo.entity.ProofKind;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoMode;
@@ -27,6 +29,7 @@ import com.todo.domain.todo.entity.TodoStatus;
 import com.todo.domain.todo.entity.TodoWorkItem;
 import com.todo.domain.todo.entity.WorkItemStatus;
 import com.todo.domain.todo.entity.WorkItemType;
+import com.todo.domain.todo.repository.ProofAiAnalysisRepository;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
@@ -91,6 +94,8 @@ class TodoServiceTest {
     private FileService fileService;
     @Mock
     private TodoReactionRepository todoReactionRepository;
+    @Mock
+    private ProofAiAnalysisRepository proofAiAnalysisRepository;
     @Mock
     private TransactionTemplate transactionTemplate;
     @Mock
@@ -373,6 +378,60 @@ class TodoServiceTest {
         assertThat(workItem.getProofKind()).isEqualTo(ProofKind.DOCUMENT);
         assertThat(workItem.getProofThumbnailKey()).isNull();
         then(fileService).should().createProofThumbnail("proof.pdf", "application/pdf");
+    }
+
+    @Test
+    void 이미지_제출은_분석_대기로_큐에_적재한다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        givenSubmittable(assignee, todo, workItem, "proof.jpg", "image/jpeg");
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.jpg", "인증.jpg"));
+
+        ArgumentCaptor<ProofAiAnalysis> captor = ArgumentCaptor.forClass(ProofAiAnalysis.class);
+        then(proofAiAnalysisRepository).should().save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(ProofAnalysisStatus.PENDING);
+        assertThat(captor.getValue().getInputKind()).isEqualTo(ProofKind.IMAGE);
+    }
+
+    @Test
+    void 문서_제출은_아직_판정_대상이_아니라_건너뛴_상태로_남긴다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        givenSubmittable(assignee, todo, workItem, "proof.pdf", "application/pdf");
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.pdf", "발표자료.pdf"));
+
+        ArgumentCaptor<ProofAiAnalysis> captor = ArgumentCaptor.forClass(ProofAiAnalysis.class);
+        then(proofAiAnalysisRepository).should().save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(ProofAnalysisStatus.SKIPPED);
+    }
+
+    @Test
+    void 제출_응답은_AI_판정을_기다리지_않는다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        givenSubmittable(assignee, todo, workItem, "proof.jpg", "image/jpeg");
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.jpg", null));
+
+        // 제출 경로에서 OpenAI를 부르면 외부 장애가 제출 자체를 막는다. 큐 적재까지만 한다.
+        assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
+        then(proofAiAnalysisRepository).should().save(any(ProofAiAnalysis.class));
+    }
+
+    private void givenSubmittable(User assignee, Todo todo, TodoWorkItem workItem, String key, String contentType) {
+        given(userRepository.findById(1L)).willReturn(Optional.of(assignee));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+        given(fileService.validateProofFile(1L, TODO_ID, key)).willReturn(contentType);
+        given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(1L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
     }
 
     @Test

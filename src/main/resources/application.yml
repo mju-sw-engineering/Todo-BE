@@ -26,8 +26,8 @@ spring:
     scheduling:
       pool:
         # 기본값 1이면 스케줄 작업이 스레드 하나를 공유해 서로를 지연시킨다.
-        # 현재 등록된 작업 수(투두 만료, 메일/파일 outbox, 채팅 정리)에 맞춘다.
-        size: 5
+        # 현재 등록된 작업 수(투두 만료, 메일/파일 outbox, 채팅 정리, 인증 파일 판정)에 맞춘다.
+        size: 6
 
 swagger:
   auth:
@@ -88,6 +88,13 @@ openai:
   # 모델 추론 시간을 감안해 다른 외부 호출보다 길게 둔다. 호출부가 폴러라
   # 타임아웃이 없으면 스레드가 물려 분석 큐 전체가 밀린다.
   read-timeout: 30s
+
+proof-analysis:
+  # 스케줄러 전체가 아니라 AI 폴러만 끄는 스위치. OpenAI 장애가 길어지면 false로 내리고,
+  # 복구 후 다시 켜면 큐에 쌓인 건이 그대로 처리된다.
+  enabled: ${PROOF_ANALYSIS_ENABLED:true}
+  poll-interval-ms: ${PROOF_ANALYSIS_POLL_INTERVAL_MS:10000}
+  batch-size: ${PROOF_ANALYSIS_BATCH_SIZE:20}
 
 chat:
   cleanup:

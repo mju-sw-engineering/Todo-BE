@@ -26,6 +26,8 @@ import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.dto.response.TodoTaskResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
+import com.todo.domain.todo.entity.ProofAiAnalysis;
+import com.todo.domain.todo.entity.ProofKind;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoReaction;
@@ -34,6 +36,7 @@ import com.todo.domain.todo.entity.TodoStatus;
 import com.todo.domain.todo.entity.TodoWorkItem;
 import com.todo.domain.todo.entity.WorkItemStatus;
 import com.todo.domain.todo.entity.WorkItemType;
+import com.todo.domain.todo.repository.ProofAiAnalysisRepository;
 import com.todo.domain.todo.repository.TodoReactionCount;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
@@ -94,6 +97,7 @@ public class TodoService {
     private final UserRepository userRepository;
     private final FileService fileService;
     private final TodoReactionRepository todoReactionRepository;
+    private final ProofAiAnalysisRepository proofAiAnalysisRepository;
     private final TransactionTemplate transactionTemplate;
     private final NotificationService notificationService;
     private final NotificationMessageFactory notificationMessageFactory;
@@ -608,9 +612,28 @@ public class TodoService {
         }
 
         workItem.submit(proofImageKey, proofThumbnailKey, proofContentType, proofFileName);
+        enqueueProofAnalysis(workItem);
         todoStatusTransitionService.reevaluate(todo);
         notifyTodoSubmitted(todo, workItem);
         return OperationResult.success();
+    }
+
+    /**
+     * 제출 트랜잭션에서는 분석 대기 행 한 줄만 남긴다. 실제 OpenAI 호출은 폴러가 별도
+     * 트랜잭션으로 처리하므로, OpenAI가 느리거나 죽어도 제출 응답에는 영향이 없다.
+     *
+     * <p>이미지가 아닌 제출은 아직 판정 대상이 아니라 SKIPPED로 남긴다. "분석하지 않기로 한 건"과
+     * "아직 분석 전인 건"을 구분해야 조회 쪽에서 대기 중인 것처럼 보이지 않는다.
+     */
+    private void enqueueProofAnalysis(TodoWorkItem workItem) {
+        ProofKind kind = workItem.getProofKind();
+        if (kind == null) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now(KST);
+        proofAiAnalysisRepository.save(kind == ProofKind.IMAGE
+                ? ProofAiAnalysis.pending(workItem, kind, now)
+                : ProofAiAnalysis.skipped(workItem, kind, now));
     }
 
     private void notifyTodoSubmitted(Todo todo, TodoWorkItem workItem) {
