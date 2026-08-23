@@ -11,16 +11,20 @@ import com.todo.domain.todo.entity.ProofVerdict;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoWorkItem;
+import com.todo.domain.todo.event.ProofAnalysisCompletedEvent;
 import com.todo.domain.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -39,6 +43,8 @@ class ProofAnalysisNotifierTest {
     private NotificationService notificationService;
     @Mock
     private NotificationMessageFactory notificationMessageFactory;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @Test
     void 불일치는_제출자_한_명에게만_알린다() {
@@ -80,6 +86,50 @@ class ProofAnalysisNotifierTest {
         notifier.afterAnalyzed(analysis);
 
         then(notificationService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 판정_결과를_팀_채널로_알린다() {
+        ProofAiAnalysis analysis = analysis(user(1L), ProofVerdict.VERIFIED);
+
+        notifier.afterAnalyzed(analysis);
+
+        ArgumentCaptor<ProofAnalysisCompletedEvent> captor =
+                ArgumentCaptor.forClass(ProofAnalysisCompletedEvent.class);
+        then(eventPublisher).should().publishEvent(captor.capture());
+        assertThat(captor.getValue().teamId()).isEqualTo(5L);
+        assertThat(captor.getValue().payload().workItemId()).isEqualTo(20L);
+        assertThat(captor.getValue().payload().verdict()).isEqualTo(ProofVerdict.VERIFIED);
+    }
+
+    @Test
+    void 팀_채널_알림에는_불일치_사유가_실리지_않는다() {
+        // 팀 전체에게 브로드캐스트되는 값이라 사유가 실리면 오탐 한 번이
+        // 팀 앞에서 팀원을 몰아세우는 일이 된다.
+        ProofAiAnalysis analysis = analysis(user(1L), ProofVerdict.MISMATCH);
+        given(notificationMessageFactory.aiProofMismatch(anyString())).willReturn(
+                new NotificationMessage(NotificationType.AI_PROOF_MISMATCH, "제목", "내용"));
+
+        notifier.afterAnalyzed(analysis);
+
+        ArgumentCaptor<ProofAnalysisCompletedEvent> captor =
+                ArgumentCaptor.forClass(ProofAnalysisCompletedEvent.class);
+        then(eventPublisher).should().publishEvent(captor.capture());
+        assertThat(analysis.getMismatchReason()).isNotBlank();
+        // 페이로드 어디에도 사유 문자열이 없어야 한다.
+        assertThat(captor.getValue().payload().toString()).doesNotContain(analysis.getMismatchReason());
+    }
+
+    @Test
+    void 불확실_판정은_팀_채널에_요약을_공개하지_않는다() {
+        ProofAiAnalysis analysis = analysis(user(1L), ProofVerdict.UNCERTAIN);
+
+        notifier.afterAnalyzed(analysis);
+
+        ArgumentCaptor<ProofAnalysisCompletedEvent> captor =
+                ArgumentCaptor.forClass(ProofAnalysisCompletedEvent.class);
+        then(eventPublisher).should().publishEvent(captor.capture());
+        assertThat(captor.getValue().payload().summary()).isNull();
     }
 
     private ProofAiAnalysis analysis(User submitter, ProofVerdict verdict) {
