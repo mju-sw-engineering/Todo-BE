@@ -33,6 +33,31 @@ class SlashCommandExecutionTest {
         assertThat(execution.getExecutedAt()).isEqualTo(executedAt);
     }
 
+    @Test
+    void fail하면_FAILED로_전이하고_결과는_비어있다() {
+        SlashCommandExecution execution = createPending();
+        LocalDateTime failedAt = LocalDateTime.of(2026, 8, 23, 12, 0);
+
+        execution.fail(failedAt);
+
+        assertThat(execution.getStatus()).isEqualTo(SlashCommandExecutionStatus.FAILED);
+        assertThat(execution.getResultJson()).isNull();
+        assertThat(execution.getExecutedAt()).isEqualTo(failedAt);
+    }
+
+    @Test
+    void 이미_DONE이면_fail해도_결과를_덮어쓰지_않는다() {
+        SlashCommandExecution execution = createPending();
+        LocalDateTime executedAt = LocalDateTime.of(2026, 8, 23, 12, 0);
+        execution.complete("{\"count\":1}", executedAt);
+
+        execution.fail(executedAt.plusMinutes(1));
+
+        assertThat(execution.getStatus()).isEqualTo(SlashCommandExecutionStatus.DONE);
+        assertThat(execution.getResultJson()).isEqualTo("{\"count\":1}");
+        assertThat(execution.getExecutedAt()).isEqualTo(executedAt);
+    }
+
     private SlashCommandExecution createPending() {
         Team team = Team.create("팀", null, "ABCDEFGH");
         User executor = User.create("user1", "encoded", "닉네임1", null);

@@ -113,6 +113,14 @@ apple:
   token-url: https://appleid.apple.com/auth/token
   revoke-url: https://appleid.apple.com/auth/revoke
 
+slash-command:
+  async:
+    # 핸들러가 트랜잭션 안에서 돌므로 동시 실행 수 = AI 호출 중 점유하는 DB 커넥션 상한.
+    core-pool-size: ${SLASH_COMMAND_ASYNC_CORE_POOL_SIZE:2}
+    max-pool-size: ${SLASH_COMMAND_ASYNC_MAX_POOL_SIZE:2}
+    queue-capacity: ${SLASH_COMMAND_ASYNC_QUEUE_CAPACITY:20}
+    await-termination-seconds: ${SLASH_COMMAND_ASYNC_AWAIT_TERMINATION_SECONDS:35}
+
 file-deletion:
   async:
     core-pool-size: ${FILE_DELETION_ASYNC_CORE_POOL_SIZE:1}

@@ -1,5 +1,6 @@
 package com.todo.domain.chat.command;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.todo.domain.chat.command.entity.SlashCommandExecution;
 import com.todo.domain.chat.command.repository.SlashCommandExecutionRepository;
@@ -7,12 +8,15 @@ import com.todo.domain.chat.entity.TeamChatMessage;
 import com.todo.domain.notification.message.NotificationMessageFactory;
 import com.todo.domain.notification.service.NotificationService;
 import com.todo.domain.team.entity.Team;
+import com.todo.domain.team.entity.TeamMember;
+import com.todo.domain.team.repository.TeamMemberRepository;
 import com.todo.domain.team.repository.TeamRepository;
 import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
+import com.todo.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,10 +28,10 @@ import java.util.Optional;
 /**
  * 슬래시 명령어 매칭과 실행을 담당한다. 매칭·PENDING 저장은
  * {@link com.todo.domain.chat.service.TeamChatService#saveMessage}와 같은 트랜잭션 안에서
- * 동기로 일어나고, 실제 핸들러 실행은 그 트랜잭션이 커밋된 뒤 이벤트로 넘어간다 — 명령어
- * 처리(특히 AI 호출 등 느릴 수 있는 작업)가 채팅 메시지 브로드캐스트 자체를 막지 않게 하기 위함.
+ * 동기로 일어나고, 실제 핸들러 실행은 그 트랜잭션이 커밋된 뒤 {@link SlashCommandAsyncDispatcher}가
+ * 별도 스레드에서 한다 — 명령어 처리(특히 AI 호출 등 느릴 수 있는 작업)가 채팅 메시지
+ * 브로드캐스트를 막거나 WebSocket 스레드를 점유하지 않게 하기 위함.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -36,6 +40,7 @@ public class SlashCommandDispatchService {
     private final SlashCommandRegistry registry;
     private final SlashCommandExecutionRepository executionRepository;
     private final TeamRepository teamRepository;
+    private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final NotificationMessageFactory notificationMessageFactory;
@@ -48,7 +53,7 @@ public class SlashCommandDispatchService {
 
     /**
      * 호출자(TeamChatService.saveMessage)가 이미 활성 트랜잭션 안에 있다고 가정한다 — 트랜잭션
-     * 없이 호출하면 커밋 이벤트가 발화하지 않아 아래 {@link #completeExecution}이 영영 안 불린다.
+     * 없이 호출하면 커밋 이벤트가 발화하지 않아 핸들러가 영영 실행되지 않는다.
      */
     @Transactional
     public void dispatchIfHandled(Team team, User executor, TeamChatMessage chatMessage, SlashCommand command) {
@@ -66,43 +71,76 @@ public class SlashCommandDispatchService {
     }
 
     /**
-     * 커밋 후 리스너가 호출한다. 여기서 실패해도 원래 요청은 이미 응답이 나간
-     * 뒤라 사용자에게 전달할 방법이 없다 — 로깅만 하고 실행 결과는 PENDING에 남겨둔다.
+     * 비동기 스레드에서 호출된다 ({@link SlashCommandAsyncDispatcher}). 새 스레드에는 바인딩된
+     * 트랜잭션이 없으므로 REQUIRED로 새 트랜잭션이 열린다.
      *
-     * <p><b>REQUIRES_NEW가 필수다.</b> AFTER_COMMIT 시점에는 원래 트랜잭션의 리소스가 아직
-     * 바인딩돼 있어 REQUIRED는 이미 커밋된 그 트랜잭션에 "참여"하고, 두 번째 커밋은 일어나지
-     * 않는다. 그러면 {@code execution.complete()}가 flush되지 않아 모든 실행이 영원히
-     * PENDING에 남고, 안에서 부르는 {@code pushAll}의 알림 이벤트도 발화하지 않는다
-     * ({@code SlashCommandDispatchIntegrationTest}가 이 회귀를 잡는다).
+     * <p>핸들러 실행과 결과 저장을 한 트랜잭션에 묶는다. 핸들러가 예외를 던지면 그대로 전파해
+     * 트랜잭션을 롤백시키고, 실패 확정은 호출자가 {@link #markFailed}로 별도 트랜잭션에서 한다 —
+     * 같은 트랜잭션 안에서 FAILED를 쓰면 핸들러 안쪽 리포지토리 호출이 남긴 rollback-only 표시
+     * 때문에 커밋이 거부될 수 있다.
+     *
+     * @throws RuntimeException 핸들러 실패·직렬화 실패. 호출자가 FAILED 처리한다
+     */
+    @Transactional
+    public void executeAndComplete(SlashCommandDispatchEvent event) {
+        SlashCommandHandler handler = registry.findHandler(event.command()).orElse(null);
+        if (handler == null) {
+            return;
+        }
+        SlashCommandExecution execution = executionRepository.findById(event.executionId()).orElse(null);
+        if (execution == null) {
+            return;
+        }
+
+        Team team = teamRepository.getReferenceById(event.teamId());
+        User executor = userRepository.getReferenceById(event.executorId());
+
+        Object result = handler.execute(team, executor);
+        execution.complete(toJson(result), LocalDateTime.now());
+
+        pushResultReady(event, executor);
+    }
+
+    /**
+     * 실패를 확정한다. 두 곳에서 불린다 — 비동기 스레드(트랜잭션 없음)와 AFTER_COMMIT 리스너
+     * (원래 트랜잭션 리소스가 아직 바인딩된 상태). 후자에서 REQUIRED는 이미 커밋된 트랜잭션에
+     * 참여해 두 번째 커밋이 없으므로, 양쪽 모두에서 안전한 REQUIRES_NEW를 쓴다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void completeExecution(SlashCommandDispatchEvent event) {
+    public void markFailed(SlashCommandDispatchEvent event) {
+        SlashCommandExecution execution = executionRepository.findById(event.executionId()).orElse(null);
+        if (execution == null) {
+            return;
+        }
+        execution.fail(LocalDateTime.now());
+        User executor = userRepository.getReferenceById(event.executorId());
+        pushResultReady(event, executor);
+    }
+
+    /**
+     * 결과가 확정됐음(성공·실패 모두)을 push로 알린다. 데이터는 싣지 않고 FE가 결과 조회 API로
+     * 가져간다. PERSONAL은 실행자에게만, TEAM은 팀원 전원에게 — 팀용 결과를 실행자만 알면
+     * 나머지 팀원은 칩을 두드려 폴링해야 한다.
+     */
+    private void pushResultReady(SlashCommandDispatchEvent event, User executor) {
+        List<User> receivers = event.command().scope() == SlashCommandScope.PERSONAL
+                ? List.of(executor)
+                : teamMemberRepository.findByTeamIdWithUser(event.teamId()).stream()
+                        .map(TeamMember::getUser)
+                        .toList();
+        notificationService.pushAll(
+                receivers,
+                notificationMessageFactory.slashCommandResult(event.command().commandText()),
+                event.chatMessageId(),
+                event.teamId()
+        );
+    }
+
+    private String toJson(Object result) {
         try {
-            SlashCommandHandler handler = registry.findHandler(event.command()).orElse(null);
-            if (handler == null) {
-                return;
-            }
-            SlashCommandExecution execution = executionRepository.findById(event.executionId()).orElse(null);
-            if (execution == null) {
-                return;
-            }
-
-            Team team = teamRepository.getReferenceById(event.teamId());
-            User executor = userRepository.getReferenceById(event.executorId());
-
-            Object result = handler.execute(team, executor);
-            execution.complete(objectMapper.writeValueAsString(result), LocalDateTime.now());
-
-            if (event.command().scope() == SlashCommandScope.PERSONAL) {
-                notificationService.pushAll(
-                        List.of(executor),
-                        notificationMessageFactory.slashCommandResult(event.command().commandText()),
-                        event.chatMessageId(),
-                        event.teamId()
-                );
-            }
-        } catch (Exception e) {
-            log.warn("슬래시 명령어 실행 실패. command={}, executionId={}", event.command(), event.executionId(), e);
+            return objectMapper.writeValueAsString(result);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException("명령어 실행 결과를 직렬화하지 못했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

@@ -193,6 +193,6 @@ class NotificationMessageFactoryTest {
         NotificationMessage message = factory.slashCommandResult("/내할일");
 
         assertThat(message.type()).isEqualTo(NotificationType.SLASH_COMMAND_RESULT);
-        assertThat(message.title()).isEqualTo("/내할일 결과가 준비되었습니다.");
+        assertThat(message.title()).isEqualTo("/내할일 처리가 끝났습니다.");
     }
 }
