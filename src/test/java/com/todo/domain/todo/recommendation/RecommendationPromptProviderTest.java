@@ -25,7 +25,8 @@ class RecommendationPromptProviderTest {
         String full = provider.systemInstruction(RecommendationMode.FULL);
         String starter = provider.systemInstruction(RecommendationMode.STARTER);
 
-        assertThat(full).contains("<team_data>").contains("SPLIT").contains("REBALANCE").contains("자기 이름을 말하지 않는다");
+        assertThat(full).contains("<team_data>").contains("SPLIT").contains("REBALANCE").contains("자기 이름을 말하지 않는다")
+                .contains("한 건뿐인 기록은 패턴이 아니다");
         assertThat(starter).contains("<team_data>").contains("NEW만").contains("기록이 쌓이면 더 정확해져요");
         assertThat(full).isNotEqualTo(starter);
     }
