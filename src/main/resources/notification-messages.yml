@@ -40,6 +40,12 @@ notification:
       title: "인증 사진이 제출되었습니다."
       content: "{actor}님이 '{todoTitle}'의 인증 사진을 제출했습니다."
 
+    # 제출자 본인에게만 발송한다. 팀에는 어떤 신호도 가지 않는다.
+    # 무임승차를 막는 게 목적이지 팀 앞에서 지적하는 게 목적이 아니므로 안내조로 쓴다.
+    AI_PROOF_MISMATCH:
+      title: "제출한 인증 파일을 확인해 주세요."
+      content: "'{todoTitle}'에 올린 인증 파일이 할 일과 달라 보여요. 다시 확인해 주세요."
+
     TODO_DEADLINE_APPROACHING:
       title: "마감이 30분 앞으로 다가왔습니다."
       content: "'{todoTitle}'의 마감이 30분 남았습니다."

@@ -13,6 +13,7 @@ import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.MyWorkSummaryResponse;
+import com.todo.domain.todo.dto.response.ProofAiAnalysisResponse;
 import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoDirectAssigneeResponse;
@@ -26,6 +27,8 @@ import com.todo.domain.todo.dto.response.TodoSummaryResponse;
 import com.todo.domain.todo.dto.response.TodoTaskResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemAssigneeResponse;
 import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
+import com.todo.domain.todo.entity.ProofAiAnalysis;
+import com.todo.domain.todo.entity.ProofKind;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoReaction;
@@ -34,6 +37,7 @@ import com.todo.domain.todo.entity.TodoStatus;
 import com.todo.domain.todo.entity.TodoWorkItem;
 import com.todo.domain.todo.entity.WorkItemStatus;
 import com.todo.domain.todo.entity.WorkItemType;
+import com.todo.domain.todo.repository.ProofAiAnalysisRepository;
 import com.todo.domain.todo.repository.TodoReactionCount;
 import com.todo.domain.todo.repository.TodoReactionRepository;
 import com.todo.domain.todo.repository.TodoRepository;
@@ -43,6 +47,7 @@ import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.domain.user.support.WithdrawnUserDisplay;
 import com.todo.global.exception.BusinessException;
+import com.todo.global.file.extract.DocumentTextExtractor;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -93,7 +98,9 @@ public class TodoService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final FileService fileService;
+    private final DocumentTextExtractor documentTextExtractor;
     private final TodoReactionRepository todoReactionRepository;
+    private final ProofAiAnalysisRepository proofAiAnalysisRepository;
     private final TransactionTemplate transactionTemplate;
     private final NotificationService notificationService;
     private final NotificationMessageFactory notificationMessageFactory;
@@ -262,6 +269,8 @@ public class TodoService {
         List<TodoWorkItem> workItems = todoWorkItemRepository.findByTodoIdOrderByPositionAsc(todoId);
         Map<Long, Map<TodoReactionType, Long>> reactionCounts = getReactionCountsByWorkItemId(workItems);
         Map<Long, TodoReactionType> myReactions = getMyReactionsByWorkItemId(workItems, user.getId());
+        Map<Long, ProofAiAnalysis> analyses = proofAiAnalysisRepository.findMapByWorkItemIds(
+                workItems.stream().map(TodoWorkItem::getId).toList());
 
         List<TodoDirectAssigneeResponse> directAssignees = workItems.stream()
                 .filter(workItem -> workItem.getType() == WorkItemType.DIRECT)
@@ -270,7 +279,8 @@ public class TodoService {
                         toKstOffset(workItem.getSubmittedAt()),
                         resolveThumbnailUrl(workItem),
                         reactionCounts.getOrDefault(workItem.getId(), Map.of()),
-                        myReactions.get(workItem.getId())
+                        myReactions.get(workItem.getId()),
+                        ProofAiAnalysisResponse.from(analyses.get(workItem.getId()), user.getId())
                 ))
                 .toList();
         List<TodoTaskResponse> tasks = workItems.stream()
@@ -281,7 +291,8 @@ public class TodoService {
                         toKstOffset(workItem.getSubmittedAt()),
                         resolveThumbnailUrl(workItem),
                         reactionCounts.getOrDefault(workItem.getId(), Map.of()),
-                        myReactions.get(workItem.getId())
+                        myReactions.get(workItem.getId()),
+                        ProofAiAnalysisResponse.from(analyses.get(workItem.getId()), user.getId())
                 ))
                 .toList();
 
@@ -301,7 +312,7 @@ public class TodoService {
         TodoWorkItem workItem = todoWorkItemRepository
                 .findDirectByTodoIdAndAssigneeIdWithTodo(todoId, user.getId())
                 .orElseThrow(() -> new BusinessException("해당 투두의 DIRECT 담당자가 아닙니다.", HttpStatus.FORBIDDEN));
-        submitWorkItem(workItem.getId(), workItem.getTodo().getId(), user, request.proofImageKey());
+        submitWorkItem(workItem.getId(), workItem.getTodo().getId(), user, request);
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -309,7 +320,7 @@ public class TodoService {
         User user = findAuthenticatedUser(userId);
         TodoWorkItem workItem = todoWorkItemRepository.findByIdWithTodoAndTeam(workItemId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
-        submitWorkItem(workItemId, workItem.getTodo().getId(), user, request.proofImageKey());
+        submitWorkItem(workItemId, workItem.getTodo().getId(), user, request);
     }
 
     public TodoWorkItemSubmissionResponse getTodoWorkItemSubmission(Long workItemId, String userId) {
@@ -326,12 +337,14 @@ public class TodoService {
                 ? originalUrl
                 : fileService.resolveImageUrl(workItem.getProofThumbnailKey());
         OffsetDateTime expiresAt = OffsetDateTime.now(KST_OFFSET).plus(fileService.getPresignedUrlExpiration());
+        ProofAiAnalysis analysis = proofAiAnalysisRepository.findByWorkItemId(workItemId).orElse(null);
         return TodoWorkItemSubmissionResponse.from(
                 workItem,
                 toKstOffset(workItem.getSubmittedAt()),
                 originalUrl,
                 thumbnailUrl,
-                expiresAt
+                expiresAt,
+                ProofAiAnalysisResponse.from(analysis, user.getId())
         );
     }
 
@@ -526,7 +539,7 @@ public class TodoService {
     private CreateTodoResponse toCreateResponse(Todo todo, List<TodoWorkItem> workItems) {
         List<TodoDirectAssigneeResponse> directAssignees = workItems.stream()
                 .filter(workItem -> workItem.getType() == WorkItemType.DIRECT)
-                .map(workItem -> TodoDirectAssigneeResponse.from(workItem, null, null, Map.of(), null))
+                .map(workItem -> TodoDirectAssigneeResponse.from(workItem, null, null, Map.of(), null, null))
                 .toList();
         List<TodoTaskResponse> tasks = workItems.stream()
                 .filter(workItem -> workItem.getType() == WorkItemType.TASK)
@@ -536,13 +549,15 @@ public class TodoService {
                         null,
                         null,
                         Map.of(),
+                        null,
                         null
                 ))
                 .toList();
         return CreateTodoResponse.from(todo, toKstOffset(todo.getDeadline()), directAssignees, tasks);
     }
 
-    private void submitWorkItem(Long workItemId, Long todoId, User user, String proofImageKey) {
+    private void submitWorkItem(Long workItemId, Long todoId, User user, SubmitTodoRequest request) {
+        String proofImageKey = request.proofImageKey();
         OperationResult check = transactionTemplate.execute(status -> checkSubmission(todoId, workItemId, user.getId()));
         requireOperationResult(check).throwIfFailed();
 
@@ -559,7 +574,9 @@ public class TodoService {
                     workItemId,
                     user.getId(),
                     proofImageKey,
-                    proofThumbnailKey
+                    proofThumbnailKey,
+                    proofContentType,
+                    request.proofFileName()
             ));
         } catch (RuntimeException e) {
             cleanupProofThumbnail(proofThumbnailKey, e);
@@ -588,7 +605,9 @@ public class TodoService {
             Long workItemId,
             Long userId,
             String proofImageKey,
-            String proofThumbnailKey
+            String proofThumbnailKey,
+            String proofContentType,
+            String proofFileName
     ) {
         Todo todo = todoRepository.findByIdWithLock(todoId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
@@ -602,10 +621,32 @@ public class TodoService {
             return OperationResult.failed("이미 다른 WorkItem에 제출된 인증 사진입니다.", HttpStatus.BAD_REQUEST);
         }
 
-        workItem.submit(proofImageKey, proofThumbnailKey);
+        workItem.submit(proofImageKey, proofThumbnailKey, proofContentType, proofFileName);
+        enqueueProofAnalysis(workItem);
         todoStatusTransitionService.reevaluate(todo);
         notifyTodoSubmitted(todo, workItem);
         return OperationResult.success();
+    }
+
+    /**
+     * 제출 트랜잭션에서는 분석 대기 행 한 줄만 남긴다. 실제 OpenAI 호출은 폴러가 별도
+     * 트랜잭션으로 처리하므로, OpenAI가 느리거나 죽어도 제출 응답에는 영향이 없다.
+     *
+     * <p>판정할 수 없는 제출은 SKIPPED로 남긴다. HWP·HWPX가 여기 해당한다 — 업로드는 되지만
+     * 신뢰할 만한 자바 파서가 없어 텍스트를 뽑을 수 없다. "분석하지 않기로 한 건"과 "아직 분석
+     * 전인 건"을 구분해야 조회 쪽에서 영영 대기 중인 것처럼 보이지 않는다.
+     */
+    private void enqueueProofAnalysis(TodoWorkItem workItem) {
+        ProofKind kind = workItem.getProofKind();
+        if (kind == null) {
+            return;
+        }
+        boolean analyzable = kind == ProofKind.IMAGE
+                || documentTextExtractor.supports(workItem.getProofContentType());
+        LocalDateTime now = LocalDateTime.now(KST);
+        proofAiAnalysisRepository.save(analyzable
+                ? ProofAiAnalysis.pending(workItem, kind, now)
+                : ProofAiAnalysis.skipped(workItem, kind, now));
     }
 
     private void notifyTodoSubmitted(Todo todo, TodoWorkItem workItem) {

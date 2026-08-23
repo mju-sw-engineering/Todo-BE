@@ -135,13 +135,13 @@ public interface TodoControllerDocs {
     );
 
     @Operation(
-            summary = "인증 사진 제출",
-            description = "DIRECT Todo의 로그인 담당자가 인증 사진을 제출합니다. TASK는 /todo-work-items/{workItemId}/submission 경로를 사용합니다. " +
+            summary = "인증 파일 제출",
+            description = "DIRECT Todo의 로그인 담당자가 인증 파일(이미지 또는 문서)을 제출합니다. TASK는 /todo-work-items/{workItemId}/submission 경로를 사용합니다. " +
                     "마감 시간이 지난 경우 대상 WorkItem과 Todo를 FAIL로 변경 후 400을 반환합니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 사진 제출 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 파일 제출 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "마감 시간 초과",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "해당 투두의 배정자가 아님",
@@ -201,13 +201,13 @@ public interface TodoControllerDocs {
     );
 
     @Operation(
-            summary = "TASK WorkItem 인증 사진 제출",
-            description = "로그인한 TASK 담당자가 WorkItem 인증 사진을 제출합니다."
+            summary = "TASK WorkItem 인증 파일 제출",
+            description = "로그인한 TASK 담당자가 WorkItem 인증 파일(이미지 또는 문서)을 제출합니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 사진 제출 성공"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "마감 초과 또는 유효하지 않은 사진 key",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 파일 제출 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "마감 초과 또는 유효하지 않은 파일 key",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "담당자가 아님",
                     content = @Content(schema = @Schema(hidden = true))),
@@ -222,7 +222,7 @@ public interface TodoControllerDocs {
             Authentication authentication
     );
 
-    @Operation(summary = "WorkItem 제출 사진 조회", description = "팀 멤버에게 제출 사진의 원본·썸네일 Presigned URL을 발급합니다.")
+    @Operation(summary = "WorkItem 제출 파일 조회", description = "팀 멤버에게 제출 파일의 원본 Presigned URL과 파일 종류·이름, AI 판정 결과를 반환합니다. 썸네일 URL은 이미지 제출에만 존재합니다. AI 판정의 불일치 사유(mismatchReason)는 요청자가 제출자 본인일 때만 내려갑니다.")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",

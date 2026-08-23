@@ -67,6 +67,14 @@ public class NotificationMessageFactory {
     }
 
     /**
+     * AI가 제출물과 할 일이 맞지 않다고 판단함. <b>제출자 본인에게만</b> 발송한다.
+     * 팀에 알리면 오탐 한 번이 팀원을 몰아세우는 일이 되므로 수신자를 넓히지 않는다.
+     */
+    public NotificationMessage aiProofMismatch(String todoTitle) {
+        return build(NotificationType.AI_PROOF_MISMATCH, Map.of("todoTitle", todoTitle));
+    }
+
+    /**
      * WorkItem 마감 30분 전. 담당자에게 발송한다.
      */
     public NotificationMessage todoDeadlineApproaching(String todoTitle) {
