@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -65,10 +66,16 @@ public class SlashCommandDispatchService {
     }
 
     /**
-     * 커밋 후 리스너가 새 트랜잭션에서 호출한다. 여기서 실패해도 원래 요청은 이미 응답이 나간
+     * 커밋 후 리스너가 호출한다. 여기서 실패해도 원래 요청은 이미 응답이 나간
      * 뒤라 사용자에게 전달할 방법이 없다 — 로깅만 하고 실행 결과는 PENDING에 남겨둔다.
+     *
+     * <p><b>REQUIRES_NEW가 필수다.</b> AFTER_COMMIT 시점에는 원래 트랜잭션의 리소스가 아직
+     * 바인딩돼 있어 REQUIRED는 이미 커밋된 그 트랜잭션에 "참여"하고, 두 번째 커밋은 일어나지
+     * 않는다. 그러면 {@code execution.complete()}가 flush되지 않아 모든 실행이 영원히
+     * PENDING에 남고, 안에서 부르는 {@code pushAll}의 알림 이벤트도 발화하지 않는다
+     * ({@code SlashCommandDispatchIntegrationTest}가 이 회귀를 잡는다).
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void completeExecution(SlashCommandDispatchEvent event) {
         try {
             SlashCommandHandler handler = registry.findHandler(event.command()).orElse(null);

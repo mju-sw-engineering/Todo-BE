@@ -188,7 +188,7 @@ class TeamChatServiceTest {
         User user = userWithId(1L);
         givenTeamMember(user, 100L);
         SlashCommandExecution execution = doneExecution(SlashCommand.MY_TODOS, user);
-        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.of(execution));
+        given(slashCommandExecutionRepository.findByChatMessageIdAndTeamId(1000L, 100L)).willReturn(Optional.of(execution));
         given(objectMapper.readTree("{\"count\":1}")).willReturn(TextNode.valueOf("stub"));
 
         SlashCommandResultResponse response = teamChatService.getCommandResult(100L, "1", 1000L);
@@ -204,7 +204,7 @@ class TeamChatServiceTest {
         givenTeamMember(user, 100L);
         TeamChatMessage triggerMessage = messageWithId(1000L, team, user, "/내할일");
         SlashCommandExecution execution = SlashCommandExecution.createPending(team, user, triggerMessage, SlashCommand.MY_TODOS);
-        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.of(execution));
+        given(slashCommandExecutionRepository.findByChatMessageIdAndTeamId(1000L, 100L)).willReturn(Optional.of(execution));
 
         SlashCommandResultResponse response = teamChatService.getCommandResult(100L, "1", 1000L);
 
@@ -219,7 +219,7 @@ class TeamChatServiceTest {
         User other = userWithId(2L);
         givenTeamMember(other, 100L);
         SlashCommandExecution execution = doneExecution(SlashCommand.MY_TODOS, executor);
-        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.of(execution));
+        given(slashCommandExecutionRepository.findByChatMessageIdAndTeamId(1000L, 100L)).willReturn(Optional.of(execution));
 
         assertThatThrownBy(() -> teamChatService.getCommandResult(100L, "2", 1000L))
                 .isInstanceOf(BusinessException.class)
@@ -233,7 +233,7 @@ class TeamChatServiceTest {
         User other = userWithId(2L);
         givenTeamMember(other, 100L);
         SlashCommandExecution execution = doneExecution(SlashCommand.TEAM_STATUS, executor);
-        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.of(execution));
+        given(slashCommandExecutionRepository.findByChatMessageIdAndTeamId(1000L, 100L)).willReturn(Optional.of(execution));
         given(objectMapper.readTree("{\"count\":1}")).willReturn(TextNode.valueOf("stub"));
 
         SlashCommandResultResponse response = teamChatService.getCommandResult(100L, "2", 1000L);
@@ -242,10 +242,22 @@ class TeamChatServiceTest {
     }
 
     @Test
+    void 다른_팀의_messageId로는_결과를_조회할_수_없다() {
+        User user = userWithId(1L);
+        givenTeamMember(user, 100L);
+        given(slashCommandExecutionRepository.findByChatMessageIdAndTeamId(2000L, 100L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teamChatService.getCommandResult(100L, "1", 2000L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getStatus()).isEqualTo(HttpStatus.NOT_FOUND));
+        then(slashCommandExecutionRepository).should(never()).findByChatMessageIdAndTeamId(2000L, 200L);
+    }
+
+    @Test
     void 명령어_실행_결과가_없으면_404() {
         User user = userWithId(1L);
         givenTeamMember(user, 100L);
-        given(slashCommandExecutionRepository.findByChatMessageId(1000L)).willReturn(Optional.empty());
+        given(slashCommandExecutionRepository.findByChatMessageIdAndTeamId(1000L, 100L)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> teamChatService.getCommandResult(100L, "1", 1000L))
                 .isInstanceOf(BusinessException.class)
