@@ -65,7 +65,19 @@ public class ProofAnalysisPoller {
                 // 서비스가 자체적으로 상태를 확정하지만, 저장 자체가 실패하는 경우가 남는다.
                 // 한 건 때문에 나머지 배치가 멈추면 안 된다.
                 log.warn("인증 파일 판정 처리 중 예외. analysisId={}", id, e);
+                // 확정이 롤백됐다면 PENDING 그대로라 다음 주기에 다시 유료 호출이 나간다.
+                // 별도 트랜잭션에서 횟수를 올려 반복이 결국 FAILED로 멎게 한다.
+                recordDispatchFailureQuietly(id);
             }
+        }
+    }
+
+    private void recordDispatchFailureQuietly(Long analysisId) {
+        try {
+            proofAnalysisService.recordDispatchFailure(analysisId);
+        } catch (RuntimeException e) {
+            // 여기까지 실패하면 다음 주기에 다시 시도된다. 배치를 멈추지는 않는다.
+            log.warn("재시도 횟수 기록에 실패했습니다. analysisId={}", analysisId, e);
         }
     }
 }

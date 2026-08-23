@@ -15,6 +15,7 @@ import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -137,6 +138,28 @@ public class ProofAnalysisService {
             log.warn("인증 파일 판정 중 예외. analysisId={}, attempt={}",
                     analysisId, analysis.getAttemptCount(), e);
         }
+    }
+
+    /**
+     * 분석 트랜잭션이 통째로 롤백된 건의 재시도 횟수만 새 트랜잭션에서 올린다.
+     *
+     * <p>{@link #analyze}의 catch가 상태를 확정해도, 그 트랜잭션이 이미 rollback-only로
+     * 표시돼 있으면 확정까지 같이 사라진다. 그러면 attempt_count가 0에 머물러
+     * MAX_ATTEMPTS에 영원히 닿지 못하고, 폴링 주기마다 유료 호출이 무한 반복된다.
+     * 실제로 알림 저장 실패 한 건이 이 경로로 12초마다 재판정을 일으켰다.
+     *
+     * <p>여기서 횟수를 전진시켜야 고장이 결국 FAILED로 멎는다. 판정 결과 자체는 이미
+     * 롤백돼 살릴 수 없으므로 복구하지 않는다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordDispatchFailure(Long analysisId) {
+        proofAiAnalysisRepository.findById(analysisId)
+                .filter(ProofAiAnalysis::isPending)
+                .ifPresent(analysis -> {
+                    analysis.recordRetryableFailure(LocalDateTime.now(KST));
+                    log.warn("판정 저장이 롤백돼 재시도 횟수만 올립니다. analysisId={}, attempt={}",
+                            analysisId, analysis.getAttemptCount());
+                });
     }
 
     private long elapsedMillis(long startedAtNanos) {
