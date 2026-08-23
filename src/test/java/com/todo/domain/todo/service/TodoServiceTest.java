@@ -11,6 +11,7 @@ import com.todo.domain.todo.dto.request.CreateTodoTaskRequest;
 import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
+import com.todo.domain.todo.dto.response.ProofAiAnalysisResponse;
 import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
@@ -21,6 +22,7 @@ import com.todo.domain.todo.dto.response.TodoWorkItemSubmissionResponse;
 import com.todo.domain.todo.entity.ProofAiAnalysis;
 import com.todo.domain.todo.entity.ProofAnalysisStatus;
 import com.todo.domain.todo.entity.ProofKind;
+import com.todo.domain.todo.entity.ProofVerdict;
 import com.todo.domain.todo.entity.Todo;
 import com.todo.domain.todo.entity.TodoMode;
 import com.todo.domain.todo.entity.TodoReaction;
@@ -60,6 +62,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -559,6 +562,41 @@ class TodoServiceTest {
         assertThat(response.mode()).isEqualTo(TodoMode.DIRECT);
         assertThat(response.directAssignees()).hasSize(1);
         assertThat(response.tasks()).isEmpty();
+    }
+
+    @Test
+    void 상세_조회는_AI_판정을_싣되_불일치_사유는_제출자에게만_내려준다() {
+        User submitter = user(1L);
+        User teammate = user(2L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, submitter, 20L);
+        workItem.submit("proofs/100/10/1/a.jpg", null, "image/jpeg", "a.jpg");
+        ProofAiAnalysis analysis = ProofAiAnalysis.pending(workItem, ProofKind.IMAGE, LocalDateTime.now());
+        analysis.complete(ProofVerdict.MISMATCH, "칫솔 사진입니다.", "할 일과 다른 사진으로 보여요.", "gpt-5.6-luna");
+        given(proofAiAnalysisRepository.findMapByWorkItemIds(List.of(20L))).willReturn(Map.of(20L, analysis));
+        given(todoWorkItemRepository.findByTodoIdOrderByPositionAsc(TODO_ID)).willReturn(List.of(workItem));
+        given(todoReactionRepository.countByTodoWorkItemIds(List.of(20L))).willReturn(List.of());
+
+        // 같은 투두를 두 사람이 각각 조회한다. 헬퍼는 viewer 1명만 스텁하므로 직접 둘 다 건다.
+        given(todoRepository.findByIdWithCreatorAndTeam(TODO_ID)).willReturn(Optional.of(todo));
+        given(userRepository.findById(1L)).willReturn(Optional.of(submitter));
+        given(userRepository.findById(2L)).willReturn(Optional.of(teammate));
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 1L)).willReturn(true);
+        given(teamMemberRepository.existsByTeamIdAndUserId(TEAM_ID, 2L)).willReturn(true);
+        given(todoReactionRepository.findByTodoWorkItemIdInAndUserId(List.of(20L), 1L)).willReturn(List.of());
+        given(todoReactionRepository.findByTodoWorkItemIdInAndUserId(List.of(20L), 2L)).willReturn(List.of());
+
+        ProofAiAnalysisResponse forSubmitter = todoService.getTodoDetail(TODO_ID, "1")
+                .directAssignees().get(0).aiAnalysis();
+        ProofAiAnalysisResponse forTeammate = todoService.getTodoDetail(TODO_ID, "2")
+                .directAssignees().get(0).aiAnalysis();
+
+        assertThat(forSubmitter.verdict()).isEqualTo(ProofVerdict.MISMATCH);
+        assertThat(forSubmitter.mismatchReason()).isEqualTo("할 일과 다른 사진으로 보여요.");
+        // 같은 카드를 팀원이 보면 판정과 요약은 보이지만 사유는 없다.
+        assertThat(forTeammate.verdict()).isEqualTo(ProofVerdict.MISMATCH);
+        assertThat(forTeammate.summary()).isEqualTo("칫솔 사진입니다.");
+        assertThat(forTeammate.mismatchReason()).isNull();
     }
 
     @Test

@@ -222,7 +222,7 @@ public interface TodoControllerDocs {
             Authentication authentication
     );
 
-    @Operation(summary = "WorkItem 제출 파일 조회", description = "팀 멤버에게 제출 파일의 원본 Presigned URL과 파일 종류·이름을 반환합니다. 썸네일 URL은 이미지 제출에만 존재합니다.")
+    @Operation(summary = "WorkItem 제출 파일 조회", description = "팀 멤버에게 제출 파일의 원본 Presigned URL과 파일 종류·이름, AI 판정 결과를 반환합니다. 썸네일 URL은 이미지 제출에만 존재합니다. AI 판정의 불일치 사유(mismatchReason)는 요청자가 제출자 본인일 때만 내려갑니다.")
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공",

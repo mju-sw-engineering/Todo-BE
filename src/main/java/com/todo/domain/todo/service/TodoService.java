@@ -13,6 +13,7 @@ import com.todo.domain.todo.dto.request.ReactTodoRequest;
 import com.todo.domain.todo.dto.request.SubmitTodoRequest;
 import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.MyWorkSummaryResponse;
+import com.todo.domain.todo.dto.response.ProofAiAnalysisResponse;
 import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoDirectAssigneeResponse;
@@ -266,6 +267,8 @@ public class TodoService {
         List<TodoWorkItem> workItems = todoWorkItemRepository.findByTodoIdOrderByPositionAsc(todoId);
         Map<Long, Map<TodoReactionType, Long>> reactionCounts = getReactionCountsByWorkItemId(workItems);
         Map<Long, TodoReactionType> myReactions = getMyReactionsByWorkItemId(workItems, user.getId());
+        Map<Long, ProofAiAnalysis> analyses = proofAiAnalysisRepository.findMapByWorkItemIds(
+                workItems.stream().map(TodoWorkItem::getId).toList());
 
         List<TodoDirectAssigneeResponse> directAssignees = workItems.stream()
                 .filter(workItem -> workItem.getType() == WorkItemType.DIRECT)
@@ -274,7 +277,8 @@ public class TodoService {
                         toKstOffset(workItem.getSubmittedAt()),
                         resolveThumbnailUrl(workItem),
                         reactionCounts.getOrDefault(workItem.getId(), Map.of()),
-                        myReactions.get(workItem.getId())
+                        myReactions.get(workItem.getId()),
+                        ProofAiAnalysisResponse.from(analyses.get(workItem.getId()), user.getId())
                 ))
                 .toList();
         List<TodoTaskResponse> tasks = workItems.stream()
@@ -285,7 +289,8 @@ public class TodoService {
                         toKstOffset(workItem.getSubmittedAt()),
                         resolveThumbnailUrl(workItem),
                         reactionCounts.getOrDefault(workItem.getId(), Map.of()),
-                        myReactions.get(workItem.getId())
+                        myReactions.get(workItem.getId()),
+                        ProofAiAnalysisResponse.from(analyses.get(workItem.getId()), user.getId())
                 ))
                 .toList();
 
@@ -330,12 +335,14 @@ public class TodoService {
                 ? originalUrl
                 : fileService.resolveImageUrl(workItem.getProofThumbnailKey());
         OffsetDateTime expiresAt = OffsetDateTime.now(KST_OFFSET).plus(fileService.getPresignedUrlExpiration());
+        ProofAiAnalysis analysis = proofAiAnalysisRepository.findByWorkItemId(workItemId).orElse(null);
         return TodoWorkItemSubmissionResponse.from(
                 workItem,
                 toKstOffset(workItem.getSubmittedAt()),
                 originalUrl,
                 thumbnailUrl,
-                expiresAt
+                expiresAt,
+                ProofAiAnalysisResponse.from(analysis, user.getId())
         );
     }
 
@@ -530,7 +537,7 @@ public class TodoService {
     private CreateTodoResponse toCreateResponse(Todo todo, List<TodoWorkItem> workItems) {
         List<TodoDirectAssigneeResponse> directAssignees = workItems.stream()
                 .filter(workItem -> workItem.getType() == WorkItemType.DIRECT)
-                .map(workItem -> TodoDirectAssigneeResponse.from(workItem, null, null, Map.of(), null))
+                .map(workItem -> TodoDirectAssigneeResponse.from(workItem, null, null, Map.of(), null, null))
                 .toList();
         List<TodoTaskResponse> tasks = workItems.stream()
                 .filter(workItem -> workItem.getType() == WorkItemType.TASK)
@@ -540,6 +547,7 @@ public class TodoService {
                         null,
                         null,
                         Map.of(),
+                        null,
                         null
                 ))
                 .toList();
