@@ -14,6 +14,7 @@ import com.todo.domain.todo.dto.response.CreateTodoResponse;
 import com.todo.domain.todo.dto.response.ProofAiAnalysisResponse;
 import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
+import com.todo.domain.todo.dto.response.TodoParticipantResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoSummaryResponse;
@@ -570,6 +571,39 @@ class TodoServiceTest {
     }
 
     @Test
+    void 목록의_설명은_투두_설명을_그대로_담는다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        givenListAccess(viewer);
+        given(todoRepository.findByTeamIdWithCreator(TEAM_ID)).willReturn(List.of(todo));
+        given(todoWorkItemRepository.findSummaryByTodoIdIn(List.of(TODO_ID))).willReturn(List.of());
+
+        TodoSummaryResponse response = todoService.getTodoList(TEAM_ID, "1", null, null).get(0);
+
+        assertThat(response.description()).isEqualTo("설명");
+    }
+
+    @Test
+    void 참가자_목록은_같은_담당자를_중복없이_담고_미배정은_제외한다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        givenListAccess(viewer);
+        given(todoRepository.findByTeamIdWithCreator(TEAM_ID)).willReturn(List.of(todo));
+        given(todoWorkItemRepository.findSummaryByTodoIdIn(List.of(TODO_ID))).willReturn(List.of(
+                summary(TODO_ID, 1L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 0),
+                summary(TODO_ID, 1L, WorkItemStatus.IN_PROGRESS, WorkItemType.TASK, 1),
+                summary(TODO_ID, 2L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 2),
+                summary(TODO_ID, null, WorkItemStatus.IN_PROGRESS, WorkItemType.TASK, 3)
+        ));
+
+        TodoSummaryResponse response = todoService.getTodoList(TEAM_ID, "1", null, null).get(0);
+
+        assertThat(response.participants())
+                .extracting(TodoParticipantResponse::userId)
+                .containsExactly(1L, 2L);
+    }
+
+    @Test
     void DIRECT_상세는_DIRECT_담당자만_노출하고_TASK_배열은_비운다() {
         User viewer = user(1L);
         Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
@@ -1051,6 +1085,11 @@ class TodoServiceTest {
             @Override
             public String getNickname() {
                 return "닉네임" + assigneeId;
+            }
+
+            @Override
+            public String getProfileImageUrl() {
+                return assigneeId == null ? null : "https://example.com/profile/" + assigneeId + ".jpg";
             }
 
             @Override

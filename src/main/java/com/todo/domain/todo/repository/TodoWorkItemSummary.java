@@ -7,6 +7,7 @@ public interface TodoWorkItemSummary {
     Long getTodoId();
     Long getAssigneeId();
     String getNickname();
+    String getProfileImageUrl();
     WorkItemStatus getStatus();
     WorkItemType getType();
     int getPosition();

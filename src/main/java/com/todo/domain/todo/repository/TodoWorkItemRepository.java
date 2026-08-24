@@ -81,8 +81,8 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
 
     @Query("""
             SELECT wi.todo.id AS todoId, a.id AS assigneeId,
-                   a.nickname AS nickname, wi.status AS status,
-                   wi.type AS type, wi.position AS position
+                   a.nickname AS nickname, a.profileImageUrl AS profileImageUrl,
+                   wi.status AS status, wi.type AS type, wi.position AS position
             FROM TodoWorkItem wi
             LEFT JOIN wi.assignee a
             WHERE wi.todo.id IN :todoIds
