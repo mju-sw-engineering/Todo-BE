@@ -5,7 +5,7 @@ import com.todo.domain.todo.recommendation.RecommendationOutcome;
 import java.util.List;
 
 /**
- * `/팀 할일 추천` 핸들러의 반환값. 명령어 인프라가 JSON으로 직렬화해 {@code result_json}에 저장한다.
+ * `/할일추천` 핸들러의 반환값. 명령어 인프라가 JSON으로 직렬화해 {@code result_json}에 저장한다.
  *
  * <p>고정 문구(NONE·COOLDOWN·UNAVAILABLE)는 모델이 아니라 여기서 정한다. 모델을 부르지 않는
  * 경로에서도 카드 모양이 같아야 FE가 {@code outcome} 하나로 분기할 수 있다.

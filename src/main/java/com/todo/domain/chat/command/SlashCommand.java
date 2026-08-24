@@ -15,7 +15,11 @@ public enum SlashCommand {
     MY_TODOS("/내할일", SlashCommandScope.PERSONAL),
     DEADLINE_APPROACHING("/마감임박", SlashCommandScope.TEAM),
     TEAM_STATUS("/팀현황", SlashCommandScope.TEAM),
-    TODO_RECOMMENDATION("/할일추천", SlashCommandScope.PERSONAL);
+    /**
+     * 결과가 팀 채팅에 남고 팀원 누구나 카드의 [등록]을 누를 수 있어야 하므로 TEAM이다.
+     * 개인 조회가 아니라 팀 할 일을 만드는 제안이라 결과도 팀이 함께 본다.
+     */
+    TODO_RECOMMENDATION("/할일추천", SlashCommandScope.TEAM);
 
     private final String commandText;
     private final SlashCommandScope scope;

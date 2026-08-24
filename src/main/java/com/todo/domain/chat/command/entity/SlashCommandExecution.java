@@ -74,6 +74,17 @@ public class SlashCommandExecution extends BaseTimeEntity {
     }
 
     /**
+     * 완료된 결과의 내용만 갱신한다. 추천 카드의 [등록] 버튼처럼 결과가 확정된 뒤에도 상태가
+     * 바뀌는 명령어를 위한 것이다. 상태·실행 시각은 건드리지 않는다.
+     */
+    public void updateResult(String resultJson) {
+        if (this.status != SlashCommandExecutionStatus.DONE) {
+            return;
+        }
+        this.resultJson = resultJson;
+    }
+
+    /**
      * 실패를 확정한다. 이미 DONE이면 건드리지 않는다 — 완료 뒤 알림 발송 같은 후속 단계에서
      * 예외가 나도 정상 저장된 결과를 실패로 덮어쓰지 않기 위해서다.
      */

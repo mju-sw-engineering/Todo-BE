@@ -95,9 +95,6 @@ public class RecommendationPromptProvider {
     public String userText(TeamActivityDigest digest) {
         StringBuilder text = new StringBuilder();
         text.append("오늘은 ").append(digest.today()).append("이고 팀원은 ").append(digest.memberCount()).append("명이다.");
-        if (digest.memberCount() < 2) {
-            text.append(" 팀원이 한 명이므로 REBALANCE는 제안하지 않는다.");
-        }
         text.append("\n\n").append(digest.text());
         return text.toString();
     }

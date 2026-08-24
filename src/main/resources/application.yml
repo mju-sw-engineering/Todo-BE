@@ -83,6 +83,14 @@ openai:
   # 타임아웃이 없으면 스레드가 물려 분석 큐 전체가 밀린다.
   read-timeout: 30s
 
+todo-recommendation:
+  # OpenAI 장애가 길어질 때 내리는 스위치. 명령어는 "지금은 쓸 수 없어요" 카드를 돌려준다.
+  enabled: ${TODO_RECOMMENDATION_ENABLED:true}
+  # 팀 단위로 막는다 — 개인 단위로 막으면 팀원 넷이 번갈아 쳐서 같은 비용이 나간다.
+  cooldown: ${TODO_RECOMMENDATION_COOLDOWN:10m}
+  rate-limit: ${TODO_RECOMMENDATION_RATE_LIMIT:5m}
+  daily-limit: ${TODO_RECOMMENDATION_DAILY_LIMIT:10}
+
 holiday:
   api:
     # 공공데이터포털 한국천문연구원 특일정보(getRestDeInfo). 키는 커밋하지 않는다 — 로컬은
@@ -130,7 +138,9 @@ slash-command:
     core-pool-size: ${SLASH_COMMAND_ASYNC_CORE_POOL_SIZE:2}
     max-pool-size: ${SLASH_COMMAND_ASYNC_MAX_POOL_SIZE:2}
     queue-capacity: ${SLASH_COMMAND_ASYNC_QUEUE_CAPACITY:20}
-    await-termination-seconds: ${SLASH_COMMAND_ASYNC_AWAIT_TERMINATION_SECONDS:35}
+    # 추천 핸들러 worst case = AI 호출 30s + 백오프 2s + 재시도 30s. 그보다 짧으면 종료가
+    # 핸들러를 앞질러 실행 행이 PENDING으로 남는다.
+    await-termination-seconds: ${SLASH_COMMAND_ASYNC_AWAIT_TERMINATION_SECONDS:70}
 
 file-deletion:
   async:
