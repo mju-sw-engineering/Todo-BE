@@ -25,7 +25,7 @@ class RecommendationPromptProviderTest {
         String full = provider.systemInstruction(RecommendationMode.FULL);
         String starter = provider.systemInstruction(RecommendationMode.STARTER);
 
-        assertThat(full).contains("<team_data>").contains("SPLIT").contains("REBALANCE").contains("자기 이름을 말하지 않는다")
+        assertThat(full).contains("<team_data>").contains("SPLIT").contains("RETRY").contains("자기 이름을 말하지 않는다")
                 .contains("한 건뿐인 기록은 패턴이 아니다");
         assertThat(starter).contains("<team_data>").contains("NEW만").contains("기록이 쌓이면 더 정확해져요");
         assertThat(full).isNotEqualTo(starter);
@@ -47,7 +47,6 @@ class RecommendationPromptProviderTest {
 
         assertThat(text)
                 .startsWith("오늘은 2026-08-23이고 팀원은 1명이다.")
-                .contains("REBALANCE는 제안하지 않는다")
                 .endsWith("<team_data>\n[팀] x\n</team_data>");
     }
 
@@ -68,7 +67,7 @@ class RecommendationPromptProviderTest {
         assertThat(itemProps.keySet()).containsExactly(
                 "kind", "title", "description", "reason", "suggested_deadline", "related_todo_id", "suggested_assignee_ids");
         assertThat((List<String>) ((Map<String, Object>) itemProps.get("kind")).get("enum"))
-                .containsExactly("SPLIT", "RETRY", "NEW", "REBALANCE");
+                .containsExactly("SPLIT", "RETRY", "NEW");
         assertThat(((Map<String, Object>) itemProps.get("related_todo_id")).get("type"))
                 .isEqualTo(List.of("integer", "null"));
     }

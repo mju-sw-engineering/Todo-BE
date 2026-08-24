@@ -50,13 +50,9 @@ public class RecommendationResultSanitizer {
                 // 제목 없는 추천은 등록할 수 없다. 카드에도 올리지 않는다.
                 continue;
             }
-            RecommendationKind kind = RecommendationKind.fromModelValue(raw.kind());
-            if (kind == RecommendationKind.REBALANCE && digest.memberCount() < 2) {
-                kind = RecommendationKind.NEW;
-            }
             items.add(TeamTodoRecommendationItem.of(
                     items.size(),
-                    kind,
+                    RecommendationKind.fromModelValue(raw.kind()),
                     title,
                     clip(raw.description(), DESCRIPTION_MAX),
                     clip(raw.reason(), REASON_MAX),

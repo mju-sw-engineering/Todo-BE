@@ -98,16 +98,6 @@ class RecommendationResultSanitizerTest {
     }
 
     @Test
-    void 팀원이_한_명이면_REBALANCE는_NEW로_바꾼다() {
-        TeamActivityDigest solo = new TeamActivityDigest(
-                RecommendationMode.FULL, "", TODAY, 1, Map.of(1L, "민수"), Set.of(), List.of());
-        AiRecommendationResponse response = response(
-                item("REBALANCE", "나누기", "", "", "2026-08-25", null, List.of(1L)));
-
-        assertThat(sanitizer.sanitize(response, solo).get(0).kind()).isEqualTo(RecommendationKind.NEW);
-    }
-
-    @Test
     void 알_수_없는_kind는_NEW로_떨어뜨린다() {
         AiRecommendationResponse response = response(
                 item("SOMETHING_ELSE", "x", "", "", "2026-08-25", null, List.of()));
