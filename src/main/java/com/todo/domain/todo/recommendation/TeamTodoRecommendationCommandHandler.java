@@ -148,11 +148,20 @@ public class TeamTodoRecommendationCommandHandler implements SlashCommandHandler
         return lastResult(teamId).map(execution -> execution.getChatMessage().getId());
     }
 
+    /**
+     * 최근 실행을 새 것부터 훑어 카드가 담긴 첫 결과를 찾는다. 한 건만 보면 COOLDOWN 결과가
+     * 바로 앞의 READY 카드를 가려, 세 번째 호출자부터는 10분 쿨다운이 통째로 무시된다.
+     *
+     * <p>훑는 범위를 넘도록 안내 결과만 쌓이면 직전 카드를 못 찾지만, 그때는 rate limit이
+     * 다음 방어선으로 남는다 — 20건은 사람이 채팅에서 낼 수 있는 속도를 충분히 덮는다.
+     */
     private Optional<SlashCommandExecution> lastResult(Long teamId) {
         return executionRepository
-                .findFirstByTeamIdAndCommandOrderByIdDesc(teamId, SlashCommand.TODO_RECOMMENDATION)
+                .findTop20ByTeamIdAndCommandOrderByIdDesc(teamId, SlashCommand.TODO_RECOMMENDATION)
+                .stream()
                 .filter(execution -> execution.getResultJson() != null)
-                .filter(execution -> !isSkippedResult(execution));
+                .filter(execution -> !isSkippedResult(execution))
+                .findFirst();
     }
 
     /**

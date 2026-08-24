@@ -21,6 +21,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -44,6 +48,7 @@ public class TeamTodoRecommendationRegisterService {
     private final UserRepository userRepository;
     private final TodoService todoService;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
     @Transactional
     public CreateTodoResponse register(Long teamId, String userId, Long messageId, int index) {
@@ -75,7 +80,7 @@ public class TeamTodoRecommendationRegisterService {
         CreateTodoResponse created = todoService.createTodo(userId, teamId, new CreateTodoRequest(
                 item.title(),
                 item.description() == null || item.description().isBlank() ? null : item.description(),
-                item.suggestedDeadline(),
+                effectiveDeadline(item.suggestedDeadline()),
                 assigneeIds,
                 null
         ));
@@ -85,6 +90,29 @@ public class TeamTodoRecommendationRegisterService {
         log.info("추천 카드에서 투두를 등록했습니다. teamId={}, messageId={}, index={}, todoId={}",
                 teamId, messageId, index, created.todoId());
         return created;
+    }
+
+    /**
+     * 카드는 채팅에 영구히 남아 며칠 뒤에도 눌린다. 마감 시각이 21:00 고정이라 밤에 만든 카드는
+     * 등록 전부터 과거인 경우도 있다. 지난 마감을 그대로 넘기면 {@link TodoService#createTodo}가
+     * 400을 던지는데, 이는 카드 계약에 없는 응답이라 프론트가 처리할 수 없다.
+     * 카드의 취지는 날짜가 아니라 "이 일을 하자"이므로 다음 평일로 미뤄 등록한다.
+     *
+     * <p>공휴일은 여기서 알 수 없다 — 프롬프트도 공휴일 회피를 선호로만 뒀으므로 주말만 건너뛴다.
+     */
+    private OffsetDateTime effectiveDeadline(OffsetDateTime suggested) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        if (suggested != null && suggested.isAfter(now)) {
+            return suggested;
+        }
+        LocalDate date = now.withOffsetSameInstant(RecommendationResultSanitizer.KST).toLocalDate().plusDays(1);
+        while (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            date = date.plusDays(1);
+        }
+        OffsetDateTime moved = date.atTime(RecommendationResultSanitizer.DEADLINE_TIME)
+                .atOffset(RecommendationResultSanitizer.KST);
+        log.info("추천 카드의 마감이 지나 다음 평일로 옮깁니다. suggested={}, moved={}", suggested, moved);
+        return moved;
     }
 
     private TeamTodoRecommendationResult readResult(SlashCommandExecution execution) {

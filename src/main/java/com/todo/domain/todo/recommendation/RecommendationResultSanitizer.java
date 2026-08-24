@@ -1,9 +1,11 @@
 package com.todo.domain.todo.recommendation;
 
 import com.todo.domain.todo.recommendation.dto.TeamTodoRecommendationItem;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -22,7 +24,10 @@ import java.util.Set;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class RecommendationResultSanitizer {
+
+    private final Clock clock;
 
     static final int MAX_ITEMS = 3;
     static final int TITLE_MAX = 100;
@@ -65,15 +70,21 @@ public class RecommendationResultSanitizer {
     }
 
     /**
-     * 오늘 이전이거나 읽을 수 없는 날짜는 다음 평일(주말·공휴일 제외)로 보정한다.
+     * 이미 지났거나 읽을 수 없는 날짜는 다음 평일(주말·공휴일 제외)로 보정한다.
+     * 날짜만 비교하면 안 된다 — 마감 시각이 21:00 고정이라 밤에 만든 카드가 오늘을 고르면
+     * 태어날 때부터 과거고, 등록 시점에 투두 생성이 거부된다.
      * 모델이 <b>고른</b> 공휴일은 손대지 않는다 — 연휴 중에 할 일일 수 있고, 프롬프트도
      * 공휴일 회피를 선호이지 금지로 두지 않았다.
      */
     OffsetDateTime resolveDeadline(String raw, TeamActivityDigest digest) {
         LocalDate date = parse(raw);
-        if (date == null || date.isBefore(digest.today())) {
+        if (date == null || !deadlineOf(date).isAfter(OffsetDateTime.now(clock))) {
             date = nextWorkingDay(digest.today(), digest);
         }
+        return deadlineOf(date);
+    }
+
+    private static OffsetDateTime deadlineOf(LocalDate date) {
         return date.atTime(DEADLINE_TIME).atOffset(KST);
     }
 

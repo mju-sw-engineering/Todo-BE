@@ -4,6 +4,8 @@ import com.todo.domain.todo.recommendation.dto.TeamTodoRecommendationItem;
 import com.todo.domain.todo.recommendation.holiday.Holiday;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -17,7 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RecommendationResultSanitizerTest {
 
     private static final LocalDate TODAY = LocalDate.of(2026, 8, 21); // 금요일
-    private final RecommendationResultSanitizer sanitizer = new RecommendationResultSanitizer();
+    /** 2026-08-21(금) 10:00 KST — 마감 시각 21:00보다 앞이라 "오늘"이 아직 미래인 시점. */
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-08-21T01:00:00Z"), ZoneOffset.UTC);
+    private final RecommendationResultSanitizer sanitizer = new RecommendationResultSanitizer(CLOCK);
 
     private final TeamActivityDigest digest = new TeamActivityDigest(
             RecommendationMode.FULL, "<team_data>…</team_data>", TODAY, 2,
@@ -84,6 +88,16 @@ class RecommendationResultSanitizerTest {
     void 모델이_고른_공휴일이나_오늘은_손대지_않는다() {
         assertThat(sanitizer.resolveDeadline("2026-08-24", digest).toLocalDate()).isEqualTo(LocalDate.of(2026, 8, 24));
         assertThat(sanitizer.resolveDeadline("2026-08-21", digest).toLocalDate()).isEqualTo(TODAY);
+    }
+
+    @Test
+    void 마감_시각을_넘긴_밤에_오늘을_고르면_다음_평일로_보정한다() {
+        // 2026-08-21(금) 22:00 KST — 마감 시각 21:00이 이미 지나 "오늘 21:00"은 과거다.
+        RecommendationResultSanitizer lateNight = new RecommendationResultSanitizer(
+                Clock.fixed(Instant.parse("2026-08-21T13:00:00Z"), ZoneOffset.UTC));
+
+        assertThat(lateNight.resolveDeadline("2026-08-21", digest))
+                .isEqualTo(OffsetDateTime.of(2026, 8, 25, 21, 0, 0, 0, ZoneOffset.ofHours(9)));
     }
 
     @Test

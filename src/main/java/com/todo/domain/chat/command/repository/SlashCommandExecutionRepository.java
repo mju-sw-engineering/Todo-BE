@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface SlashCommandExecutionRepository extends JpaRepository<SlashCommandExecution, Long> {
@@ -30,8 +31,11 @@ public interface SlashCommandExecutionRepository extends JpaRepository<SlashComm
             @Param("teamId") Long teamId
     );
 
-    /** 쿨다운 판정용. 같은 명령어의 최근 실행 한 건을 본다. */
-    Optional<SlashCommandExecution> findFirstByTeamIdAndCommandOrderByIdDesc(Long teamId, SlashCommand command);
+    /**
+     * 쿨다운 판정용. 안내만 담긴 결과(COOLDOWN·UNAVAILABLE)도 실행 행으로 남아 앞선 카드를 가리므로
+     * 한 건만 보면 안 된다. 호출자가 최근 행부터 훑어 "진짜 결과"를 찾도록 여러 건을 돌려준다.
+     */
+    List<SlashCommandExecution> findTop20ByTeamIdAndCommandOrderByIdDesc(Long teamId, SlashCommand command);
 
     @Modifying
     @Query("UPDATE SlashCommandExecution e SET e.executor = null WHERE e.executor.id = :userId")

@@ -26,6 +26,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -49,6 +51,8 @@ class TeamTodoRecommendationRegisterServiceTest {
     private static final Long MESSAGE_ID = 777L;
     private static final OffsetDateTime DEADLINE =
             OffsetDateTime.of(2026, 8, 26, 21, 0, 0, 0, ZoneOffset.ofHours(9));
+    /** 2026-08-24(월) 10:00 KST. DEADLINE(8/26)은 미래, 지난 마감 테스트는 이 시점을 기준으로 본다. */
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-08-24T01:00:00Z"), ZoneOffset.UTC);
 
     @Mock private SlashCommandExecutionRepository executionRepository;
     @Mock private TeamMemberRepository teamMemberRepository;
@@ -65,7 +69,7 @@ class TeamTodoRecommendationRegisterServiceTest {
         objectMapper = new ObjectMapper();
         objectMapper.findAndRegisterModules();
         service = new TeamTodoRecommendationRegisterService(
-                executionRepository, teamMemberRepository, userRepository, todoService, objectMapper);
+                executionRepository, teamMemberRepository, userRepository, todoService, objectMapper, CLOCK);
         team = Team.create("팀", "설명", null, "INVITE01");
         ReflectionTestUtils.setField(team, "id", TEAM_ID);
         registrant = User.create("user", "pw", "민수", null);
@@ -107,6 +111,22 @@ class TeamTodoRecommendationRegisterServiceTest {
         ArgumentCaptor<CreateTodoRequest> captor = ArgumentCaptor.forClass(CreateTodoRequest.class);
         then(todoService).should().createTodo(anyString(), anyLong(), captor.capture());
         assertThat(captor.getValue().assigneeIds()).containsExactly(1L);
+    }
+
+    @Test
+    void 마감이_지난_카드는_다음_평일로_옮겨_등록한다() {
+        TeamTodoRecommendationItem stale = TeamTodoRecommendationItem.of(
+                0, RecommendationKind.NEW, "발표자료 개요", "설명", "근거",
+                OffsetDateTime.of(2026, 8, 20, 21, 0, 0, 0, ZoneOffset.ofHours(9)), null, List.of());
+        givenLockedExecution(execution(result(stale)));
+        given(todoService.createTodo(anyString(), anyLong(), any())).willReturn(createdTodo(500L));
+
+        service.register(TEAM_ID, "1", MESSAGE_ID, 0);
+
+        ArgumentCaptor<CreateTodoRequest> captor = ArgumentCaptor.forClass(CreateTodoRequest.class);
+        then(todoService).should().createTodo(anyString(), anyLong(), captor.capture());
+        assertThat(captor.getValue().deadline())
+                .isEqualTo(OffsetDateTime.of(2026, 8, 25, 21, 0, 0, 0, ZoneOffset.ofHours(9)));
     }
 
     @Test

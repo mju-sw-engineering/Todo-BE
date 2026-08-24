@@ -72,8 +72,8 @@ class TeamTodoRecommendationCommandHandlerTest {
         ReflectionTestUtils.setField(executor, "id", 1L);
         lenient().when(openAiProperties.apiKey()).thenReturn("sk-test");
         lenient().when(rateLimiter.tryAcquire(anyString(), anyInt(), any())).thenReturn(true);
-        lenient().when(executionRepository.findFirstByTeamIdAndCommandOrderByIdDesc(any(), any()))
-                .thenReturn(Optional.empty());
+        lenient().when(executionRepository.findTop20ByTeamIdAndCommandOrderByIdDesc(any(), any()))
+                .thenReturn(List.of());
         lenient().when(promptProvider.systemInstruction(any())).thenReturn("system");
         lenient().when(promptProvider.userText(any())).thenReturn("user");
         lenient().when(promptProvider.schema()).thenReturn(Map.of("type", "object"));
@@ -163,8 +163,8 @@ class TeamTodoRecommendationCommandHandlerTest {
 
     @Test
     void 쿨다운_안에_결과가_있으면_그_카드를_가리키고_모델을_부르지_않는다() {
-        given(executionRepository.findFirstByTeamIdAndCommandOrderByIdDesc(TEAM_ID, SlashCommand.TODO_RECOMMENDATION))
-                .willReturn(Optional.of(doneExecution(RecommendationOutcome.READY, LocalDateTime.now(Clock.fixed(NOW, ZoneId.of("Asia/Seoul"))).minusMinutes(3))));
+        given(executionRepository.findTop20ByTeamIdAndCommandOrderByIdDesc(TEAM_ID, SlashCommand.TODO_RECOMMENDATION))
+                .willReturn(List.of(doneExecution(RecommendationOutcome.READY, LocalDateTime.now(Clock.fixed(NOW, ZoneId.of("Asia/Seoul"))).minusMinutes(3))));
 
         TeamTodoRecommendationResult result = (TeamTodoRecommendationResult) handler.execute(team, executor);
 
@@ -175,9 +175,25 @@ class TeamTodoRecommendationCommandHandlerTest {
     }
 
     @Test
+    void 안내_결과가_앞에_쌓여도_그_뒤에_가려진_직전_카드를_찾아낸다() {
+        LocalDateTime now = LocalDateTime.now(Clock.fixed(NOW, ZoneId.of("Asia/Seoul")));
+        given(executionRepository.findTop20ByTeamIdAndCommandOrderByIdDesc(TEAM_ID, SlashCommand.TODO_RECOMMENDATION))
+                .willReturn(List.of(
+                        doneExecution(RecommendationOutcome.COOLDOWN, now.minusMinutes(1), 900L),
+                        doneExecution(RecommendationOutcome.COOLDOWN, now.minusMinutes(3), 888L),
+                        doneExecution(RecommendationOutcome.READY, now.minusMinutes(6), 777L)));
+
+        TeamTodoRecommendationResult result = (TeamTodoRecommendationResult) handler.execute(team, executor);
+
+        assertThat(result.outcome()).isEqualTo(RecommendationOutcome.COOLDOWN);
+        assertThat(result.previousMessageId()).isEqualTo(777L);
+        then(openAiClient).should(never()).generateStructured(any(), any(), anyString());
+    }
+
+    @Test
     void 쿨다운이_지난_결과는_재사용하지_않는다() {
-        given(executionRepository.findFirstByTeamIdAndCommandOrderByIdDesc(TEAM_ID, SlashCommand.TODO_RECOMMENDATION))
-                .willReturn(Optional.of(doneExecution(RecommendationOutcome.READY,
+        given(executionRepository.findTop20ByTeamIdAndCommandOrderByIdDesc(TEAM_ID, SlashCommand.TODO_RECOMMENDATION))
+                .willReturn(List.of(doneExecution(RecommendationOutcome.READY,
                         LocalDateTime.now(Clock.fixed(NOW, ZoneId.of("Asia/Seoul"))).minusMinutes(11))));
         givenDigest(RecommendationMode.FULL);
         given(openAiClient.generateStructured(any(), eq(AiRecommendationResponse.class), anyString()))
@@ -191,8 +207,8 @@ class TeamTodoRecommendationCommandHandlerTest {
 
     @Test
     void 안내만_담긴_직전_결과는_쿨다운_대상이_아니다() {
-        given(executionRepository.findFirstByTeamIdAndCommandOrderByIdDesc(TEAM_ID, SlashCommand.TODO_RECOMMENDATION))
-                .willReturn(Optional.of(doneExecution(RecommendationOutcome.COOLDOWN,
+        given(executionRepository.findTop20ByTeamIdAndCommandOrderByIdDesc(TEAM_ID, SlashCommand.TODO_RECOMMENDATION))
+                .willReturn(List.of(doneExecution(RecommendationOutcome.COOLDOWN,
                         LocalDateTime.now(Clock.fixed(NOW, ZoneId.of("Asia/Seoul"))).minusMinutes(1))));
         givenDigest(RecommendationMode.FULL);
         given(openAiClient.generateStructured(any(), eq(AiRecommendationResponse.class), anyString()))
@@ -293,8 +309,12 @@ class TeamTodoRecommendationCommandHandlerTest {
     }
 
     private SlashCommandExecution doneExecution(RecommendationOutcome outcome, LocalDateTime executedAt) {
+        return doneExecution(outcome, executedAt, 777L);
+    }
+
+    private SlashCommandExecution doneExecution(RecommendationOutcome outcome, LocalDateTime executedAt, Long messageId) {
         TeamChatMessage message = TeamChatMessage.create(team, executor, "/할일추천");
-        ReflectionTestUtils.setField(message, "id", 777L);
+        ReflectionTestUtils.setField(message, "id", messageId);
         SlashCommandExecution execution = SlashCommandExecution.createPending(
                 team, executor, message, SlashCommand.TODO_RECOMMENDATION);
         String json = switch (outcome) {
