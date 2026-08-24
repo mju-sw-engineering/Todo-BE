@@ -141,19 +141,19 @@ class TeamActivityDigestBuilderTest {
         assertThat(digest.mode()).isEqualTo(RecommendationMode.FULL);
         assertThat(digest.text())
                 .contains("[진행 중]")
-                .contains("데모 준비 (마감 8/27(목), 참여 2, 인증 0, 미배정 1)")
+                .contains("데모 준비 (id " + current.getId() + ", 마감 8/27(목), 참여 2, 인증 0, 미배정 1)")
                 .contains("[최근 4주 실패]")
-                .contains("발표자료 정리 (마감 8/16(일), 참여 1, 인증 0)")
-                .contains("발표자료 초안 (마감 8/9(일), 참여 2, 인증 0)")
+                .contains("발표자료 정리 (id " + slides2.getId() + ", 마감 8/16(일), 참여 1, 인증 0)")
+                .contains("발표자료 초안 (id " + slides1.getId() + ", 마감 8/9(일), 참여 2, 인증 0)")
                 .contains("[최근 4주 성공]")
-                .contains("회의록 작성 (마감 8/18(화), 참여 2, 인증 2)")
+                .contains("회의록 작성 (id " + meeting.getId() + ", 마감 8/18(화), 참여 2, 인증 2)")
                 .contains("[팀원별 부하]")
                 .contains("- 민수(id " + minsu.getId() + "): 1 / 1 / 2")
                 .contains("- 유나(id " + yuna.getId() + "): 0 / 1 / 1")
                 .contains("[마감 요일별 성공/전체]")
                 .contains("일 0/3")
                 .contains("화 2/2")
-                .contains("[최근 4주 체크인 많은 투두] #" + current.getId() + " 데모 준비 2회");
+                .contains("[최근 4주 체크인 많은 투두] 데모 준비 (id " + current.getId() + ") 2회");
         assertThat(digest.todoIds()).containsExactlyInAnyOrder(
                 slides1.getId(), slides2.getId(), meeting.getId(), current.getId());
     }
@@ -201,7 +201,7 @@ class TeamActivityDigestBuilderTest {
 
         TeamActivityDigest digest = builder.build(TEAM_ID, TODAY);
 
-        long inProgressLines = digest.text().lines().filter(l -> l.startsWith("- #") && l.contains("진행 ")).count();
+        long inProgressLines = digest.text().lines().filter(l -> l.startsWith("- 진행 ")).count();
         assertThat(inProgressLines).isEqualTo(TeamActivityDigestBuilder.LIST_CAP);
         assertThat(digest.text()).contains("진행 0 (").doesNotContain("진행 29 (");
     }
