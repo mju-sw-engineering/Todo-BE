@@ -114,7 +114,9 @@ public class ProofAnalysisService {
             ProofVerdict verdict = parseVerdict(response.verdict());
             log.info("인증 파일 판정 완료. analysisId={}, kind={}, verdict={}, elapsedMs={}",
                     analysisId, analysis.getInputKind(), verdict, elapsedMillis(startedAt));
-            log.debug("판정 근거. analysisId={}, observed={}", analysisId, response.observed());
+            // observed는 저장하지 않는 값이라 이 로그가 판정 근거를 볼 수 있는 유일한 창구다.
+            // UNCERTAIN이 왜 나왔는지는 verdict만 봐서는 알 수 없어 INFO로 남긴다.
+            log.info("판정 근거. analysisId={}, observed={}", analysisId, response.observed());
             analysis.complete(verdict, response.summary(), response.mismatch_reason(), openAiProperties.model());
             notifier.afterAnalyzed(analysis);
         } catch (AiClientException e) {
