@@ -1,5 +1,6 @@
 package com.todo.domain.todo.recommendation.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.todo.domain.todo.recommendation.RecommendationKind;
 
 import java.time.OffsetDateTime;
@@ -37,6 +38,11 @@ public record TeamTodoRecommendationItem(
                 List.copyOf(suggestedAssigneeIds), null, null, null);
     }
 
+    /**
+     * 파생 값이라 JSON에 싣지 않는다. 실으면 역직렬화 때 record에 없는 {@code registered}
+     * 필드가 되어 결과를 다시 읽는 경로(등록, 쿨다운 판정)가 전부 깨진다.
+     */
+    @JsonIgnore
     public boolean isRegistered() {
         return registeredTodoId != null;
     }
