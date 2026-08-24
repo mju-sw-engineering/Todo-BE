@@ -115,16 +115,28 @@ public class TeamTodoRecommendationCommandHandler implements SlashCommandHandler
                 throw e;
             }
             log.warn("추천 생성 재시도. teamId={}, reason={}", teamId, e.getMessage());
-            sleepBeforeRetry();
+            if (!sleepBeforeRetry()) {
+                log.warn("종료 중이라 추천 재시도를 포기합니다. teamId={}", teamId);
+                throw e;
+            }
             return openAiClient.generateStructured(request, AiRecommendationResponse.class, clientRequestId);
         }
     }
 
-    private void sleepBeforeRetry() {
+    /**
+     * 백오프 대기. 인터럽트가 오면 셧다운 중이라는 뜻이므로 {@code false}를 돌려 재시도를 막는다.
+     * 인터럽트 플래그만 복원하고 재시도를 진행하면, 이미 끊긴 스레드로 30초짜리 HTTP 호출을
+     * 새로 시작해 종료를 그만큼 더 끌고 실행 행은 PENDING으로 남는다.
+     *
+     * @return 정상적으로 다 기다렸으면 true, 인터럽트로 끊겼으면 false
+     */
+    private boolean sleepBeforeRetry() {
         try {
             Thread.sleep(RETRY_BACKOFF.toMillis());
+            return true;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return false;
         }
     }
 

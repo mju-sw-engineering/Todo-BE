@@ -268,6 +268,24 @@ class TeamTodoRecommendationCommandHandlerTest {
     }
 
     @Test
+    void 백오프_중_인터럽트가_오면_재시도하지_않고_예외를_전파한다() {
+        givenDigest(RecommendationMode.FULL);
+        given(openAiClient.generateStructured(any(), eq(AiRecommendationResponse.class), anyString()))
+                .willAnswer(invocation -> {
+                    // 셧다운으로 스레드가 끊긴 상황. 이어지는 Thread.sleep이 즉시 InterruptedException을 던진다.
+                    Thread.currentThread().interrupt();
+                    throw AiClientException.retryable("429", null);
+                });
+
+        try {
+            assertThatThrownBy(() -> handler.execute(team, executor)).isInstanceOf(AiClientException.class);
+            then(openAiClient).should(times(1)).generateStructured(any(), any(), anyString());
+        } finally {
+            Thread.interrupted(); // 인터럽트 플래그가 다음 테스트로 새지 않게 정리한다
+        }
+    }
+
+    @Test
     void 재시도가_또_실패하면_예외를_전파해_인프라가_FAILED로_찍게_한다() {
         givenDigest(RecommendationMode.FULL);
         given(openAiClient.generateStructured(any(), eq(AiRecommendationResponse.class), anyString()))
