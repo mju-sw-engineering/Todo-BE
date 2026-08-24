@@ -280,9 +280,11 @@ class TodoControllerTest {
                 1L,
                 TodoMode.TASK,
                 "투두",
+                "설명",
                 OffsetDateTime.parse("2026-06-04T12:00:00+09:00"),
                 TodoStatus.IN_PROGRESS,
                 "1 / 2",
+                List.of(),
                 new MyWorkSummaryResponse(2, 1, 0, 1)
         );
     }

@@ -17,6 +17,7 @@ import com.todo.domain.todo.dto.response.ProofAiAnalysisResponse;
 import com.todo.domain.todo.dto.response.TodoActivePageResponse;
 import com.todo.domain.todo.dto.response.TodoDetailResponse;
 import com.todo.domain.todo.dto.response.TodoDirectAssigneeResponse;
+import com.todo.domain.todo.dto.response.TodoParticipantResponse;
 import com.todo.domain.todo.dto.response.TodoPeriodReportResponse;
 import com.todo.domain.todo.dto.response.TodoReactionResponse;
 import com.todo.domain.todo.dto.response.TodoReportActionCandidateResponse;
@@ -742,6 +743,7 @@ public class TodoService {
                             todo,
                             toKstOffset(todo.getDeadline()),
                             success + " / " + total,
+                            toParticipants(workItems),
                             mySummary
                     );
                 })
@@ -750,6 +752,21 @@ public class TodoService {
 
     private int countStatus(List<TodoWorkItemSummary> workItems, WorkItemStatus status) {
         return Math.toIntExact(workItems.stream().filter(workItem -> workItem.getStatus() == status).count());
+    }
+
+    /**
+     * 같은 담당자가 여러 TASK WorkItem에 배정될 수 있어 assigneeId 기준으로 중복 제거한다.
+     * 미배정·탈퇴 익명화로 assigneeId가 null인 WorkItem은 아바타로 보여줄 대상이 없어 제외한다.
+     */
+    private List<TodoParticipantResponse> toParticipants(List<TodoWorkItemSummary> workItems) {
+        Map<Long, TodoParticipantResponse> byAssigneeId = new LinkedHashMap<>();
+        for (TodoWorkItemSummary workItem : workItems) {
+            Long assigneeId = workItem.getAssigneeId();
+            if (assigneeId != null) {
+                byAssigneeId.putIfAbsent(assigneeId, TodoParticipantResponse.from(workItem));
+            }
+        }
+        return List.copyOf(byAssigneeId.values());
     }
 
     private Map<Long, Map<TodoReactionType, Long>> getReactionCountsByWorkItemId(List<TodoWorkItem> workItems) {
