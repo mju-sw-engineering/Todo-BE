@@ -5,13 +5,14 @@ import com.todo.global.config.AppleProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import com.todo.global.ai.OpenAiProperties;
+import com.todo.domain.todo.recommendation.TodoRecommendationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 import java.util.TimeZone;
 
 @EnableJpaAuditing
-@EnableConfigurationProperties({NotificationMessageProperties.class, AppleProperties.class, OpenAiProperties.class})
+@EnableConfigurationProperties({NotificationMessageProperties.class, AppleProperties.class, OpenAiProperties.class, TodoRecommendationProperties.class})
 @SpringBootApplication
 public class TodoApplication {
 
