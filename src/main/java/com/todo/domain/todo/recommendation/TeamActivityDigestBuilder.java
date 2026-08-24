@@ -139,7 +139,7 @@ public class TeamActivityDigestBuilder {
 
     /**
      * 기준은 "기록의 양"이 아니라 "재료의 존재"다. 투두가 하나라도 있으면 FULL — 진행 중 10개인
-     * 팀은 실패 기록이 없어도 부하·미배정 분석(REBALANCE)이 가능하다. 완료 개수 문턱을 두지
+     * 팀은 실패 기록이 없어도 진행 중 일과 부하를 근거로 다음 할 일을 제안할 수 있다. 완료 개수 문턱을 두지
      * 않는 대신, 없는 신호는 요약에서 섹션째 빠지고 프롬프트가 "근거 없으면 빈 배열"을 강제하며,
      * 한 건짜리 기록의 과잉 일반화는 프롬프트 규칙과 {@link #WEEKDAY_PATTERN_MIN_SAMPLES}가 막는다.
      */
@@ -219,10 +219,12 @@ public class TeamActivityDigestBuilder {
         countByAssignee(recentSuccess, workItemsByTodo, WorkItemStatus.SUCCESS, load, 1);
         countByAssignee(recentFail, workItemsByTodo, WorkItemStatus.FAIL, load, 2);
 
-        text.append("[팀원별 부하] (진행 중 / 4주 성공 / 4주 실패)\n");
+        // id를 함께 적는다. 없으면 모델이 담당자를 제안할 때 id를 지어내고, 실측에서 실제로
+        // 그랬다. 지어낸 id는 검증기가 걸러내지만 그러면 담당자 제안 자체가 사라진다.
+        text.append("[팀원별 부하] (id · 진행 중 / 4주 성공 / 4주 실패)\n");
         nicknames.forEach((id, nickname) -> {
             int[] counts = load.get(id);
-            text.append("- ").append(sanitize(nickname, 20)).append(": ")
+            text.append("- ").append(sanitize(nickname, 20)).append("(id ").append(id).append("): ")
                     .append(counts[0]).append(" / ").append(counts[1]).append(" / ").append(counts[2]).append('\n');
         });
     }

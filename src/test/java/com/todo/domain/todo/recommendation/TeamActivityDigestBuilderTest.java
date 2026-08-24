@@ -148,8 +148,8 @@ class TeamActivityDigestBuilderTest {
                 .contains("[최근 4주 성공]")
                 .contains("회의록 작성 (마감 8/18(화), 참여 2, 인증 2)")
                 .contains("[팀원별 부하]")
-                .contains("- 민수: 1 / 1 / 2")
-                .contains("- 유나: 0 / 1 / 1")
+                .contains("- 민수(id " + minsu.getId() + "): 1 / 1 / 2")
+                .contains("- 유나(id " + yuna.getId() + "): 0 / 1 / 1")
                 .contains("[마감 요일별 성공/전체]")
                 .contains("일 0/3")
                 .contains("화 2/2")
@@ -233,7 +233,9 @@ class TeamActivityDigestBuilderTest {
 
         TeamActivityDigest digest = builder.build(TEAM_ID, TODAY);
 
-        assertThat(digest.text()).contains("- 민수: 0 / 0 / 1").contains("- 유나: 0 / 0 / 0");
+        assertThat(digest.text())
+                .contains("- 민수(id " + minsu.getId() + "): 0 / 0 / 1")
+                .contains("- 유나(id " + yuna.getId() + "): 0 / 0 / 0");
     }
 
     @Test
