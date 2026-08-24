@@ -755,18 +755,39 @@ public class TodoService {
     }
 
     /**
-     * 같은 담당자가 여러 TASK WorkItem에 배정될 수 있어 assigneeId 기준으로 중복 제거한다.
+     * 같은 담당자가 여러 TASK WorkItem에 배정될 수 있어 assigneeId 기준으로 묶고 상태를 종합한다.
      * 미배정·탈퇴 익명화로 assigneeId가 null인 WorkItem은 아바타로 보여줄 대상이 없어 제외한다.
      */
     private List<TodoParticipantResponse> toParticipants(List<TodoWorkItemSummary> workItems) {
-        Map<Long, TodoParticipantResponse> byAssigneeId = new LinkedHashMap<>();
+        Map<Long, List<TodoWorkItemSummary>> byAssigneeId = new LinkedHashMap<>();
         for (TodoWorkItemSummary workItem : workItems) {
             Long assigneeId = workItem.getAssigneeId();
             if (assigneeId != null) {
-                byAssigneeId.putIfAbsent(assigneeId, TodoParticipantResponse.from(workItem));
+                byAssigneeId.computeIfAbsent(assigneeId, ignored -> new ArrayList<>()).add(workItem);
             }
         }
-        return List.copyOf(byAssigneeId.values());
+        return byAssigneeId.values().stream()
+                .map(assigned -> TodoParticipantResponse.from(
+                        assigned.get(0),
+                        aggregateStatus(assigned),
+                        countStatus(assigned, WorkItemStatus.SUCCESS),
+                        assigned.size()
+                ))
+                .toList();
+    }
+
+    /**
+     * 한 담당자가 여러 WorkItem을 맡았을 때의 종합 상태.
+     * 하나라도 남아 있으면 진행 중, 남은 것이 없고 실패가 있으면 실패, 전부 성공일 때만 성공이다.
+     */
+    private WorkItemStatus aggregateStatus(List<TodoWorkItemSummary> workItems) {
+        if (workItems.stream().anyMatch(workItem -> workItem.getStatus() == WorkItemStatus.IN_PROGRESS)) {
+            return WorkItemStatus.IN_PROGRESS;
+        }
+        if (workItems.stream().anyMatch(workItem -> workItem.getStatus() == WorkItemStatus.FAIL)) {
+            return WorkItemStatus.FAIL;
+        }
+        return WorkItemStatus.SUCCESS;
     }
 
     private Map<Long, Map<TodoReactionType, Long>> getReactionCountsByWorkItemId(List<TodoWorkItem> workItems) {
