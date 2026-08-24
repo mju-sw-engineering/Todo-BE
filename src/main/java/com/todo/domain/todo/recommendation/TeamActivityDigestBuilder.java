@@ -191,8 +191,13 @@ public class TeamActivityDigestBuilder {
             long unassigned = items.stream()
                     .filter(wi -> wi.getStatus() == WorkItemStatus.IN_PROGRESS && wi.getAssignee() == null)
                     .count();
-            text.append("- #").append(todo.getId()).append(' ').append(sanitize(todo.getTitle(), TITLE_CAP))
-                    .append(" (마감 ").append(formatDeadline(todo.getDeadline()))
+            // 제목을 앞에, id는 라벨을 붙여 괄호 안에 둔다. "#20 발표자료"처럼 id를 제목 앞에
+            // 붙이면 모델이 둘을 한 덩어리 이름으로 읽어 추천 제목에 "#20"을 그대로 복사한다.
+            // 실제로 그렇게 새어나갔고, 같은 다이제스트의 [팀원별 부하]는 "닉네임(id 12)"라
+            // 새어나간 적이 없다. 팀원은 id를 볼 수 없으므로 카드에 노출되면 읽을 수 없는 값이 된다.
+            text.append("- ").append(sanitize(todo.getTitle(), TITLE_CAP))
+                    .append(" (id ").append(todo.getId())
+                    .append(", 마감 ").append(formatDeadline(todo.getDeadline()))
                     .append(", 참여 ").append(items.size())
                     .append(", 인증 ").append(verified);
             if (showUnassigned && unassigned > 0) {
@@ -294,8 +299,8 @@ public class TeamActivityDigestBuilder {
         text.append(countByTodo.entrySet().stream()
                 .sorted(Map.Entry.<Long, Long>comparingByValue().reversed())
                 .limit(CHECK_IN_CAP)
-                .map(e -> "#" + e.getKey() + " " + sanitize(titles.getOrDefault(e.getKey(), "?"), TITLE_CAP)
-                        + " " + e.getValue() + "회")
+                .map(e -> sanitize(titles.getOrDefault(e.getKey(), "?"), TITLE_CAP)
+                        + " (id " + e.getKey() + ") " + e.getValue() + "회")
                 .collect(Collectors.joining(", ")));
         text.append('\n');
     }
