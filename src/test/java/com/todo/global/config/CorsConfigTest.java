@@ -43,6 +43,11 @@ class CorsConfigTest {
     }
 
     @Test
+    void preflight_응답을_1시간_캐시하도록_maxAge를_설정한다() {
+        assertThat(corsConfiguration().getMaxAge()).isEqualTo(3600L);
+    }
+
+    @Test
     void HTTP_메서드와_요청_헤더를_허용한다() {
         CorsConfiguration configuration = corsConfiguration();
 
