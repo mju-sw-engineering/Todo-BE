@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -23,4 +25,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT u FROM User u WHERE u.id = :id")
     Optional<User> findByIdForUpdate(@Param("id") Long id);
+
+    /** 고아 파일 정리가 후보 키 중 프로필로 살아있는 키를 걸러낼 때 쓴다. */
+    @Query("SELECT u.profileImageUrl FROM User u WHERE u.profileImageUrl IN :keys")
+    List<String> findProfileImageKeysIn(@Param("keys") Collection<String> keys);
 }

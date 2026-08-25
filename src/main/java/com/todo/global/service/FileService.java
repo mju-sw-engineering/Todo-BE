@@ -9,6 +9,8 @@ import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.exception.FileStorageException;
+import com.todo.global.file.entity.UploadLedger;
+import com.todo.global.file.repository.UploadLedgerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.coobird.thumbnailator.Thumbnails;
@@ -80,6 +82,7 @@ public class FileService {
     private final MinioProperties props;
     private final TodoRepository todoRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final UploadLedgerRepository uploadLedgerRepository;
 
     public PresignedUploadResponse generatePresignedPutUrl(Long userId, PresignedUploadRequest request) {
         String ext = extractExtension(request.fileName());
@@ -110,6 +113,10 @@ public class FileService {
                         .putObjectRequest(putObjectRequest)
                         .build()
         ).url().toExternalForm();
+
+        // 발급 원장. 업로드만 되고 제출되지 않은 파일을 고아 정리 스케줄러가 찾는 근거다.
+        // 발급됐지만 실제 업로드가 없던 키도 행으로 남는데, 그 삭제 시도는 S3에서 no-op이다.
+        uploadLedgerRepository.save(UploadLedger.create(key));
 
         return new PresignedUploadResponse(uploadUrl, key);
     }

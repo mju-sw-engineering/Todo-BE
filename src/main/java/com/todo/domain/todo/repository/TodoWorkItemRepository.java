@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -320,4 +321,15 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
             GROUP BY wi.status
             """)
     List<WorkItemStatusCount> countByTeamIdAndTodoInProgressGroupByStatus(@Param("teamId") Long teamId);
+
+    /** 고아 파일 정리가 후보 키 중 인증 원본·썸네일로 살아있는 키를 걸러낼 때 쓴다. */
+    @Query("""
+            SELECT w.proofImageKey FROM TodoWorkItem w WHERE w.proofImageKey IN :keys
+            """)
+    List<String> findProofImageKeysIn(@Param("keys") Collection<String> keys);
+
+    @Query("""
+            SELECT w.proofThumbnailKey FROM TodoWorkItem w WHERE w.proofThumbnailKey IN :keys
+            """)
+    List<String> findProofThumbnailKeysIn(@Param("keys") Collection<String> keys);
 }
