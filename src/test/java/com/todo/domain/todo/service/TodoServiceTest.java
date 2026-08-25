@@ -72,6 +72,7 @@ import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -724,6 +725,58 @@ class TodoServiceTest {
         assertThat(response.participants())
                 .extracting(TodoParticipantResponse::userId)
                 .containsExactly(1L, 2L);
+    }
+
+    @Test
+    void 참가자_상태는_담당_WorkItem을_종합해_하나라도_진행중이면_IN_PROGRESS다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        givenListAccess(viewer);
+        given(todoRepository.findByTeamIdWithCreator(TEAM_ID)).willReturn(List.of(todo));
+        given(todoWorkItemRepository.findSummaryByTodoIdIn(List.of(TODO_ID))).willReturn(List.of(
+                summary(TODO_ID, 1L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 0),
+                summary(TODO_ID, 1L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 1),
+                summary(TODO_ID, 1L, WorkItemStatus.IN_PROGRESS, WorkItemType.TASK, 2)
+        ));
+
+        TodoSummaryResponse response = todoService.getTodoList(TEAM_ID, "1", null, null).get(0);
+
+        assertThat(response.participants())
+                .extracting(
+                        TodoParticipantResponse::userId,
+                        TodoParticipantResponse::status,
+                        TodoParticipantResponse::successCount,
+                        TodoParticipantResponse::totalCount
+                )
+                .containsExactly(tuple(1L, WorkItemStatus.IN_PROGRESS, 2, 3));
+    }
+
+    @Test
+    void 참가자_상태는_진행중이_없고_실패가_있으면_FAIL이고_전부_성공이면_SUCCESS다() {
+        User viewer = user(1L);
+        Todo todo = todo(team(), TodoMode.TASK, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        givenListAccess(viewer);
+        given(todoRepository.findByTeamIdWithCreator(TEAM_ID)).willReturn(List.of(todo));
+        given(todoWorkItemRepository.findSummaryByTodoIdIn(List.of(TODO_ID))).willReturn(List.of(
+                summary(TODO_ID, 1L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 0),
+                summary(TODO_ID, 1L, WorkItemStatus.FAIL, WorkItemType.TASK, 1),
+                summary(TODO_ID, 2L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 2),
+                summary(TODO_ID, 2L, WorkItemStatus.SUCCESS, WorkItemType.TASK, 3)
+        ));
+
+        TodoSummaryResponse response = todoService.getTodoList(TEAM_ID, "1", null, null).get(0);
+
+        assertThat(response.participants())
+                .extracting(
+                        TodoParticipantResponse::userId,
+                        TodoParticipantResponse::status,
+                        TodoParticipantResponse::successCount,
+                        TodoParticipantResponse::totalCount
+                )
+                .containsExactly(
+                        tuple(1L, WorkItemStatus.FAIL, 1, 2),
+                        tuple(2L, WorkItemStatus.SUCCESS, 2, 2)
+                );
     }
 
     @Test
