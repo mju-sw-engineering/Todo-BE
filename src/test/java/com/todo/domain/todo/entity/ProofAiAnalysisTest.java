@@ -126,6 +126,37 @@ class ProofAiAnalysisTest {
         assertThat(analysis.getAttemptCount()).isZero();
     }
 
+    @Test
+    void 재분석_리셋은_이전_판정_기록을_모두_지우고_대기로_되돌린다() {
+        ProofAiAnalysis analysis = ProofAiAnalysis.pending(workItem(), ProofKind.IMAGE, NOW);
+        analysis.complete(ProofVerdict.MISMATCH, "칫솔 사진입니다.", "할 일과 다른 사진으로 보여요.", "gpt-5.6-luna");
+        analysis.recordRetryableFailure(NOW);
+
+        LocalDateTime resubmittedAt = NOW.plusHours(1);
+        analysis.resetForReanalysis(ProofKind.DOCUMENT, true, resubmittedAt);
+
+        assertThat(analysis.getInputKind()).isEqualTo(ProofKind.DOCUMENT);
+        assertThat(analysis.getStatus()).isEqualTo(ProofAnalysisStatus.PENDING);
+        assertThat(analysis.isPending()).isTrue();
+        assertThat(analysis.getVerdict()).isNull();
+        assertThat(analysis.getSummary()).isNull();
+        assertThat(analysis.getMismatchReason()).isNull();
+        assertThat(analysis.getModel()).isNull();
+        assertThat(analysis.getAttemptCount()).isZero();
+        assertThat(analysis.getNextAttemptAt()).isEqualTo(resubmittedAt);
+    }
+
+    @Test
+    void 재분석_대상이_아니면_SKIPPED로_리셋한다() {
+        ProofAiAnalysis analysis = ProofAiAnalysis.pending(workItem(), ProofKind.IMAGE, NOW);
+        analysis.complete(ProofVerdict.VERIFIED, "짜장면 사진입니다.", null, "gpt-5.6-luna");
+
+        analysis.resetForReanalysis(ProofKind.DOCUMENT, false, NOW.plusHours(1));
+
+        assertThat(analysis.getStatus()).isEqualTo(ProofAnalysisStatus.SKIPPED);
+        assertThat(analysis.isPending()).isFalse();
+    }
+
     private TodoWorkItem workItem() {
         User user = User.create("user1", "encoded", "닉네임", null);
         Todo todo = Todo.create(

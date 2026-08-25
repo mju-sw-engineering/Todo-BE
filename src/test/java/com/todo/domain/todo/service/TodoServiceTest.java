@@ -41,6 +41,8 @@ import com.todo.domain.user.entity.User;
 import com.todo.domain.user.repository.UserRepository;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.file.extract.DocumentTextExtractor;
+import com.todo.global.file.service.FileDeletionOutboxService;
+import com.todo.global.ratelimit.SimpleRateLimiter;
 import com.todo.global.service.FileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,13 +68,16 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 
@@ -109,6 +114,10 @@ class TodoServiceTest {
     private NotificationService notificationService;
     @Mock
     private NotificationMessageFactory notificationMessageFactory;
+    @Mock
+    private FileDeletionOutboxService fileDeletionOutboxService;
+    @Mock
+    private SimpleRateLimiter rateLimiter;
 
     @BeforeEach
     void setUp() {
@@ -125,6 +134,12 @@ class TodoServiceTest {
             TransactionCallback<?> callback = invocation.getArgument(0);
             return callback.doInTransaction(null);
         });
+        lenient().doAnswer(invocation -> {
+            Consumer<Object> action = invocation.getArgument(0);
+            action.accept(null);
+            return null;
+        }).when(transactionTemplate).executeWithoutResult(any());
+        lenient().when(rateLimiter.tryAcquire(any(), anyInt(), any())).thenReturn(true);
     }
 
     @Test
@@ -335,7 +350,7 @@ class TodoServiceTest {
     }
 
     @Test
-    void 마지막_WorkItem_제출은_부모를_성공으로_한번만_전이시키고_중복_제출은_409다() {
+    void 마지막_WorkItem_제출은_부모를_성공으로_한번만_전이시킨다() {
         User assignee = user(1L);
         Team team = team();
         Todo todo = todo(team, TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
@@ -344,6 +359,7 @@ class TodoServiceTest {
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+        given(todoWorkItemRepository.findById(20L)).willReturn(Optional.of(workItem));
         given(fileService.validateProofFile(1L, TODO_ID, "proof")).willReturn("image/jpeg");
         given(fileService.createProofThumbnail("proof", "image/jpeg")).willReturn("thumb");
         given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(1L);
@@ -355,12 +371,117 @@ class TodoServiceTest {
         assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
         assertThat(todo.getStatus()).isEqualTo(TodoStatus.SUCCESS);
         then(teamRepository).should().incrementSuccessCount(TEAM_ID);
+    }
+
+    @Test
+    void 마감_전_재제출은_기존_파일을_삭제_예약하고_알림_문구를_다시로_바꾼다() {
+        User assignee = user(1L);
+        Team team = team();
+        Todo todo = todo(team, TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(assignee));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+        given(todoWorkItemRepository.findById(20L)).willReturn(Optional.of(workItem));
+        given(fileService.validateProofFile(1L, TODO_ID, "proof")).willReturn("image/jpeg");
+        given(fileService.createProofThumbnail("proof", "image/jpeg")).willReturn("thumb");
+        given(fileService.validateProofFile(1L, TODO_ID, "another-proof")).willReturn("image/jpeg");
+        given(fileService.createProofThumbnail("another-proof", "image/jpeg")).willReturn("thumb2");
+        given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(1L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);
+        given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.SUCCESS)).willReturn(1L);
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof", null));
+        then(teamRepository).should().incrementSuccessCount(TEAM_ID);
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("another-proof", null));
+
+        assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
+        assertThat(workItem.getProofImageKey()).isEqualTo("another-proof");
+        assertThat(workItem.isResubmitted()).isTrue();
+        // 재제출로 성공 카운트가 다시 올라가지 않는다.
+        then(teamRepository).shouldHaveNoMoreInteractions();
+        then(fileDeletionOutboxService).should().enqueueAll(List.of("proof", "thumb"));
+        then(notificationMessageFactory).should().todoSubmitted(todo.getTitle(), false);
+        then(notificationMessageFactory).should().todoSubmitted(todo.getTitle(), true);
+    }
+
+    @Test
+    void 재제출은_기존_AI_판정_행을_리셋한다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        givenSubmittable(assignee, todo, workItem, "proof.jpg", "image/jpeg");
+        setField(workItem, "status", WorkItemStatus.SUCCESS);
+        ProofAiAnalysis existing = ProofAiAnalysis.pending(workItem, ProofKind.IMAGE, LocalDateTime.now());
+        existing.complete(ProofVerdict.MISMATCH, "칫솔 사진입니다.", "할 일과 다른 사진으로 보여요.", "gpt-5.6-luna");
+        given(proofAiAnalysisRepository.findByWorkItemId(20L)).willReturn(Optional.of(existing));
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.jpg", null));
+
+        assertThat(existing.getStatus()).isEqualTo(ProofAnalysisStatus.PENDING);
+        assertThat(existing.getVerdict()).isNull();
+        assertThat(existing.getMismatchReason()).isNull();
+        then(proofAiAnalysisRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 같은_objectKey로_재제출해도_자기_자신과의_충돌로_보지_않는다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        // 이미 이 키로 제출된 상태를 직접 만든다 — 이 키는 테이블 전체 조회 기준으로는
+        // "이미 존재"하지만, 그 존재 이유가 바로 이 WorkItem 자신이다.
+        workItem.submit("proof.jpg", "thumb", "image/jpeg", null);
+        givenSubmittable(assignee, todo, workItem, "proof.jpg", "image/jpeg");
+        given(fileService.createProofThumbnail("proof.jpg", "image/jpeg")).willReturn("thumb");
+        // 자기 자신과의 충돌로 판단하지 않는다면 이 스텁은 아예 호출되지 않아야 한다 —
+        // lenient가 아니면 "쓰였는데 안 불렸다"로 실패해 그 자체가 회귀 검증이 된다.
+        lenient().when(todoWorkItemRepository.existsByProofImageKey("proof.jpg")).thenReturn(true);
+
+        todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof.jpg", null));
+
+        assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
+        assertThat(workItem.isResubmitted()).isTrue();
+        // 새 키와 이전 키가 같으므로 삭제 예약도 하지 않는다.
+        then(fileDeletionOutboxService).shouldHaveNoInteractions();
+        then(todoWorkItemRepository).should(never()).existsByProofImageKey(any());
+    }
+
+    @Test
+    void 재제출_한도를_넘으면_429를_던진다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        setField(workItem, "status", WorkItemStatus.SUCCESS);
+        given(userRepository.findById(1L)).willReturn(Optional.of(assignee));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+        given(rateLimiter.tryAcquire(eq("proof-resubmit:workitem:20"), anyInt(), any())).willReturn(false);
 
         assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("another-proof", null)))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("이미 제출했거나 종료된 WorkItem입니다.")
+                .hasMessage("재제출이 너무 잦습니다. 잠시 후 다시 시도해 주세요.")
+                .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+        then(fileService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void FAIL_상태의_WorkItem_제출은_409다() {
+        User assignee = user(1L);
+        Todo todo = todo(team(), TodoMode.DIRECT, TodoStatus.IN_PROGRESS, LocalDateTime.now().plusDays(2));
+        TodoWorkItem workItem = direct(todo, assignee, 20L);
+        setField(workItem, "status", WorkItemStatus.FAIL);
+        given(userRepository.findById(1L)).willReturn(Optional.of(assignee));
+        given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
+        given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
+        given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+
+        assertThatThrownBy(() -> todoService.submitTodoWorkItem(20L, "1", new SubmitTodoRequest("proof", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 종료된 WorkItem입니다.")
                 .satisfies(error -> assertThat(((BusinessException) error).getStatus()).isEqualTo(HttpStatus.CONFLICT));
-        then(teamRepository).shouldHaveNoMoreInteractions();
     }
 
     @Test
@@ -454,6 +575,8 @@ class TodoServiceTest {
         given(todoWorkItemRepository.findByIdWithTodoAndTeam(20L)).willReturn(Optional.of(workItem));
         given(todoRepository.findByIdWithLock(TODO_ID)).willReturn(Optional.of(todo));
         given(todoWorkItemRepository.findByIdWithLock(20L)).willReturn(Optional.of(workItem));
+        // AI 분석 리셋은 제출 트랜잭션과 분리된 별도 트랜잭션에서 WorkItem을 다시 조회한다.
+        given(todoWorkItemRepository.findById(20L)).willReturn(Optional.of(workItem));
         given(fileService.validateProofFile(1L, TODO_ID, key)).willReturn(contentType);
         given(todoWorkItemRepository.countByTodoId(TODO_ID)).willReturn(1L);
         given(todoWorkItemRepository.countByTodoIdAndStatus(TODO_ID, WorkItemStatus.FAIL)).willReturn(0L);

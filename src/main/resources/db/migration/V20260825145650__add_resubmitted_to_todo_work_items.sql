@@ -1,0 +1,2 @@
+ALTER TABLE todo_work_items
+    ADD COLUMN resubmitted BOOLEAN NOT NULL DEFAULT FALSE;

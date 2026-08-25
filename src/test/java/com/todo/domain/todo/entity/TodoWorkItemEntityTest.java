@@ -75,16 +75,31 @@ class TodoWorkItemEntityTest {
     }
 
     @Test
-    void WorkItem은_제출_후_중복_제출할_수_없다() {
+    void WorkItem은_마감_전이면_재제출로_기존_제출을_덮어쓴다() {
         TodoWorkItem workItem = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
 
         workItem.submit("proof-key", "thumb-key", "image/png", null);
 
         assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
         assertThat(workItem.getProofThumbnailKey()).isEqualTo("thumb-key");
-        assertThatThrownBy(() -> workItem.submit("another-proof-key"))
+        assertThat(workItem.isResubmitted()).isFalse();
+
+        workItem.submit("another-proof-key", "another-thumb-key", "image/png", null);
+
+        assertThat(workItem.getStatus()).isEqualTo(WorkItemStatus.SUCCESS);
+        assertThat(workItem.getProofImageKey()).isEqualTo("another-proof-key");
+        assertThat(workItem.getProofThumbnailKey()).isEqualTo("another-thumb-key");
+        assertThat(workItem.isResubmitted()).isTrue();
+    }
+
+    @Test
+    void FAIL_상태의_WorkItem은_재제출도_거부한다() {
+        TodoWorkItem workItem = TodoWorkItem.createDirect(todo(LocalDateTime.now().plusHours(1)), user());
+        workItem.markAsFail();
+
+        assertThatThrownBy(() -> workItem.submit("proof-key"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("이미 제출되었거나 완료된 투두입니다.");
+                .hasMessage("이미 종료된 WorkItem입니다.");
     }
 
     @Test

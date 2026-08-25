@@ -49,6 +49,8 @@ import com.todo.domain.user.repository.UserRepository;
 import com.todo.domain.user.support.WithdrawnUserDisplay;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.file.extract.DocumentTextExtractor;
+import com.todo.global.file.service.FileDeletionOutboxService;
+import com.todo.global.ratelimit.SimpleRateLimiter;
 import com.todo.global.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -60,6 +62,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -92,6 +95,9 @@ public class TodoService {
     /** 리포트는 하루당 응답 객체를 하나씩 만든다. 상한이 없으면 한 번의 요청으로 수백만 건이 생성된다. */
     private static final long MAX_REPORT_PERIOD_DAYS = 366;
     private static final String ACTIVE_CURSOR_DELIMITER = "_";
+    /** 재제출마다 OpenAI를 다시 호출하므로, 무제한 재제출이 곧 무제한 비용이 되지 않게 막는다. */
+    private static final int RESUBMIT_AI_LIMIT_PER_WORK_ITEM = 5;
+    private static final Duration RESUBMIT_AI_WINDOW = Duration.ofDays(1);
 
     private final TodoRepository todoRepository;
     private final TodoWorkItemRepository todoWorkItemRepository;
@@ -106,6 +112,8 @@ public class TodoService {
     private final NotificationService notificationService;
     private final NotificationMessageFactory notificationMessageFactory;
     private final TodoStatusTransitionService todoStatusTransitionService;
+    private final FileDeletionOutboxService fileDeletionOutboxService;
+    private final SimpleRateLimiter rateLimiter;
 
     @Transactional
     public CreateTodoResponse createTodo(String userId, Long teamId, CreateTodoRequest request) {
@@ -563,7 +571,13 @@ public class TodoService {
         requireOperationResult(check).throwIfFailed();
 
         String proofContentType = fileService.validateProofFile(user.getId(), todoId, proofImageKey);
-        if (todoWorkItemRepository.existsByProofImageKey(proofImageKey)) {
+        // 재제출로 자기 자신이 이미 갖고 있던 키를 다시 보낼 수 있다 — existsByProofImageKey는
+        // 그 행이 이 WorkItem 자신인지 구분하지 않아서, 제외하지 않으면 "다른 WorkItem이 이미
+        // 씀"으로 오판해 재제출을 막아버린다.
+        String currentProofImageKey = todoWorkItemRepository.findById(workItemId)
+                .map(TodoWorkItem::getProofImageKey)
+                .orElse(null);
+        if (!proofImageKey.equals(currentProofImageKey) && todoWorkItemRepository.existsByProofImageKey(proofImageKey)) {
             throw new BusinessException("이미 다른 WorkItem에 제출된 인증 사진입니다.", HttpStatus.BAD_REQUEST);
         }
         String proofThumbnailKey = fileService.createProofThumbnail(proofImageKey, proofContentType);
@@ -591,6 +605,11 @@ public class TodoService {
             cleanupProofThumbnail(proofThumbnailKey, result.failure());
         }
         result.throwIfFailed();
+
+        // 제출이 확정된 뒤 별도 트랜잭션에서 AI 분석을 리셋한다. Todo/WorkItem 락을 쥔 채로
+        // 처리하면, 폴러가 이전 판정을 위해 OpenAI를 호출하는 동안(최대 수십 초) 쥐고 있는
+        // 락과 경합해 같은 Todo의 다른 WorkItem 제출까지 멈출 수 있다.
+        transactionTemplate.executeWithoutResult(status -> resetProofAnalysis(workItemId));
     }
 
     private OperationResult checkSubmission(Long todoId, Long workItemId, Long userId) {
@@ -598,7 +617,7 @@ public class TodoService {
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
         TodoWorkItem workItem = todoWorkItemRepository.findByIdWithLock(workItemId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
-        return validateSubmission(todo, workItem, userId);
+        return validateSubmission(todo, workItem, userId, true);
     }
 
     private OperationResult submitInTransaction(
@@ -614,30 +633,66 @@ public class TodoService {
                 .orElseThrow(() -> new BusinessException("존재하지 않는 투두입니다.", HttpStatus.NOT_FOUND));
         TodoWorkItem workItem = todoWorkItemRepository.findByIdWithLock(workItemId)
                 .orElseThrow(() -> new BusinessException("존재하지 않는 WorkItem입니다.", HttpStatus.NOT_FOUND));
-        OperationResult validation = validateSubmission(todo, workItem, userId);
+        // rate limit은 checkSubmission의 사전 검사에서 이미 소비했다 — 여기서 다시 확인하면
+        // 재제출 한 번에 한도를 두 번 깎는다.
+        OperationResult validation = validateSubmission(todo, workItem, userId, false);
         if (validation.hasFailed()) {
             return validation;
         }
-        if (todoWorkItemRepository.existsByProofImageKey(proofImageKey)) {
+        if (!proofImageKey.equals(workItem.getProofImageKey())
+                && todoWorkItemRepository.existsByProofImageKey(proofImageKey)) {
             return OperationResult.failed("이미 다른 WorkItem에 제출된 인증 사진입니다.", HttpStatus.BAD_REQUEST);
         }
 
+        boolean isResubmission = workItem.getStatus() == WorkItemStatus.SUCCESS;
+        String previousProofImageKey = workItem.getProofImageKey();
+        String previousProofThumbnailKey = workItem.getProofThumbnailKey();
+
         workItem.submit(proofImageKey, proofThumbnailKey, proofContentType, proofFileName);
-        enqueueProofAnalysis(workItem);
         todoStatusTransitionService.reevaluate(todo);
-        notifyTodoSubmitted(todo, workItem);
+        notifyTodoSubmitted(todo, workItem, isResubmission);
+        enqueueOldProofFileDeletion(previousProofImageKey, previousProofThumbnailKey, proofImageKey, proofThumbnailKey);
         return OperationResult.success();
     }
 
     /**
-     * 제출 트랜잭션에서는 분석 대기 행 한 줄만 남긴다. 실제 OpenAI 호출은 폴러가 별도
-     * 트랜잭션으로 처리하므로, OpenAI가 느리거나 죽어도 제출 응답에는 영향이 없다.
-     *
-     * <p>판정할 수 없는 제출은 SKIPPED로 남긴다. HWP·HWPX가 여기 해당한다 — 업로드는 되지만
-     * 신뢰할 만한 자바 파서가 없어 텍스트를 뽑을 수 없다. "분석하지 않기로 한 건"과 "아직 분석
-     * 전인 건"을 구분해야 조회 쪽에서 영영 대기 중인 것처럼 보이지 않는다.
+     * 재제출로 덮어써진 이전 파일을 정리 예약한다. FE 버그 등으로 새 키가 이전 키와 같으면
+     * (예: presigned-upload 없이 같은 objectKey를 다시 보낸 경우) 방금 저장한 파일이 삭제
+     * 대상이 되는 사고를 막기 위해 건너뛴다.
      */
-    private void enqueueProofAnalysis(TodoWorkItem workItem) {
+    private void enqueueOldProofFileDeletion(
+            String previousProofImageKey,
+            String previousProofThumbnailKey,
+            String newProofImageKey,
+            String newProofThumbnailKey
+    ) {
+        List<String> staleKeys = new ArrayList<>();
+        if (previousProofImageKey != null && !previousProofImageKey.equals(newProofImageKey)) {
+            staleKeys.add(previousProofImageKey);
+        }
+        if (previousProofThumbnailKey != null && !previousProofThumbnailKey.equals(newProofThumbnailKey)) {
+            staleKeys.add(previousProofThumbnailKey);
+        }
+        if (!staleKeys.isEmpty()) {
+            fileDeletionOutboxService.enqueueAll(staleKeys);
+        }
+    }
+
+    /**
+     * 제출이 커밋된 뒤 별도 트랜잭션에서 분석 대기 행을 리셋한다 — 이유는
+     * {@link #submitWorkItem}의 호출부 주석 참고.
+     *
+     * <p>재제출로 이미 분석 행이 있으면 리셋하고(유니크 제약이라 새로 만들 수 없다), 없으면
+     * 최초 제출과 동일하게 새로 만든다. 판정할 수 없는 제출은 SKIPPED로 남긴다. HWP·HWPX가
+     * 여기 해당한다 — 업로드는 되지만 신뢰할 만한 자바 파서가 없어 텍스트를 뽑을 수 없다.
+     * "분석하지 않기로 한 건"과 "아직 분석 전인 건"을 구분해야 조회 쪽에서 영영 대기 중인
+     * 것처럼 보이지 않는다.
+     */
+    private void resetProofAnalysis(Long workItemId) {
+        TodoWorkItem workItem = todoWorkItemRepository.findById(workItemId).orElse(null);
+        if (workItem == null) {
+            return;
+        }
         ProofKind kind = workItem.getProofKind();
         if (kind == null) {
             return;
@@ -645,12 +700,15 @@ public class TodoService {
         boolean analyzable = kind == ProofKind.IMAGE
                 || documentTextExtractor.supports(workItem.getProofContentType());
         LocalDateTime now = LocalDateTime.now(KST);
-        proofAiAnalysisRepository.save(analyzable
-                ? ProofAiAnalysis.pending(workItem, kind, now)
-                : ProofAiAnalysis.skipped(workItem, kind, now));
+        proofAiAnalysisRepository.findByWorkItemId(workItemId).ifPresentOrElse(
+                existing -> existing.resetForReanalysis(kind, analyzable, now),
+                () -> proofAiAnalysisRepository.save(analyzable
+                        ? ProofAiAnalysis.pending(workItem, kind, now)
+                        : ProofAiAnalysis.skipped(workItem, kind, now))
+        );
     }
 
-    private void notifyTodoSubmitted(Todo todo, TodoWorkItem workItem) {
+    private void notifyTodoSubmitted(Todo todo, TodoWorkItem workItem, boolean resubmitted) {
         User submitter = workItem.getAssignee();
         List<User> receivers = teamMemberRepository.findByTeamIdExcludingUser(todo.getTeam().getId(), submitter.getId())
                 .stream()
@@ -659,25 +717,41 @@ public class TodoService {
         notificationService.sendAll(
                 receivers,
                 submitter,
-                notificationMessageFactory.todoSubmitted(todo.getTitle()),
+                notificationMessageFactory.todoSubmitted(todo.getTitle(), resubmitted),
                 todo.getId(),
                 todo.getTeam().getId()
         );
     }
 
-    private OperationResult validateSubmission(Todo todo, TodoWorkItem workItem, Long userId) {
+    /**
+     * @param checkRateLimit 재제출 rate limit을 이 호출에서 소비할지. {@link #checkSubmission}의
+     *                        사전 검사에서 한 번만 소비하고, {@link #submitInTransaction}의
+     *                        최종 검증에서는 다시 소비하지 않도록 false로 넘긴다.
+     */
+    private OperationResult validateSubmission(Todo todo, TodoWorkItem workItem, Long userId, boolean checkRateLimit) {
         if (!todo.getId().equals(workItem.getTodo().getId())) {
             return OperationResult.failed("Todo와 WorkItem이 일치하지 않습니다.", HttpStatus.BAD_REQUEST);
         }
         if (workItem.getAssignee() == null || !userId.equals(workItem.getAssignee().getId())) {
             return OperationResult.failed("해당 WorkItem의 담당자가 아닙니다.", HttpStatus.FORBIDDEN);
         }
-        if (workItem.getStatus() != WorkItemStatus.IN_PROGRESS) {
-            return OperationResult.failed("이미 제출했거나 종료된 WorkItem입니다.", HttpStatus.CONFLICT);
+        // FAIL만 거부한다. SUCCESS는 마감 전이면 재제출로 덮어쓸 수 있어야 한다.
+        if (workItem.getStatus() == WorkItemStatus.FAIL) {
+            return OperationResult.failed("이미 종료된 WorkItem입니다.", HttpStatus.CONFLICT);
         }
         if (LocalDateTime.now(KST).isAfter(workItem.getEffectiveDeadline())) {
             todoStatusTransitionService.failOnDeadlinePassed(todo, workItem);
             return OperationResult.failed("마감 시간이 지났습니다.", HttpStatus.BAD_REQUEST);
+        }
+        // 재제출마다 AI를 다시 호출하므로, 무제한 재제출이 곧 무제한 비용이 되지 않게 막는다.
+        // 최초 제출(IN_PROGRESS)에는 적용하지 않는다.
+        if (checkRateLimit
+                && workItem.getStatus() == WorkItemStatus.SUCCESS
+                && !rateLimiter.tryAcquire(
+                        "proof-resubmit:workitem:" + workItem.getId(),
+                        RESUBMIT_AI_LIMIT_PER_WORK_ITEM,
+                        RESUBMIT_AI_WINDOW)) {
+            return OperationResult.failed("재제출이 너무 잦습니다. 잠시 후 다시 시도해 주세요.", HttpStatus.TOO_MANY_REQUESTS);
         }
         return OperationResult.success();
     }

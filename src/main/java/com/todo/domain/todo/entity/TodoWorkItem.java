@@ -86,6 +86,10 @@ public class TodoWorkItem extends BaseTimeEntity {
      */
     private LocalDateTime deadlineReminderSentAt;
 
+    /** 마감 전 최소 한 번 이상 재제출됐는지. 최초 제출로는 절대 true가 되지 않는다. */
+    @Column(nullable = false)
+    private boolean resubmitted;
+
     public static TodoWorkItem createDirect(Todo todo, User assignee) {
         TodoWorkItem workItem = new TodoWorkItem();
         workItem.todo = todo;
@@ -122,14 +126,22 @@ public class TodoWorkItem extends BaseTimeEntity {
         submit(proofImageKey, null, null, null);
     }
 
+    /**
+     * 마감 전이면 이미 제출된 WorkItem도 다시 호출해 파일을 덮어쓸 수 있다(재제출).
+     * FAIL만 거부한다 — FAIL은 스케줄러가 마감 경과 시에만 세팅하므로, 이 가드는
+     * 마감 체크(서비스 레이어)와 별개 경로로 FAIL이 들어와도 안전하게 막는 방어선이다.
+     */
     public void submit(
             String proofImageKey,
             String proofThumbnailKey,
             String proofContentType,
             String proofFileName
     ) {
-        if (this.status != WorkItemStatus.IN_PROGRESS) {
-            throw new BusinessException("이미 제출되었거나 완료된 투두입니다.", HttpStatus.CONFLICT);
+        if (this.status == WorkItemStatus.FAIL) {
+            throw new BusinessException("이미 종료된 WorkItem입니다.", HttpStatus.CONFLICT);
+        }
+        if (this.status == WorkItemStatus.SUCCESS) {
+            this.resubmitted = true;
         }
         this.proofImageKey = proofImageKey;
         this.proofThumbnailKey = proofThumbnailKey;

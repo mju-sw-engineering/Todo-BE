@@ -36,9 +36,10 @@ notification:
       title: "할 일이 미배정 상태가 되었습니다."
       content: "{actor}님이 '{todoTitle}'의 할 일 {taskCount}개를 미배정으로 변경했습니다."
 
+    # {resubmitLabel}은 재제출일 때만 "다시 "가 채워지고, 최초 제출은 빈 문자열이다.
     TODO_SUBMITTED:
       title: "인증 사진이 제출되었습니다."
-      content: "{actor}님이 '{todoTitle}'의 인증 사진을 제출했습니다."
+      content: "{actor}님이 '{todoTitle}'의 인증 사진을 {resubmitLabel}제출했습니다."
 
     # 제출자 본인에게만 발송한다. 팀에는 어떤 신호도 가지 않는다.
     # 무임승차를 막는 게 목적이지 팀 앞에서 지적하는 게 목적이 아니므로 안내조로 쓴다.

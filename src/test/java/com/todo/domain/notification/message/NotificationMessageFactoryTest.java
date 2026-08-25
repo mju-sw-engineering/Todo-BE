@@ -90,10 +90,19 @@ class NotificationMessageFactoryTest {
 
     @Test
     void 인증사진_제출_문구는_투두_제목을_채운다() {
-        NotificationMessage message = factory.todoSubmitted("기말 발표");
+        NotificationMessage message = factory.todoSubmitted("기말 발표", false);
 
         assertThat(message.type()).isEqualTo(NotificationType.TODO_SUBMITTED);
         assertThat(message.content()).contains("기말 발표");
+        assertThat(message.content()).doesNotContain("다시");
+    }
+
+    @Test
+    void 인증사진_재제출_문구에는_다시라는_표현이_들어간다() {
+        NotificationMessage message = factory.todoSubmitted("기말 발표", true);
+
+        assertThat(message.type()).isEqualTo(NotificationType.TODO_SUBMITTED);
+        assertThat(message.content()).contains("다시").contains("기말 발표");
     }
 
     @Test
