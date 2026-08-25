@@ -61,9 +61,16 @@ public class NotificationMessageFactory {
 
     /**
      * 인증 사진(작업 완료 증거)이 제출됨. 제출자를 제외한 팀 전체에게 발송한다.
+     *
+     * @param resubmitted 마감 전 재제출로 기존 파일을 덮어쓴 경우 true. 새 알림 종류를 만들지
+     *                    않고 문구만 갈라, {@code notifications.type} ENUM을 넓히는 마이그레이션을
+     *                    또 만들지 않는다.
      */
-    public NotificationMessage todoSubmitted(String todoTitle) {
-        return build(NotificationType.TODO_SUBMITTED, Map.of("todoTitle", todoTitle));
+    public NotificationMessage todoSubmitted(String todoTitle, boolean resubmitted) {
+        return build(NotificationType.TODO_SUBMITTED, Map.of(
+                "todoTitle", todoTitle,
+                "resubmitLabel", resubmitted ? "다시 " : ""
+        ));
     }
 
     /**

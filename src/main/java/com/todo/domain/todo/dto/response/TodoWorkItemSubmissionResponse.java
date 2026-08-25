@@ -12,6 +12,7 @@ public record TodoWorkItemSubmissionResponse(
         @Schema(description = "WorkItem ID") Long workItemId,
         @Schema(description = "제출자 ID") Long assigneeId,
         @Schema(description = "제출 시각") OffsetDateTime submittedAt,
+        @Schema(description = "마감 전 재제출로 파일이 갱신된 적이 있는지") boolean resubmitted,
         @Schema(
                 description = "파일 종류. 메타데이터를 저장하기 전에 제출된 건은 null이며, "
                         + "이 경우 종류를 단정할 수 없으므로 다운로드 카드로 표시하세요."
@@ -36,6 +37,7 @@ public record TodoWorkItemSubmissionResponse(
                 workItem.getId(),
                 workItem.getAssignee() == null ? null : workItem.getAssignee().getId(),
                 submittedAt,
+                workItem.isResubmitted(),
                 workItem.getProofKind(),
                 workItem.getProofFileName(),
                 workItem.getProofContentType(),

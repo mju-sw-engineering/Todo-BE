@@ -137,16 +137,22 @@ public interface TodoControllerDocs {
     @Operation(
             summary = "인증 파일 제출",
             description = "DIRECT Todo의 로그인 담당자가 인증 파일(이미지 또는 문서)을 제출합니다. TASK는 /todo-work-items/{workItemId}/submission 경로를 사용합니다. " +
-                    "마감 시간이 지난 경우 대상 WorkItem과 Todo를 FAIL로 변경 후 400을 반환합니다."
+                    "마감 시간이 지난 경우 대상 WorkItem과 Todo를 FAIL로 변경 후 400을 반환합니다. " +
+                    "마감 전이면 이미 제출한 WorkItem에 다시 호출해 파일을 교체할 수 있습니다(재제출) — 이전 파일은 삭제되고 AI 판정도 새로 돕니다. " +
+                    "재제출은 WorkItem당 하루 5회로 제한됩니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 파일 제출 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 파일 제출(또는 재제출) 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "마감 시간 초과",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "해당 투두의 배정자가 아님",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "투두를 찾을 수 없음",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이미 종료된(FAIL) WorkItem",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "재제출 횟수 초과 (WorkItem당 하루 5회)",
                     content = @Content(schema = @Schema(hidden = true)))
     })
     ResponseEntity<ApiResponse<Void>> submitTodo(
@@ -202,18 +208,22 @@ public interface TodoControllerDocs {
 
     @Operation(
             summary = "TASK WorkItem 인증 파일 제출",
-            description = "로그인한 TASK 담당자가 WorkItem 인증 파일(이미지 또는 문서)을 제출합니다."
+            description = "로그인한 TASK 담당자가 WorkItem 인증 파일(이미지 또는 문서)을 제출합니다. " +
+                    "마감 전이면 이미 제출한 WorkItem에 다시 호출해 파일을 교체할 수 있습니다(재제출) — 이전 파일은 삭제되고 AI 판정도 새로 돕니다. " +
+                    "재제출은 WorkItem당 하루 5회로 제한됩니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 파일 제출 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "인증 파일 제출(또는 재제출) 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "마감 초과 또는 유효하지 않은 파일 key",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "담당자가 아님",
                     content = @Content(schema = @Schema(hidden = true))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "WorkItem을 찾을 수 없음",
                     content = @Content(schema = @Schema(hidden = true))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이미 제출함",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이미 종료된(FAIL) WorkItem",
+                    content = @Content(schema = @Schema(hidden = true))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "재제출 횟수 초과 (WorkItem당 하루 5회)",
                     content = @Content(schema = @Schema(hidden = true)))
     })
     ResponseEntity<ApiResponse<Void>> submitTodoWorkItem(

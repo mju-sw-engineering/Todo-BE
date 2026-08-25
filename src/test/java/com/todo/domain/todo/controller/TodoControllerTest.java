@@ -221,7 +221,7 @@ class TodoControllerTest {
     void WorkItem_제출_사진_URL을_반환한다() {
         TodoController controller = new TodoController(todoService);
         TodoWorkItemSubmissionResponse serviceResponse = new TodoWorkItemSubmissionResponse(
-                11L, 2L, OffsetDateTime.parse("2026-06-04T12:00:00+09:00"),
+                11L, 2L, OffsetDateTime.parse("2026-06-04T12:00:00+09:00"), false,
                 ProofKind.DOCUMENT, "발표자료.pdf", "application/pdf",
                 "https://original", null, OffsetDateTime.parse("2026-06-04T13:00:00+09:00"),
                 null

@@ -115,6 +115,22 @@ public class ProofAiAnalysis extends BaseTimeEntity {
         return status == ProofAnalysisStatus.PENDING;
     }
 
+    /**
+     * 재제출로 이전 판정이 더 이상 유효하지 않을 때 같은 행을 재사용한다.
+     * {@code work_item_id}가 UNIQUE라 재제출마다 새 행을 만들 수 없다 — 이력은 남기지 않고
+     * 최신 제출에 대한 판정만 유지한다.
+     */
+    public void resetForReanalysis(ProofKind inputKind, boolean analyzable, LocalDateTime now) {
+        this.inputKind = inputKind;
+        this.status = analyzable ? ProofAnalysisStatus.PENDING : ProofAnalysisStatus.SKIPPED;
+        this.verdict = null;
+        this.summary = null;
+        this.mismatchReason = null;
+        this.model = null;
+        this.attemptCount = 0;
+        this.nextAttemptAt = now;
+    }
+
     public void complete(ProofVerdict verdict, String summary, String mismatchReason, String model) {
         this.status = ProofAnalysisStatus.DONE;
         this.verdict = verdict;
