@@ -11,6 +11,8 @@ import com.todo.global.dto.request.PresignedUploadRequest;
 import com.todo.global.dto.response.PresignedUploadResponse;
 import com.todo.global.exception.BusinessException;
 import com.todo.global.exception.FileStorageException;
+import com.todo.global.file.entity.UploadLedger;
+import com.todo.global.file.repository.UploadLedgerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -69,6 +71,8 @@ class FileServiceTest {
     private TodoRepository todoRepository;
     @Mock
     private TeamMemberRepository teamMemberRepository;
+    @Mock
+    private UploadLedgerRepository uploadLedgerRepository;
 
     @BeforeEach
     void setUp() {
@@ -76,7 +80,8 @@ class FileServiceTest {
         props.setBucket("uploads");
         props.setPresignedUrlExpiration(3600);
         props.setPutPresignedUrlExpiration(600);
-        fileService = new FileService(s3Client, s3Presigner, props, todoRepository, teamMemberRepository);
+        fileService = new FileService(
+                s3Client, s3Presigner, props, todoRepository, teamMemberRepository, uploadLedgerRepository);
     }
 
     private void givenTodoWithTeam(Long todoId, Long teamId) {
@@ -114,6 +119,11 @@ class FileServiceTest {
         assertThat(captor.getValue().putObjectRequest().contentType()).isEqualTo("image/png");
         // 서명에 크기가 항상 포함돼야 URL 하나로 무제한 크기를 업로드할 수 없다
         assertThat(captor.getValue().putObjectRequest().contentLength()).isEqualTo(1024L);
+
+        // 발급된 키가 원장에 남아야 고아 정리 스케줄러가 미제출 파일을 찾을 수 있다
+        ArgumentCaptor<UploadLedger> ledgerCaptor = ArgumentCaptor.forClass(UploadLedger.class);
+        then(uploadLedgerRepository).should().save(ledgerCaptor.capture());
+        assertThat(ledgerCaptor.getValue().getObjectKey()).isEqualTo(response.objectKey());
     }
 
     @Test

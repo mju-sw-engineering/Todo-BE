@@ -2,6 +2,7 @@ package com.todo;
 
 import com.todo.domain.notification.message.NotificationMessageProperties;
 import com.todo.global.config.AppleProperties;
+import com.todo.global.file.config.OrphanCleanupProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import com.todo.global.ai.OpenAiProperties;
@@ -12,7 +13,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import java.util.TimeZone;
 
 @EnableJpaAuditing
-@EnableConfigurationProperties({NotificationMessageProperties.class, AppleProperties.class, OpenAiProperties.class, TodoRecommendationProperties.class})
+@EnableConfigurationProperties({NotificationMessageProperties.class, AppleProperties.class, OpenAiProperties.class, TodoRecommendationProperties.class, OrphanCleanupProperties.class})
 @SpringBootApplication
 public class TodoApplication {
 
