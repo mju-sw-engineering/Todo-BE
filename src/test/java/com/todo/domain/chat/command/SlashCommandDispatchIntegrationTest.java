@@ -102,7 +102,7 @@ class SlashCommandDispatchIntegrationTest {
                 e -> e.getStatus() != SlashCommandExecutionStatus.PENDING);
 
         assertThat(execution.getStatus()).isEqualTo(SlashCommandExecutionStatus.DONE);
-        assertThat(execution.getResultJson()).contains("inProgressTodoCount");
+        assertThat(execution.getResultJson()).contains("inProgressCount");
         assertThat(execution.getExecutedAt()).isNotNull();
     }
 

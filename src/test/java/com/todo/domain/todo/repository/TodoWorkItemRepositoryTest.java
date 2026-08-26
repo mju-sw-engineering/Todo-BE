@@ -17,7 +17,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.groups.Tuple.tuple;
 
 @DataJpaTest
 @ActiveProfiles("test")
@@ -125,7 +124,7 @@ class TodoWorkItemRepositoryTest {
     }
 
     @Test
-    void 팀현황_집계는_진행중인_투두의_WorkItem만_상태별로_센다() {
+    void 팀현황_집계는_진행중인_투두별로_WorkItem_완료_전체_개수를_센다() {
         LocalDateTime now = LocalDateTime.now();
         Team team = entityManager.persist(Team.create("팀", null, "INVITE5"));
         Team otherTeam = entityManager.persist(Team.create("다른팀", null, "INVITE6"));
@@ -148,13 +147,13 @@ class TodoWorkItemRepositoryTest {
         entityManager.persist(TodoWorkItem.createDirect(otherTeamTodo, member));
         entityManager.flush();
 
-        List<WorkItemStatusCount> result = todoWorkItemRepository.countByTeamIdAndTodoInProgressGroupByStatus(team.getId());
+        List<TeamStatusTodoProgress> result = todoWorkItemRepository.findInProgressTodoProgressByTeamId(team.getId());
 
-        assertThat(result)
-                .extracting(WorkItemStatusCount::getStatus, WorkItemStatusCount::getCount)
-                .containsExactlyInAnyOrder(
-                        tuple(WorkItemStatus.SUCCESS, 1L),
-                        tuple(WorkItemStatus.IN_PROGRESS, 1L)
-                );
+        assertThat(result).singleElement().satisfies(progress -> {
+            assertThat(progress.getTodoId()).isEqualTo(inProgressTodo.getId());
+            assertThat(progress.getTitle()).isEqualTo("진행중");
+            assertThat(progress.getCompletedCount()).isEqualTo(1L);
+            assertThat(progress.getTotalCount()).isEqualTo(2L);
+        });
     }
 }
