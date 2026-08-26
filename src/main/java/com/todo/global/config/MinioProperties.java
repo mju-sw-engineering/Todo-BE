@@ -16,7 +16,7 @@ public class MinioProperties {
     private String secretKey;
     private String region;
     private String bucket;
-    private long presignedUrlExpiration = 3600;
+    private long presignedUrlExpiration = 600;
     private long putPresignedUrlExpiration = 600;
     private Duration apiCallTimeout = Duration.ofSeconds(30);
     private Duration apiCallAttemptTimeout = Duration.ofSeconds(10);
