@@ -4,11 +4,10 @@ import com.todo.domain.chat.command.SlashCommand;
 import com.todo.domain.team.entity.Team;
 import com.todo.domain.todo.command.dto.TeamStatusResult;
 import com.todo.domain.todo.entity.TodoStatus;
-import com.todo.domain.todo.entity.WorkItemStatus;
+import com.todo.domain.todo.repository.TeamStatusTodoProgress;
 import com.todo.domain.todo.repository.TodoRepository;
 import com.todo.domain.todo.repository.TodoStatusCount;
 import com.todo.domain.todo.repository.TodoWorkItemRepository;
-import com.todo.domain.todo.repository.WorkItemStatusCount;
 import com.todo.domain.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,41 +38,42 @@ class TeamStatusCommandHandlerTest {
     }
 
     @Test
-    void 상태별_투두_개수와_진행중_투두의_WorkItem_완료_현황을_반환한다() {
+    void 상태별_투두_개수와_진행중_투두별_WorkItem_완료_현황을_반환한다() {
         Team team = teamWithId(100L);
         given(todoRepository.countByTeamIdGroupByStatus(100L)).willReturn(List.of(
-                countOf(TodoStatus.IN_PROGRESS, 3L),
+                countOf(TodoStatus.IN_PROGRESS, 2L),
                 countOf(TodoStatus.SUCCESS, 5L)
         ));
-        given(todoWorkItemRepository.countByTeamIdAndTodoInProgressGroupByStatus(100L)).willReturn(List.of(
-                workItemCountOf(WorkItemStatus.SUCCESS, 4L),
-                workItemCountOf(WorkItemStatus.IN_PROGRESS, 6L)
+        given(todoWorkItemRepository.findInProgressTodoProgressByTeamId(100L)).willReturn(List.of(
+                progressOf(1L, "기말 발표", 1L, 3L),
+                progressOf(2L, "회의록 작성", 0L, 2L)
         ));
 
         Object result = handler.execute(team, userWithId(1L));
 
         assertThat(result).isInstanceOf(TeamStatusResult.class);
         TeamStatusResult typed = (TeamStatusResult) result;
-        assertThat(typed.inProgressTodoCount()).isEqualTo(3L);
-        assertThat(typed.successTodoCount()).isEqualTo(5L);
-        assertThat(typed.failTodoCount()).isEqualTo(0L);
-        assertThat(typed.inProgressWorkItemTotal()).isEqualTo(10L);
-        assertThat(typed.inProgressWorkItemCompletedCount()).isEqualTo(4L);
+        assertThat(typed.inProgressCount()).isEqualTo(2L);
+        assertThat(typed.successCount()).isEqualTo(5L);
+        assertThat(typed.failCount()).isEqualTo(0L);
+        assertThat(typed.inProgressTodos()).containsExactly(
+                new TeamStatusResult.InProgressTodo(1L, "기말 발표", 1L, 3L),
+                new TeamStatusResult.InProgressTodo(2L, "회의록 작성", 0L, 2L)
+        );
     }
 
     @Test
-    void 데이터가_없는_상태는_0으로_채운다() {
+    void 데이터가_없으면_0과_빈_목록을_반환한다() {
         Team team = teamWithId(100L);
         given(todoRepository.countByTeamIdGroupByStatus(100L)).willReturn(List.of());
-        given(todoWorkItemRepository.countByTeamIdAndTodoInProgressGroupByStatus(100L)).willReturn(List.of());
+        given(todoWorkItemRepository.findInProgressTodoProgressByTeamId(100L)).willReturn(List.of());
 
         TeamStatusResult result = (TeamStatusResult) handler.execute(team, userWithId(1L));
 
-        assertThat(result.inProgressTodoCount()).isZero();
-        assertThat(result.successTodoCount()).isZero();
-        assertThat(result.failTodoCount()).isZero();
-        assertThat(result.inProgressWorkItemTotal()).isZero();
-        assertThat(result.inProgressWorkItemCompletedCount()).isZero();
+        assertThat(result.inProgressCount()).isZero();
+        assertThat(result.successCount()).isZero();
+        assertThat(result.failCount()).isZero();
+        assertThat(result.inProgressTodos()).isEmpty();
     }
 
     private TodoStatusCount countOf(TodoStatus status, long count) {
@@ -83,10 +83,12 @@ class TeamStatusCommandHandlerTest {
         };
     }
 
-    private WorkItemStatusCount workItemCountOf(WorkItemStatus status, long count) {
-        return new WorkItemStatusCount() {
-            public WorkItemStatus getStatus() { return status; }
-            public long getCount() { return count; }
+    private TeamStatusTodoProgress progressOf(Long todoId, String title, long completedCount, long totalCount) {
+        return new TeamStatusTodoProgress() {
+            public Long getTodoId() { return todoId; }
+            public String getTitle() { return title; }
+            public long getCompletedCount() { return completedCount; }
+            public long getTotalCount() { return totalCount; }
         };
     }
 
