@@ -32,6 +32,20 @@ class RecommendationPromptProviderTest {
     }
 
     @Test
+    void 두_프롬프트_모두_description_문체와_빈_배열_허용을_규정한다() {
+        // description은 투두 설명 칸에 그대로 들어간다. 규정이 없으면 모델이 "~하세요"로 쓰고,
+        // 팀원이 쓴 설명과 말투가 어긋나 AI가 만든 것만 티가 난다.
+        // 근거가 없을 때 빈 배열을 허용하지 않으면 어느 팀에나 들어맞는 카드를 지어낸다.
+        for (RecommendationMode mode : List.of(RecommendationMode.FULL, RecommendationMode.STARTER)) {
+            assertThat(provider.systemInstruction(mode))
+                    .as("%s 프롬프트", mode)
+                    .contains("투두의 설명 칸에 그대로 들어간다")
+                    .contains("지시문으로 쓰지 않는다")
+                    .contains("빈 배열을 두려워하지 않는다");
+        }
+    }
+
+    @Test
     void NONE에는_프롬프트가_없다() {
         assertThatThrownBy(() -> provider.systemInstruction(RecommendationMode.NONE))
                 .isInstanceOf(IllegalStateException.class);
