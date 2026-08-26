@@ -142,6 +142,15 @@ slash-command:
     # 핸들러를 앞질러 실행 행이 PENDING으로 남는다.
     await-termination-seconds: ${SLASH_COMMAND_ASYNC_AWAIT_TERMINATION_SECONDS:70}
 
+# 업로드만 되고 제출되지 않은 파일 정리. dry-run이 기본이라 켜도 로그만 남긴다 —
+# 운영 로그에서 오탐 없음을 확인한 뒤 ORPHAN_CLEANUP_DRY_RUN=false로 실제 삭제를 연다.
+orphan-cleanup:
+  enabled: ${ORPHAN_CLEANUP_ENABLED:true}
+  dry-run: ${ORPHAN_CLEANUP_DRY_RUN:true}
+  cron: ${ORPHAN_CLEANUP_CRON:0 50 4 * * *}
+  grace-hours: ${ORPHAN_CLEANUP_GRACE_HOURS:24}
+  batch-size: ${ORPHAN_CLEANUP_BATCH_SIZE:500}
+
 file-deletion:
   async:
     core-pool-size: ${FILE_DELETION_ASYNC_CORE_POOL_SIZE:1}

@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -38,4 +39,12 @@ public interface FileDeletionOutboxRepository extends JpaRepository<FileDeletion
             @Param("statuses") List<FileDeletionOutboxStatus> statuses,
             @Param("threshold") LocalDateTime threshold
     );
+
+    /**
+     * 고아 파일 정리가 이미 outbox에 올라간 키를 걸러낼 때 쓴다. 상태를 가리지 않는다 —
+     * PENDING이면 폴러가 지울 예정이라 이중 처리이고, DELETED면 이미 지워진 키다.
+     * 어느 쪽이든 정리 스케줄러가 손댈 일이 아니다.
+     */
+    @Query("SELECT f.objectKey FROM FileDeletionOutbox f WHERE f.objectKey IN :keys")
+    List<String> findObjectKeysIn(@Param("keys") Collection<String> keys);
 }

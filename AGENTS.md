@@ -91,7 +91,9 @@ bash scripts/setup-hooks.sh
 | `openai.api-key` | **선택.** 없어도 기동되며 인증 파일 AI 판정만 영구 실패(`FAILED`)로 처리된다. AI 판정을 로컬에서 확인할 때만 넣는다 |
 | `spring.jpa.hibernate.ddl-auto` | 아래 참조 |
 
-기본값이 있어 생략 가능한 것: `app.*`(frontend-base-url, api-server-url, team-invite-path 등), `todo.scheduling.*`, `proof-analysis.*`, `openai.model`/`reasoning-effort`/`max-output-tokens`, `chat.cleanup.*`, `mail.async.*`, `file-deletion.*`, `cookie.secure`
+기본값이 있어 생략 가능한 것: `app.*`(frontend-base-url, api-server-url, team-invite-path 등), `todo.scheduling.*`, `proof-analysis.*`, `openai.model`/`reasoning-effort`/`max-output-tokens`, `chat.cleanup.*`, `mail.async.*`, `file-deletion.*`, `orphan-cleanup.*`, `cookie.secure`
+
+**고아 파일 정리는 dry-run이 기본이다.** `orphan-cleanup.*` 스케줄러는 업로드만 되고 제출되지 않은 파일(presign 발급 원장 기준)을 새벽에 정리하는데, 기본값에서는 삭제 대상을 로그로만 남긴다. 운영 로그에서 오탐이 없음을 확인한 뒤 `ORPHAN_CLEANUP_DRY_RUN=false`로 실제 삭제를 연다.
 
 **`cookie.secure`는 기본값이 `true`다.** 리프레시 토큰 쿠키에 `Secure`가 붙어 HTTPS에서만 오간다. 백엔드를 `http://localhost`로 직접 띄우고 브라우저에서 로그인·갱신·로그아웃을 확인하려면 `application-local.yml`에 `cookie.secure: false`를 넣는다. Chrome과 Firefox는 `localhost`를 신뢰 가능한 출처로 취급해 `true`인 채로도 대체로 동작하지만 Safari는 쿠키를 거부한다. 운영은 `application-prod.yml`에서 `true`로 고정돼 있어 환경변수로도 내려가지 않는다.
 
