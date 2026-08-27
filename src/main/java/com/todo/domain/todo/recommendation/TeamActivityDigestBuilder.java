@@ -71,6 +71,10 @@ public class TeamActivityDigestBuilder {
     private static final DateTimeFormatter MONTH_DAY = DateTimeFormatter.ofPattern("M/d");
     private static final DateTimeFormatter FULL_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final int TITLE_CAP = 40;
+    private static final int DESCRIPTION_CAP = 60;
+    private static final int WORK_ITEM_TITLE_CAP = 24;
+    /** 투두 한 건에 적을 작업 항목 제목 수. 넘는 만큼은 "외 N개"로 줄여 개수만 남긴다. */
+    static final int WORK_ITEM_NAME_CAP = 3;
 
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
@@ -204,7 +208,45 @@ public class TeamActivityDigestBuilder {
                 text.append(", 미배정 ").append(unassigned);
             }
             text.append(")\n");
+            appendTodoDetail(text, todo, items);
         }
+    }
+
+    /**
+     * 제목 줄 아래에 설명과 작업 항목 제목을 덧붙인다.
+     *
+     * <p><b>제목만으로는 "다음에 할 만한 일"을 만들 재료가 못 된다.</b> 프롬프트는 제목을 늘어놓으면
+     * 흐름이 보인다고 가정하는데, 그건 제목이 "1장 정리 / 2장 정리"처럼 잘 지어졌을 때뿐이다.
+     * 운영에서 제목이 "할일"뿐인 팀에 FULL 추천이 돌아 "할일의 첫 단계 결과물 작성"이라는,
+     * 어느 팀에나 들어맞는 카드가 나왔다. 팀이 실제로 무엇을 하는지는 대부분 설명과 작업 항목
+     * 제목에 적혀 있는데 그걸 모델에 주지 않고 있었다.
+     *
+     * <p>작업 항목은 {@link #WORK_ITEM_NAME_CAP}개까지만 적고 나머지는 개수로 줄인다. 항목은
+     * 참가자별로 생기므로 같은 제목이 여러 번 나올 수 있어 중복은 지운다. {@code DIRECT} 항목은
+     * 제목 자체가 없어 자연히 빠진다.
+     *
+     * <p>둘 다 팀원이 쓴 글이라 인젝션 면적이 제목만큼 늘어난다. 방어는 제목과 같다 —
+     * {@link #sanitize}가 줄바꿈과 구분자 태그를 지우고, strict 스키마가 출력 모양을 묶는다.
+     */
+    private void appendTodoDetail(StringBuilder text, Todo todo, List<TodoWorkItem> items) {
+        String description = sanitize(todo.getDescription(), DESCRIPTION_CAP);
+        if (!description.isEmpty()) {
+            text.append("  설명: ").append(description).append('\n');
+        }
+        List<String> taskTitles = items.stream()
+                .map(wi -> sanitize(wi.getTaskTitle(), WORK_ITEM_TITLE_CAP))
+                .filter(title -> !title.isEmpty())
+                .distinct()
+                .toList();
+        if (taskTitles.isEmpty()) {
+            return;
+        }
+        text.append("  작업: ")
+                .append(String.join(" / ", taskTitles.subList(0, Math.min(taskTitles.size(), WORK_ITEM_NAME_CAP))));
+        if (taskTitles.size() > WORK_ITEM_NAME_CAP) {
+            text.append(" 외 ").append(taskTitles.size() - WORK_ITEM_NAME_CAP).append("개");
+        }
+        text.append('\n');
     }
 
     private void appendMemberLoad(
