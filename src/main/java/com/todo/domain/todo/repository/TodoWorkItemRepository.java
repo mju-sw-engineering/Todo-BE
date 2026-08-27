@@ -312,15 +312,18 @@ public interface TodoWorkItemRepository extends JpaRepository<TodoWorkItem, Long
             @Param("from") LocalDateTime from
     );
 
-    /** /팀현황 명령어용 — 진행 중인 투두에 속한 WorkItem만 상태별로 집계한다. */
+    /** /팀현황 명령어용 — 진행 중인 투두별 WorkItem 완료/전체 개수. */
     @Query("""
-            SELECT wi.status AS status, COUNT(wi) AS count
+            SELECT wi.todo.id AS todoId, wi.todo.title AS title,
+                   SUM(CASE WHEN wi.status = com.todo.domain.todo.entity.WorkItemStatus.SUCCESS THEN 1L ELSE 0L END) AS completedCount,
+                   COUNT(wi) AS totalCount
             FROM TodoWorkItem wi
             WHERE wi.todo.team.id = :teamId
               AND wi.todo.status = com.todo.domain.todo.entity.TodoStatus.IN_PROGRESS
-            GROUP BY wi.status
+            GROUP BY wi.todo.id, wi.todo.title
+            ORDER BY wi.todo.id
             """)
-    List<WorkItemStatusCount> countByTeamIdAndTodoInProgressGroupByStatus(@Param("teamId") Long teamId);
+    List<TeamStatusTodoProgress> findInProgressTodoProgressByTeamId(@Param("teamId") Long teamId);
 
     /** 고아 파일 정리가 후보 키 중 인증 원본·썸네일로 살아있는 키를 걸러낼 때 쓴다. */
     @Query("""
